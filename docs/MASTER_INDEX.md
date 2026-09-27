@@ -342,4 +342,6 @@ All agents in this system share these configurations:
 └── sv-fpga-sw-validation/SKILL.md
 ```
 
-**Total: 13 Orchestrators | 14 Flow Documents | 49 Skill Files**
+**Total: 16 Orchestrators | 14 Flow Documents | 17 Skill Files**
+
+The tree above is the legacy per-stage skill layout and is kept for reference. Skills now live one per domain under `plugins/<domain>/skills/`.

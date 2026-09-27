@@ -90,3 +90,11 @@ def test_decision_enum_lists_every_value_the_agent_writes(path):
         assert "await_approval" in values, (
             f"{_rel(path)}: decision enum {values} omits await_approval"
         )
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_escalation_guidance_goes_in_history_reason(path):
+    """Domain orchestrators set pending_approval only at their gates; type
+    "escalation" belongs to the pipeline-orchestrator. A rule that puts every
+    escalation's guidance in pending_approval.reason implies otherwise."""
+    assert "When escalating, `pending_approval.reason` must state" not in _read(path)

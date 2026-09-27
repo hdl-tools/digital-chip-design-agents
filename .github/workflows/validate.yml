@@ -116,12 +116,18 @@ jobs:
                   errors.append(f"{path}: missing '## Stage Sequence' section")
               if "## Loop-Back Rules" not in content:
                   errors.append(f"{path}: missing '## Loop-Back Rules' section")
+              # Anchor for the shared sections synced by tools/sync_agent_sections.py.
+              if "## Behaviour Rules" not in content:
+                  errors.append(f"{path}: missing '## Behaviour Rules' section")
               print(f"OK: {path} ({len(content.splitlines())} lines)")
           if errors:
               for e in errors: print(f"ERROR: {e}", file=sys.stderr)
               sys.exit(1)
           print(f"All {len(paths)} agent files validated")
           PYEOF
+
+      - name: Check shared orchestrator sections are in sync
+        run: python3 tools/sync_agent_sections.py --check
 
       - name: Check skill count matches marketplace registrations
         run: |

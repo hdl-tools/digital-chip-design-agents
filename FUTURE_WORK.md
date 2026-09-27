@@ -38,7 +38,7 @@ zero-dependency, stdlib-only convention:
   index keyed by record content hash (incremental re-embedding via `--reindex`).
   Below the threshold or with no backend, it transparently falls back to keyword
   and flags `fell_back: true`.
-- All 15 orchestrators carry an optional session-start read-path note that calls
+- All 16 orchestrators carry an optional session-start read-path note that calls
   the MCP tool when available and otherwise proceeds with `knowledge.md`.
 
 The original options below were **rejected** to preserve the zero-dependency
@@ -96,7 +96,7 @@ infrastructure-orchestrator § "Infrastructure Memory" for full details.
 
 ## 5. Central "Design" State ✓ IMPLEMENTED
 
-**Status:** Shipped — all 15 orchestrators read `design_state.json` on entry and write their
+**Status:** Shipped — all 16 orchestrators read `design_state.json` on entry and write their
 domain sub-object plus a `history[]` entry on exit. Schema covers `spec`, `interfaces`,
 `constraints`, `architecture`, `rtl`, `verification_status`, `synthesis`, `dft`, `sta`,
 `hls`, `pd`, `soc`, `compiler`, `firmware`, `fpga`, `environment`, `tool_feedback`,
@@ -137,7 +137,7 @@ the entire evolution of the design is traceable across sessions.
 
 ## 7. Agent Contract Standardization
 
-**Status: Shipped** — All 15 orchestrator `.md` files now emit the extended `output_format`
+**Status: Shipped** — All 16 orchestrator `.md` files now emit the extended `output_format`
 per stage and the standardized `history[]` entry. `design_state.json` format_version bumped
 to `"1.2"`. Canonical schema in `docs/MASTER_INDEX.md`. Programmatic branching decision
 table in `plugins/meta/skills/pipeline-orchestration/SKILL.md`.
@@ -209,7 +209,7 @@ the four classes proposed below are reconciled as documented aliases (`invalid_r
 `tool_error`/regenerate, `verification_failure` → `functional`/refine, `interface_mismatch` →
 `connectivity`/refine, `incomplete_spec` → `spec_gap`/escalate). The pipeline-orchestrator
 decision table branches on `retry_strategy`, and escalations include the `failure_class` plus a
-plain-language description of what the user must supply. All 14 history-writing orchestrators,
+plain-language description of what the user must supply. All 15 history-writing orchestrators,
 the example fixtures, and CI (`validate.yml`) were updated.
 
 ~~All failures currently land in the same `issues[]` array with only `ERROR | WARN`
@@ -242,7 +242,7 @@ record of why an agent made a particular decision.~~
 
 Implemented in format_version 1.3: `pipeline_config.checkpoints` config, `approved_checkpoints[]` resume
 list, `pending_approval.type` discriminator, per-stage `history[]` trace (one entry per stage),
-and checkpoint gate logic in all 15 orchestrators. See `plugins/meta/skills/pipeline-orchestration/SKILL.md`
+and checkpoint gate logic in all 15 domain orchestrators. See `plugins/meta/skills/pipeline-orchestration/SKILL.md`
 § Approval Checkpoints.
 
 ### Approval Checkpoints

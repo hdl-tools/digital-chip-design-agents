@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased] — feat/shared-orchestrator-guards branch
+
+### Added
+
+- **Shared orchestrator sections, synced from one source** (issue #77). `tools/agent_shared_sections.md` holds the text every orchestrator carries word for word; `tools/sync_agent_sections.py` writes it into each target between `BEGIN SHARED` / `END SHARED` marker comments. `--check` reports drift and runs in CI, `--list` prints which block goes where. The script preserves each file's line endings, so a CRLF working tree and LF CI agree. Tests in `tests/test_sync_agent_sections.py`.
+- **15 orchestrators**: new `## Stage Gating and Escalation` section — read the tool's result before assigning a stage status; never proceed past a FAIL without applying the loop-back rule; on an exhausted loop cap, stop and escalate with state and root cause; when the fault is in an upstream artifact, stop looping and hand back. These guards previously existed in one or two orchestrators each (`pd`, `rtl-design`, `memory-ip`, `architecture`, `infrastructure`); ten domain orchestrators had no rule at all for an exhausted loop cap. `pipeline-orchestrator` is excluded: it dispatches rather than runs stages and owns `pending_approval` type `escalation`.
+- **`compiler` and `firmware` orchestrators**: new `### MCP Preference` section. No MCP server or wrapper exists for their toolchains, so it prescribes direct execution with output captured to a log file rather than the MCP → wrapper → direct tier list the EDA domains carry.
+- **Codex, Gemini and Copilot headers**: new `## Verification and Reporting` section with the condensed guards. Copilot and Codex installs receive skills only, never agent files.
+- **`.gitattributes`**: `* text=auto`, and `*.sh text eol=lf` so shell scripts are runnable from a Windows checkout.
+
+### Changed
+
+- **`pending_approval` ownership made consistent.** The pipeline skill allowed domain orchestrators only `type: "checkpoint"` while also requiring them to set `type: "constraint_gap"`, and a sentence in 15 orchestrators implied they set `pending_approval` on any escalation. Domain orchestrators now set it only at their two gates (checkpoint, constraint validation); an escalation for an exhausted loop cap or an upstream fault is recorded in the terminal `history[]` entry, whose `reason` carries the `failure_class` and what the user must supply. `type: "escalation"` stays reserved for `pipeline-orchestrator`. No schema change.
+- **Existing one-off guards** in `pd`, `architecture`, `infrastructure`, `rtl-design` and `memory-ip` keep their rule numbers and now point at the shared section.
+- **`validate.yml`**: agents must contain `## Behaviour Rules` (the anchor for the shared sections); new step runs `tools/sync_agent_sections.py --check`.
+- **`CONTRIBUTING.md`**: documents the sync step, corrects the file paths in the "Adding a New Skill" steps and the local validation snippet (both referred to a root `skills/` directory that does not exist), and corrects the count rule (skills may exceed agents).
+- Stale counts corrected in `CONTRIBUTING.md`, `docs/MASTER_INDEX.md`, `memory/README.md` and `FUTURE_WORK.md`.
+
 ## [Unreleased] — fix/signoff-achieved-template branch
 
 ### Fixed

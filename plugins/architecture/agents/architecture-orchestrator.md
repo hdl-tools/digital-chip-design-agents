@@ -85,14 +85,47 @@ Each stage must return:
 
 ## Behaviour Rules
 1. Read the architecture skill before executing each stage
-2. Enforce loop-back rules strictly — do not proceed past a FAIL
-3. If max iterations exceeded: stop, present full state and escalation report
+2. Enforce loop-back rules strictly — do not proceed past a FAIL (see Stage Gating and Escalation, item 2)
+3. If max iterations exceeded: stop, present full state and escalation report (procedure: Stage Gating and Escalation, item 3)
 4. On completion: produce microarchitecture document and RTL handoff package
 5. Read `<MEM>/architecture/knowledge.md` before the first stage. Write an experience record to `<MEM>/architecture/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
-6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, `pending_approval.reason` must state the `failure_class` plus what the user must supply to unblock. The last entry written is the terminal entry read by downstream orchestrators.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `arch_signoff` only, unless invoked in fix-request-servicing mode — i.e. a `fix_request.id` was passed in the prompt): before setting `architecture.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"arch_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "arch_signoff", "agent": "architecture-orchestrator", "reason": "checkpoint arch_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: selected arch, estimated MHz, area>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `architecture.signoff=true`. On re-invocation: if `"arch_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Constraint extraction (at `spec_analysis`, unless invoked in fix-request-servicing mode): parse the product specification for target clock frequency, area budget, and power budget. Populate `constraints.clock.clk_mhz`, `constraints.area.area_um2`, and `constraints.power.power_mw` from spec values where derivable; leave as `null` when not specified. Write the full constraints object (see Design State section) to `design_state.json` as part of the `spec_analysis` stage write — do not wait for the session-end atomic RMW. This ensures downstream orchestrators can read constraints as soon as architecture completes.
 9. Constraint validation (at `spec_analysis`, skip in fix-request-servicing mode): after extracting constraints from spec, verify `clock.clk_mhz`, `area.area_um2`, and `power.power_mw` are all non-null. If any required key remains `null` after extraction, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "spec_analysis", "agent": "architecture-orchestrator", "reason": "required constraint <key> missing from product specification", "fix_request_id": null, "last_summary": "<comma-separated missing keys>", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "<missing key>"`, print the gate message, and halt. Resume path: user adds missing values to `design_state.constraints`, clears `pending_approval`, re-invokes.
+
+<!-- BEGIN SHARED:stage-gating (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## Stage Gating and Escalation
+These rules apply to every stage and take precedence over keeping the flow moving.
+
+1. **Read the result before deciding.** After every tool run, read what it produced — the exit
+   code plus the wrapper/MCP JSON (`status`, `summary`, `errors`) or the tool's own report or
+   log summary — before assigning the stage `status`. A command having returned is not a result.
+2. **Never proceed past a FAIL without applying the loop-back rule.** A stage that returns FAIL
+   follows its row in Loop-Back Rules or ends the run. It is never skipped, downgraded to WARN,
+   or deferred to a later stage.
+3. **Loop cap exhausted: escalate clearly — show state and root cause.** When a loop-back row
+   has used its `max N×`, do not run the stage again. Append the terminal `history[]` entry
+   with `decision: "escalate"`, `failure_class: "resource_limit"`, `retry_strategy: "escalate"`,
+   `suggested_next_step: "escalate"`, and a `reason` stating the cap reached, the last measured
+   failure, and what the user must relax, supply, or accept. Then report the stage, the
+   iterations used, what each iteration changed, the last measured QoR, and the suspected root
+   cause.
+4. **Fault is upstream: stop looping and hand back.** If the evidence shows the defect is in an
+   input this domain consumes but does not own (RTL, netlist, constraints, IP views, a generated
+   image), retrying here cannot fix it. Do not spend the remaining loop iterations and do not
+   patch the upstream artifact yourself. Append the terminal `history[]` entry with
+   `decision: "escalate"`, the observed `failure_class` with its mapped `retry_strategy`,
+   `suggested_next_step: "escalate"`, and a `reason` naming the upstream domain, the artifact,
+   and the evidence. If your Loop-Back Rules or Behaviour Rules define a `fix_request` hand-off
+   for this case, follow it exactly. Otherwise the history entry and your final report are the
+   hand-off — do not write to `fix_requests[]`.
+5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
+   checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
+   for the pipeline-orchestrator.
+6. In both escalation cases leave the domain `signoff` field `false` and write
+   `signoff_achieved: false` in the experience record.
+<!-- END SHARED:stage-gating -->
 
 ## Memory
 
