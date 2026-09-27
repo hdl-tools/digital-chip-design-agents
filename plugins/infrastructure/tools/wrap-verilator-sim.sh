@@ -6,7 +6,7 @@ set -euo pipefail
 if [[ $# -lt 1 ]]; then
   python3 - <<'PYEOF'
 import json
-print(json.dumps({"tool":"verilator-sim","exit_code":1,"status":"FAIL","summary":{},"errors":["no sim binary provided: usage: wrap-verilator-sim.sh <sim_binary> [args...]"],"warnings":[],"raw_log":""}))
+print(json.dumps({"tool":"verilator-sim","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":["no sim binary provided: usage: wrap-verilator-sim.sh <sim_binary> [args...]"],"warnings":[],"raw_log":""}))
 PYEOF
   exit 1
 fi
@@ -17,7 +17,7 @@ if [[ ! -x "$SIM_BIN" ]]; then
   python3 - "$SIM_BIN" <<'PYEOF'
 import json, sys
 sim_bin = sys.argv[1]
-print(json.dumps({"tool":"verilator-sim","exit_code":1,"status":"FAIL","summary":{},"errors":[f"sim binary not found or not executable: {sim_bin}"],"warnings":[],"raw_log":""}))
+print(json.dumps({"tool":"verilator-sim","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":[f"sim binary not found or not executable: {sim_bin}"],"warnings":[],"raw_log":""}))
 PYEOF
   exit 1
 fi
@@ -52,9 +52,17 @@ if coverage_m:
 summary["error_count"]   = len(errors)
 summary["warning_count"] = len(warnings)
 
+# PASS needs the testbench's own pass marker; exit 0 alone is not one. An ERROR
+# line does not fail the run by itself, because simulation logs print lines such
+# as "Error count: 0", but it keeps the run from passing silently.
+evidence = bool(passed_m)
+
 if failed_m or exit_code != 0:
     status = "FAIL"
-elif warnings:
+elif not evidence:
+    status = "WARN"
+    warnings.insert(0, "no recognisable result in tool output (exit 0) - not verified; read raw_log")
+elif warnings or errors:
     status = "WARN"
 else:
     status = "PASS"
@@ -63,6 +71,7 @@ print(json.dumps({
     "tool":      "verilator-sim",
     "exit_code": exit_code,
     "status":    status,
+    "verified":  status == "FAIL" or evidence,
     "summary":   summary,
     "errors":    errors[:10],
     "warnings":  warnings[:10],

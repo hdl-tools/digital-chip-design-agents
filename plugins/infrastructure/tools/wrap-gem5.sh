@@ -10,7 +10,7 @@ if ! command -v "$TOOL" &>/dev/null; then
   python3 - "$_LOG" <<'PYEOF'
 import json, sys
 log_path = sys.argv[1]
-print(json.dumps({"tool":"gem5","exit_code":1,"status":"FAIL","summary":{},"errors":["tool not found: gem5"],"warnings":[],"raw_log":log_path}))
+print(json.dumps({"tool":"gem5","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":["tool not found: gem5"],"warnings":[],"raw_log":log_path}))
 PYEOF
   exit 1
 fi
@@ -44,12 +44,26 @@ if ipc_m:       summary["ipc"]          = float(ipc_m.group(1))
 summary["error_count"]   = len(errors)
 summary["warning_count"] = len(warnings)
 
-status = "FAIL" if exit_code != 0 or errors else ("WARN" if warnings else "PASS")
+# PASS needs a result found in the output; exit 0 alone is not one. gem5 writes
+# its statistics to m5out/stats.txt, so a run that prints none of them is
+# reported unverified and the agent reads that file.
+evidence = bool(sim_insts_m or host_secs_m or ipc_m)
+
+if exit_code != 0 or errors:
+    status = "FAIL"
+elif not evidence:
+    status = "WARN"
+    warnings.insert(0, "no recognisable result in tool output (exit 0) - not verified; read raw_log")
+elif warnings:
+    status = "WARN"
+else:
+    status = "PASS"
 
 print(json.dumps({
     "tool":      "gem5",
     "exit_code": exit_code,
     "status":    status,
+    "verified":  status == "FAIL" or evidence,
     "summary":   summary,
     "errors":    errors[:10],
     "warnings":  warnings[:10],

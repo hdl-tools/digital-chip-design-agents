@@ -7,7 +7,7 @@ TOOL="sby"
 if ! command -v "$TOOL" &>/dev/null; then
   python3 - <<'PYEOF'
 import json
-print(json.dumps({"tool":"symbiflow","exit_code":1,"status":"FAIL","summary":{},"errors":["tool not found: sby (SymbiYosys)"],"warnings":[],"raw_log":""}))
+print(json.dumps({"tool":"symbiflow","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":["tool not found: sby (SymbiYosys)"],"warnings":[],"raw_log":""}))
 PYEOF
   exit 1
 fi
@@ -50,8 +50,14 @@ if counterexample_m:
 summary["error_count"]   = len(errors)
 summary["warning_count"] = len(warnings)
 
+# PASS needs a property result found in the output; exit 0 alone is not one.
+evidence = bool(proved_props or failed_props or unknown_props)
+
 if errors or failed_props or exit_code != 0:
     status = "FAIL"
+elif not evidence:
+    status = "WARN"
+    warnings.insert(0, "no recognisable result in tool output (exit 0) - not verified; read raw_log")
 elif warnings or unknown_props:
     status = "WARN"
 else:
@@ -61,6 +67,7 @@ print(json.dumps({
     "tool":      "symbiflow",
     "exit_code": exit_code,
     "status":    status,
+    "verified":  status == "FAIL" or evidence,
     "summary":   summary,
     "errors":    errors[:10],
     "warnings":  warnings[:10],
