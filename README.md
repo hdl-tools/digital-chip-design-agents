@@ -83,8 +83,8 @@ Each domain orchestrator reads from and writes to a two-tier persistent memory s
 
 - **`memory/<domain>/knowledge.md`** — distilled summaries (failure patterns, tool flags, PDK
   quirks) read by every orchestrator at session start.
-- **`memory/<domain>/experiences.jsonl`** — append-only run records written after every signoff
-  or escalation.
+- **`memory/<domain>/experiences.jsonl`** — one record per run, upserted by `run_id`, written on
+  every termination path (signoff, escalation, or abandon).
 
 Distil accumulated records back into `knowledge.md` with the `memory-keeper` skill, and track
 QoR metrics across runs with `tools/qor_trends.py`. See **[memory/README.md](memory/README.md)**

@@ -100,10 +100,11 @@ without it.
 **Optional — semantic experience lookup.** If the `query_experiences` MCP tool (from the `chip-design-memory` server) is available, before the first stage call it with `domain="fpga"`, the current goal or failing-stage issue as `query`, and any known `filters` (`pdk`, `tool_used`, `design_name`). Use the ranked prior fixes to inform stage decisions; the result's `backend`/`fell_back` flags indicate whether ranking was semantic or keyword. If the tool is unavailable, proceed with `knowledge.md` only — this augments, never replaces, the `knowledge.md` read.
 
 ### Write (session end)
-After signoff (or on escalation/abandon), append one JSON line to
+After signoff (or on escalation/abandon), upsert (create or replace by `run_id`) one JSON line in
 `<MEM>/fpga/experiences.jsonl`:
 ```json
 {
+  "run_id": "<from state>",
   "timestamp": "<ISO-8601>",
   "domain": "fpga",
   "design_name": "<from state>",

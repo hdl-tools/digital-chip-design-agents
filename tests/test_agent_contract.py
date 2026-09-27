@@ -22,6 +22,9 @@ MEMORY_README = REPO_ROOT / "memory" / "README.md"
 HARDCODED_SIGNOFF = re.compile(r'"signoff_achieved"\s*:\s*true')
 
 
+JSON_FENCE = re.compile(r"```json\r?\n(.*?)```", re.DOTALL)
+
+
 def _rel(path: Path) -> str:
     return path.relative_to(REPO_ROOT).as_posix()
 
@@ -46,3 +49,25 @@ def test_signoff_achieved_not_hardcoded_true(path):
         if HARDCODED_SIGNOFF.search(line)
     ]
     assert not lines, f"template hardcodes signoff_achieved true: {lines}"
+
+
+@pytest.mark.parametrize("path", AGENT_FILES + SKILL_FILES, ids=_rel)
+def test_experience_records_are_not_append_only(path):
+    """Records are upserted by run_id (memory/README.md). An append per stage or
+    per re-run gives one run several records, and distill.py does not dedup."""
+    text = _read(path)
+    for phrase in ("append one JSON line", "always append"):
+        assert phrase not in text, f"{_rel(path)}: append-only wording: {phrase!r}"
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_experience_template_carries_run_id(path):
+    templates = [
+        block
+        for block in JSON_FENCE.findall(_read(path))
+        if '"signoff_achieved"' in block
+    ]
+    for block in templates:
+        assert '"run_id"' in block, (
+            f"{_rel(path)}: experience template has no run_id to upsert by"
+        )
