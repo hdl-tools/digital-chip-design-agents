@@ -107,7 +107,7 @@ of the enums, required fields, and the `failure_class → retry_strategy` map be
 - `rtl-design-orchestrator` owns the `open→claimed` and `claimed→fixed|abandoned` transitions.
 - Only the `rtl-design-orchestrator` sets `status=claimed→fixed` or `claimed→abandoned`.
 - Only the `pipeline-orchestrator` sets `cross_domain_iteration_count`, `pipeline_session_id`, `pipeline_config`, and moves resolved entries to `archive_fix_requests[]`.
-- Domain orchestrators **may** set `pending_approval` exclusively with `type: "checkpoint"` at their own sign-off stage; `type: "escalation"` remains the sole responsibility of the `pipeline-orchestrator`.
+- Domain orchestrators **may** set `pending_approval` only at their two gates: `type: "checkpoint"` at their own sign-off stage, and `type: "constraint_gap"` at stage-entry constraint validation. `type: "escalation"` remains the sole responsibility of the `pipeline-orchestrator`. A domain orchestrator that escalates for any other reason (loop cap exhausted, fault in an upstream artifact) records it in the terminal `history[]` entry and does not set `pending_approval`.
 - `approved_checkpoints[]` is written by the user (or by an orchestrator executing an explicit approval instruction) and read by all orchestrators.
 - All agents may append to `fix_request.history[]` but must not overwrite each other's entries.
 
@@ -329,8 +329,10 @@ enum — no separate taxonomy is introduced. Producers that emit a `fix_request`
 #### Actionable escalation guidance
 
 Whenever `retry_strategy` resolves to `escalate` **or** a max-iteration cap is hit, the
-`pending_approval.reason` must state both the `failure_class` and a plain-language
-description of what the user must supply to unblock the flow, e.g.:
+escalation `reason` must state both the `failure_class` and a plain-language description of
+what the user must supply to unblock the flow. For a domain orchestrator that is the terminal
+`history[]` entry's `reason`; where `pending_approval` is also set (a gate, or the
+`pipeline-orchestrator`'s `type: "escalation"`), its `reason` must say the same. E.g.:
 
 - `spec_gap` → "spec_gap: clarify <ambiguous requirement> — provide the intended <behaviour/value>."
 - `resource_limit` → "resource_limit: loop cap (N) reached on <stage> — relax the constraint, raise the cap, or accept current QoR."
@@ -342,7 +344,7 @@ description of what the user must supply to unblock the flow, e.g.:
 - **`"1.2"`**: `history[]` entries carry standardized `confidence`, `failure_class`, and `suggested_next_step` fields.
 - **`"1.3"`**: `pipeline_config.checkpoints`, `approved_checkpoints[]`, `pending_approval.type/stage/agent` present; per-stage `history[]` entries (one entry per completed stage, not just one terminal entry per run).
 - **`"1.4"`**: `constraints` object present (authoritative nested schema defined in the Constraints Schema section); stage-entry constraint validation; `pending_approval.type: "constraint_gap"`.
-- **`"1.5"`**: every `history[]` entry carries `retry_strategy` (`none | regenerate | refine | escalate`), derived from `failure_class` via the mapping in the Failure Classification & Retry Strategy section; escalations include `failure_class` + actionable guidance in `pending_approval.reason`.
+- **`"1.5"`**: every `history[]` entry carries `retry_strategy` (`none | regenerate | refine | escalate`), derived from `failure_class` via the mapping in the Failure Classification & Retry Strategy section; escalations include `failure_class` + actionable guidance in the `history[]` entry's `reason`, and in `pending_approval.reason` where one is set.
 
 All orchestrators must:
 - Upgrade to `"1.5"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`, or `"1.4"`; never downgrade.
