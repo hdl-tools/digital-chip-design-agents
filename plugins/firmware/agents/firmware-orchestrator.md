@@ -106,10 +106,11 @@ After signoff (or on escalation/abandon), append one JSON line to
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
-  "signoff_achieved": true,
+  "signoff_achieved": false,
   "notes": "<free-text observations>"
 }
 ```
+Set `signoff_achieved: true` only when the signoff stage passes all criteria; on escalation, abandonment, interruption, or any partial run it stays `false`.
 If the flow ends before signoff (interrupted, error, max turns exceeded), write the record immediately with the stages completed so far and `signoff_achieved: false`. Do not wait for a terminal signoff state.
 Create the file and parent directories if they do not exist.
 
