@@ -205,6 +205,8 @@ def _build_cli_args(tool: str, inputs: dict) -> list[str]:
 # Wrapper execution
 # ---------------------------------------------------------------------------
 
+VALID_STATUSES = ("PASS", "WARN", "FAIL")
+
 def _run_wrapper(wrapper_path: str, tool: str, inputs: dict, timeout: int) -> dict:
     """
     Execute the wrapper script and return its parsed JSON output.
@@ -223,37 +225,46 @@ def _run_wrapper(wrapper_path: str, tool: str, inputs: dict, timeout: int) -> di
             timeout=timeout,
         )
         stdout = proc.stdout.strip()
+        stderr_snippet = proc.stderr.strip()[:500] if proc.stderr else ""
 
+        # A wrapper prints its JSON on every run, whatever the tool's exit code.
+        # Anything else means the wrapper itself did not produce a result, so it
+        # is reported as FAIL even when the process exited 0.
         if stdout:
             try:
-                return json.loads(stdout)
+                result = json.loads(stdout)
             except json.JSONDecodeError:
-                return {
-                    "tool": tool,
-                    "exit_code": proc.returncode,
-                    "status": "FAIL" if proc.returncode != 0 else "WARN",
-                    "summary": {},
-                    "errors": ["wrapper output was not valid JSON"],
-                    "warnings": [],
-                    "raw_output_excerpt": stdout[:500],
-                }
-        # Empty stdout — surface stderr as the error
-        stderr_snippet = proc.stderr.strip()[:500] if proc.stderr else ""
-        return {
+                result = None
+                problem = "wrapper output was not valid JSON"
+            else:
+                if isinstance(result, dict) and result.get("status") in VALID_STATUSES:
+                    return result
+                problem = "wrapper JSON has no valid 'status' (expected PASS, WARN or FAIL)"
+        else:
+            problem = "wrapper produced no output"
+
+        failure = {
             "tool": tool,
             "exit_code": proc.returncode,
-            "status": "FAIL" if proc.returncode != 0 else "PASS",
+            "status": "FAIL",
+            "verified": False,
             "summary": {},
-            "errors": [stderr_snippet] if stderr_snippet else [],
+            "errors": [f"{problem} (exit {proc.returncode}) - no result to report"],
             "warnings": [],
             "raw_log": "",
         }
+        if stdout:
+            failure["raw_output_excerpt"] = stdout[:500]
+        if stderr_snippet:
+            failure["stderr_excerpt"] = stderr_snippet
+        return failure
 
     except subprocess.TimeoutExpired:
         return {
             "tool": tool,
             "exit_code": -1,
             "status": "FAIL",
+            "verified": False,
             "summary": {},
             "errors": [
                 f"process timed out after {timeout}s — raise TOOL_TIMEOUT_S env var to allow longer runs"
@@ -267,6 +278,7 @@ def _run_wrapper(wrapper_path: str, tool: str, inputs: dict, timeout: int) -> di
             "tool": tool,
             "exit_code": 1,
             "status": "FAIL",
+            "verified": False,
             "summary": {},
             "errors": [f"wrapper script not found: {wrapper_path}"],
             "warnings": [],
