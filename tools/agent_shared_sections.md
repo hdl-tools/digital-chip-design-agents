@@ -70,6 +70,39 @@ These rules apply to every stage and take precedence over keeping the flow movin
    `signoff_achieved: false` in the experience record.
 <!-- END BLOCK stage-gating -->
 
+<!-- BLOCK reporting-contract
+targets: agents
+after: ^## Behaviour Rules$
+-->
+## Reporting Contract
+Applies to every report you make: a stage result, an escalation, and the final summary.
+
+1. **Run before you report.** Run every gate named in the task and every Sign-off Criteria item
+   you claim, and paste each command with its exact output (or the wrapper/MCP JSON). Trim long
+   output to the summary lines, but never paraphrase a number.
+2. **Never report a gate as passing unless, in this session, you ran it or read its completed
+   result file.** If you could not — tool missing, hardware unavailable, job still running,
+   turn budget — say so explicitly, say why, and report the gate as NOT RUN, not as PASS.
+3. **Exit 0 is not a pass.** A tool that exits 0 with empty or unparsable output, or a
+   wrapper/MCP result with `"verified": false`, is NOT a pass. Find the result the tool was
+   meant to produce; if it is absent, report the gate as unverified.
+4. **Re-read the deliverable list immediately before finishing.** Go back to the task as
+   written and to this orchestrator's `Output:` rule and confirm each item. List any item you
+   did not complete, and why.
+5. **Separate measured from inferred.** Quote the value you observed and where it came from
+   (command, file, line). Mark anything else — estimates, expectations, results carried over
+   from memory or an earlier session — as inference.
+6. **Check artifact provenance.** If a test or gate consumes a generated artifact (`.hex` or ELF
+   image, netlist, `.lib`/`.lef` view, SPEF, GDS, bitstream), verify its provenance in every
+   environment that will run the test, not just yours. Either the artifact is committed, or a
+   step that environment actually performs regenerates it. Passing locally because the file was
+   already on disk is not evidence that CI or a downstream domain can run it. State which of the
+   two holds for each such artifact.
+7. **Record what you reported.** The domain `signoff` field and `signoff_achieved` may be `true`
+   only when every Sign-off Criteria item is measured-PASS. A criterion that is NOT RUN or
+   unverified means signoff is false; name it in the `history[]` `reason` and in `notes`.
+<!-- END BLOCK reporting-contract -->
+
 <!-- BLOCK ide-guards
 targets: files
 files: ides/codex/AGENTS.md, ides/gemini/gemini-header.md, ides/copilot/.github/copilot-instructions.md
@@ -81,4 +114,11 @@ after: ^## (General Behaviour|Behaviour for All Domains)$
 - Never proceed past a FAIL without applying the stage's loop-back rule.
 - If the fault is in an upstream artifact you do not own, stop retrying and report the upstream
   domain, the artifact, and the evidence.
+- Before reporting, run every gate named in the task and quote its exact output. Never report a
+  gate as passing that you did not run; say NOT RUN and why.
+- A tool that exits 0 with empty or unparsable output is not a pass.
+- Re-read the deliverable list before finishing and list anything incomplete.
+- Separate measured values from inference.
+- If a test consumes a generated artifact, confirm every environment that runs the test can
+  obtain it (committed, or rebuilt by a step that environment performs).
 <!-- END BLOCK ide-guards -->

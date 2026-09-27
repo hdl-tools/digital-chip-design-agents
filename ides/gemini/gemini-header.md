@@ -17,6 +17,13 @@ requirements — is loaded below via @-imports from the plugin source files.
 - Never proceed past a FAIL without applying the stage's loop-back rule.
 - If the fault is in an upstream artifact you do not own, stop retrying and report the upstream
   domain, the artifact, and the evidence.
+- Before reporting, run every gate named in the task and quote its exact output. Never report a
+  gate as passing that you did not run; say NOT RUN and why.
+- A tool that exits 0 with empty or unparsable output is not a pass.
+- Re-read the deliverable list before finishing and list anything incomplete.
+- Separate measured values from inference.
+- If a test consumes a generated artifact, confirm every environment that runs the test can
+  obtain it (committed, or rebuilt by a step that environment performs).
 <!-- END SHARED:ide-guards -->
 
 ## Available Domains

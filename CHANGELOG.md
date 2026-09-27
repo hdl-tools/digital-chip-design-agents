@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased] — feat/reporting-contract branch
+
+### Added
+
+- **All 16 orchestrators**: new `## Reporting Contract` section (issues #75, #78), synced from `tools/agent_shared_sections.md`. Sign-off criteria were declarative properties with no rule that they be observed rather than asserted. The contract requires: run every named gate and quote its exact output; never report a gate as passing that was not run this session (report it NOT RUN, and why); exit 0 with empty or unparsable output is not a pass; re-read the deliverable list before finishing; separate measured values from inference; verify the provenance of any generated artifact a test consumes, in every environment that will run the test; and set `signoff` / `signoff_achieved` true only when every criterion is measured-PASS.
+- **Codex, Gemini and Copilot headers**: five condensed lines of the contract added to `## Verification and Reporting`.
+- **Wrapper JSON `verified` field**: `true` when `status` rests on a result parsed from the output or on a failure; `false` when the tool exited 0 without a recognisable result, or did not run. Documented in the infrastructure skill's wrapper schema.
+- **Tests**: `tests/test_wrappers.py` runs each real wrapper through bash against a fake tool (skipped on Windows unless `RUN_WRAPPER_TESTS=1`); `tests/test_mcp_adapter.py` covers how the adapter interprets wrapper output.
+
+### Changed
+
+- **Behaviour change — all 8 EDA wrappers no longer report `PASS` without evidence.** Status was computed from the exit code and ERROR/WARNING lines alone, so a tool that exited 0 and printed nothing the wrapper recognised was a `PASS`. A wrapper now needs a result it parsed from the output; otherwise it reports `WARN` with `verified: false` and says so in the first warning. Evidence is the set of fields each wrapper already extracted — no new log markers. A quiet run (`yosys -q`, a `--version` smoke test) that returned `PASS` now returns `WARN`. The exit code is still propagated unchanged.
+  - `wrap-verilator-sim.sh`: `PASS` requires `TEST PASSED`. An ERROR line with exit 0 gives `WARN`, not `FAIL`, since simulation logs print lines such as "Error count: 0".
+  - `wrap-klayout.sh`: a report that parses with no categories is a clean run; with no report and no count in the log, `drc_total` is `null` rather than `0`.
+- **Behaviour change — `mcp-adapter.py`**: with exit 0, empty wrapper output was `PASS` and non-JSON output was `WARN`; JSON without a valid `status` was passed through. All three are now `FAIL` with `verified: false`, because the wrapper contract is to emit JSON on every run. Valid wrapper JSON is passed through unchanged. `isError` stays tied to `status == "FAIL"`.
+- **`mcp-session-adapter.py`**: `query_drc` returns `drc_total: null`, not `0`, when no count could be parsed.
+
 ## [Unreleased] — feat/shared-orchestrator-guards branch
 
 ### Added

@@ -10,7 +10,7 @@ if ! command -v "$TOOL" &>/dev/null; then
   python3 - "$_LOG" <<'PYEOF'
 import json, sys
 log_path = sys.argv[1]
-print(json.dumps({"tool":"bambu","exit_code":1,"status":"FAIL","summary":{},"errors":["tool not found: bambu-hls"],"warnings":[],"raw_log":log_path}))
+print(json.dumps({"tool":"bambu","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":["tool not found: bambu-hls"],"warnings":[],"raw_log":log_path}))
 PYEOF
   exit 1
 fi
@@ -71,15 +71,26 @@ if "dsp_count" not in summary and "dsp_count" in summary_from_xml:
     summary["dsp_count"] = int(summary_from_xml["dsp_count"])
 if "bram_count" not in summary and "bram_count" in summary_from_xml:
     summary["bram_count"] = int(summary_from_xml["bram_count"])
+# PASS needs a result found in the log or the report; exit 0 alone is not one.
+evidence = bool(summary)
 summary["error_count"]   = len(errors)
 summary["warning_count"] = len(warnings)
 
-status = "FAIL" if exit_code != 0 or errors else ("WARN" if warnings else "PASS")
+if exit_code != 0 or errors:
+    status = "FAIL"
+elif not evidence:
+    status = "WARN"
+    warnings.insert(0, "no recognisable result in tool output (exit 0) - not verified; read raw_log")
+elif warnings:
+    status = "WARN"
+else:
+    status = "PASS"
 
 print(json.dumps({
     "tool":      "bambu",
     "exit_code": exit_code,
     "status":    status,
+    "verified":  status == "FAIL" or evidence,
     "summary":   summary,
     "errors":    errors[:10],
     "warnings":  warnings[:10],

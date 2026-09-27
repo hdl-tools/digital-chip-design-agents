@@ -235,7 +235,8 @@ def _parse_drc(lines: list[str]) -> dict:
     if total_m:
         result["drc_total"] = int(total_m.group(1))
     else:
-        result["drc_total"] = 0
+        # No count in the output: the result is unknown, not zero violations.
+        result["drc_total"] = None
 
     cats: dict = {}
     for m in re.finditer(r'(\w[\w\s]*?)\s*:\s*(\d+)\s*violations?', text, re.I):

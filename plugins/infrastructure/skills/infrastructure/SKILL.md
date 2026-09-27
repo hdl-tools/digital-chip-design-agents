@@ -445,8 +445,12 @@ If `module_system == "none"`: emit WARN in stage output that automatic module lo
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
 4. Test each wrapper with `--version` or `--help` after deploy; tolerate MISSING tools
-   (wrappers must handle tool-not-found gracefully with `status: "FAIL"`)
+   (wrappers must handle tool-not-found gracefully with `status: "FAIL"`). A `--version`
+   run prints no design result, so it returns `status: "WARN"` with `verified: false` —
+   that is the expected outcome and confirms the wrapper runs and emits valid JSON
 5. Never suppress the tool's original exit code
+6. Never report `PASS` without a result: a wrapper that finds nothing it recognises in the
+   tool's output reports `WARN` with `verified: false`, even when the tool exited 0
 
 ### Wrapper JSON Output Schema
 Every wrapper script must print exactly this JSON structure to stdout:
@@ -455,6 +459,7 @@ Every wrapper script must print exactly this JSON structure to stdout:
   "tool": "<tool-name>",
   "exit_code": 0,
   "status": "PASS|FAIL|WARN",
+  "verified": true,
   "summary": {},
   "errors": [],
   "warnings": [],
@@ -463,9 +468,25 @@ Every wrapper script must print exactly this JSON structure to stdout:
 ```
 
 Fields:
-- `status`: `PASS` if exit_code == 0 and no errors; `FAIL` if exit_code != 0 or tool not found; `WARN` if exit_code == 0 with warnings
-- `summary`: tool-specific metrics (cells, timing, coverage, etc.)
+- `status`, evaluated in this order:
+  1. `FAIL` if exit_code != 0, the output contains an error, a tool-specific fail marker is
+     present, or the tool was not found
+  2. `WARN` if exit_code == 0 but the wrapper found no result it recognises in the output
+     (`verified: false`); the first entry in `warnings` says so
+  3. `WARN` if a result was found and the output contains warnings
+  4. `PASS` if a result was found and there are no warnings
+- `verified`: `true` when `status` rests on something the wrapper observed — a result parsed
+  from the output, or a failure. `false` when the tool exited 0 without a recognisable result,
+  or did not run. **A result with `verified: false` is not a pass**: read `raw_log`, or the
+  tool's own report file, before assigning a stage status
+- `summary`: tool-specific metrics (cells, timing, coverage, etc.). A metric the wrapper could
+  not find is omitted or `null`, never `0`
 - `raw_log`: absolute path to temp file containing full unfiltered output
+
+The MCP adapter (`mcp-adapter.py`) returns `status: "FAIL"` with `verified: false` when a
+wrapper prints nothing, prints something that is not JSON, or prints JSON without a valid
+`status`: the wrapper contract is to emit this JSON on every run, so anything else means the
+wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
 - `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 8)

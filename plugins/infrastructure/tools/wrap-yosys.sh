@@ -7,7 +7,7 @@ TOOL="yosys"
 if ! command -v "$TOOL" &>/dev/null; then
   python3 - <<'PYEOF'
 import json, sys
-print(json.dumps({"tool":"yosys","exit_code":1,"status":"FAIL","summary":{},"errors":["tool not found: yosys"],"warnings":[],"raw_log":""}))
+print(json.dumps({"tool":"yosys","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":["tool not found: yosys"],"warnings":[],"raw_log":""}))
 PYEOF
   exit 1
 fi
@@ -41,12 +41,24 @@ if area_m:
 summary["error_count"]   = len(errors)
 summary["warning_count"] = len(warnings)
 
-status = "FAIL" if exit_code != 0 or errors else ("WARN" if warnings else "PASS")
+# PASS needs a result found in the output; exit 0 alone is not one.
+evidence = bool(cells_m or area_m)
+
+if exit_code != 0 or errors:
+    status = "FAIL"
+elif not evidence:
+    status = "WARN"
+    warnings.insert(0, "no recognisable result in tool output (exit 0) - not verified; read raw_log")
+elif warnings:
+    status = "WARN"
+else:
+    status = "PASS"
 
 print(json.dumps({
     "tool":      "yosys",
     "exit_code": exit_code,
     "status":    status,
+    "verified":  status == "FAIL" or evidence,
     "summary":   summary,
     "errors":    errors[:10],
     "warnings":  warnings[:10],

@@ -7,7 +7,7 @@ TOOL="klayout"
 if ! command -v "$TOOL" &>/dev/null; then
   python3 - <<'PYEOF'
 import json
-print(json.dumps({"tool":"klayout","exit_code":1,"status":"FAIL","summary":{},"errors":["tool not found: klayout"],"warnings":[],"raw_log":""}))
+print(json.dumps({"tool":"klayout","exit_code":1,"status":"FAIL","verified":False,"summary":{},"errors":["tool not found: klayout"],"warnings":[],"raw_log":""}))
 PYEOF
   exit 1
 fi
@@ -35,6 +35,9 @@ warnings = [l.strip() for l in text.splitlines() if re.search(r'\bWARN(?:ING)?\b
 # Parse KLayout DRC report XML (*.lyrdb or *.xml) if present
 drc_categories = {}
 total_drc = 0
+# A report that parses with no categories is a clean run; no report and no count
+# in the log means the DRC result is unknown, which is not the same as zero.
+evidence = False
 
 for report_file in [f for f in glob.glob('*.lyrdb') + glob.glob('*drc*.xml')
                     if os.path.getmtime(f) >= invocation_start]:
@@ -42,6 +45,7 @@ for report_file in [f for f in glob.glob('*.lyrdb') + glob.glob('*drc*.xml')
         import xml.etree.ElementTree as ET
         tree = ET.parse(report_file)
         root = tree.getroot()
+        evidence = True
         for cat in root.findall('.//category'):
             name_el = cat.find('name')
             items   = cat.findall('.//item')
@@ -58,9 +62,10 @@ if not drc_categories:
     drc_m = re.search(r'(\d+)\s+(?:DRC\s+)?(?:error|violation)', text, re.I)
     if drc_m:
         total_drc = int(drc_m.group(1))
+        evidence = True
 
 summary = {
-    "drc_total":      total_drc,
+    "drc_total":      total_drc if evidence else None,
     "drc_categories": drc_categories,
     "error_count":    len(errors),
     "warning_count":  len(warnings),
@@ -68,6 +73,9 @@ summary = {
 
 if exit_code != 0 or errors:
     status = "FAIL"
+elif not evidence:
+    status = "WARN"
+    warnings.insert(0, "no recognisable result in tool output (exit 0) - not verified; read raw_log")
 elif total_drc > 0 or warnings:
     status = "WARN"
 else:
@@ -77,6 +85,7 @@ print(json.dumps({
     "tool":      "klayout",
     "exit_code": exit_code,
     "status":    status,
+    "verified":  status == "FAIL" or evidence,
     "summary":   summary,
     "errors":    errors[:10],
     "warnings":  warnings[:10],
