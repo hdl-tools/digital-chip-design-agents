@@ -71,3 +71,22 @@ def test_experience_template_carries_run_id(path):
         assert '"run_id"' in block, (
             f"{_rel(path)}: experience template has no run_id to upsert by"
         )
+
+
+DECISION_ENUM = re.compile(r'"decision"\s*:\s*"([^"]*\|[^"]*)"')
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_decision_enum_lists_every_value_the_agent_writes(path):
+    """The checkpoint gate writes decision "await_approval"; the history-entry
+    enum the agent copies from must offer it."""
+    text = _read(path)
+    if 'decision: "await_approval"' not in text:
+        pytest.skip("agent has no checkpoint gate")
+    enums = DECISION_ENUM.findall(text)
+    assert enums, f"{_rel(path)}: no history decision enum found"
+    for enum in enums:
+        values = [v.strip() for v in enum.split("|")]
+        assert "await_approval" in values, (
+            f"{_rel(path)}: decision enum {values} omits await_approval"
+        )
