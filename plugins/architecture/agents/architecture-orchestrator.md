@@ -139,7 +139,7 @@ line must be a valid JSON object followed by a newline:
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
-  "signoff_achieved": true,
+  "signoff_achieved": false,
   "notes": "<free-text observations>"
 }
 ```
@@ -211,7 +211,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "architecture-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned",
+  "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",

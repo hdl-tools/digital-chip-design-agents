@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] — fix/signoff-achieved-template branch
+
+### Fixed
+
+- **13 orchestrators**: the `experiences.jsonl` template showed `"signoff_achieved": true` while the surrounding rules say the record is also written on escalation and abandonment (issue #74). `distill.py` counts sign-off with `is True`, so a template defaulting to `true` records failed runs as successes. The template now defaults to `false`, matching `pd` and `infrastructure`, and each one states the success condition directly beneath it (`soc` had no such sentence). A literal `false` is used rather than a `"<true|false>"` placeholder, because a string value never satisfies `is True`. `memory/README.md` carried the same literal in the canonical schema.
+- **8 orchestrators** (`dft`, `firmware`, `fpga`, `memory-ip`, `rtl-design`, `sta`, `synthesis`, `verification`): said "append one JSON line" and gave a template with no `run_id`, contradicting `memory/README.md` and their own skills. They now upsert by `run_id` like the rest. The `fpga` skill's separate append-only schema (`stage`, `outcomes`, `metrics`, `tools`), which `distill.py` could not read metrics from, now points at the shared record schema. `README.md` no longer calls the file append-only.
+- **6 orchestrators** (`architecture`, `dft`, `firmware`, `formal`, `fpga`, `hls`): the history `decision` enum omitted `await_approval`, which their own checkpoint gate writes.
+
+### Added
+
+- **`tests/test_agent_contract.py`**: static checks on agent and skill markdown — no hardcoded `"signoff_achieved": true`, no append-only wording, every experience template carries `run_id`, and every `decision` enum lists `await_approval` where the agent writes it.
+
 ## [1.8.0] — Memory IP Design domain
 
 ### Added

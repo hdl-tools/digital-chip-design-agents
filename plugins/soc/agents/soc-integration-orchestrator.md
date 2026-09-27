@@ -117,10 +117,11 @@ the current stage state:
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
-  "signoff_achieved": true,
+  "signoff_achieved": false,
   "notes": "<free-text observations>"
 }
 ```
+Set `signoff_achieved: true` only when the signoff stage passes all criteria; on escalation, abandonment, interruption, or any partial run it stays `false`.
 Create the file and parent directories if they do not exist.
 
 ## Design State

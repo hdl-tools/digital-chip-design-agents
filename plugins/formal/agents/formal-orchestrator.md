@@ -115,10 +115,11 @@ After signoff (or on escalation/abandon), upsert (create or replace by `run_id`)
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
-  "signoff_achieved": true,
+  "signoff_achieved": false,
   "notes": "<free-text observations>"
 }
 ```
+Set `signoff_achieved: true` only when the signoff stage passes all criteria; on escalation, abandonment, interruption, or any partial run it stays `false`.
 If the flow ends before signoff (interrupted, error, max turns exceeded), write the record immediately with the stages completed so far and `signoff_achieved: false`. Do not wait for a terminal signoff state.
 Create the file and parent directories if they do not exist.
 
@@ -191,7 +192,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "formal-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned",
+  "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",

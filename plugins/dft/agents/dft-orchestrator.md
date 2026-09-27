@@ -93,10 +93,11 @@ without it.
 **Optional — semantic experience lookup.** If the `query_experiences` MCP tool (from the `chip-design-memory` server) is available, before the first stage call it with `domain="dft"`, the current goal or failing-stage issue as `query`, and any known `filters` (`pdk`, `tool_used`, `design_name`). Use the ranked prior fixes to inform stage decisions; the result's `backend`/`fell_back` flags indicate whether ranking was semantic or keyword. If the tool is unavailable, proceed with `knowledge.md` only — this augments, never replaces, the `knowledge.md` read.
 
 ### Write (session end)
-After signoff (or on escalation/abandon), append one JSON line to
+After signoff (or on escalation/abandon), upsert (create or replace by `run_id`) one JSON line in
 `<MEM>/dft/experiences.jsonl`:
 ```json
 {
+  "run_id": "<from state>",
   "timestamp": "<ISO-8601>",
   "domain": "dft",
   "design_name": "<from state>",
@@ -110,10 +111,11 @@ After signoff (or on escalation/abandon), append one JSON line to
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
-  "signoff_achieved": true,
+  "signoff_achieved": false,
   "notes": "<free-text observations>"
 }
 ```
+Set `signoff_achieved: true` only when the signoff stage passes all criteria; on escalation, abandonment, interruption, or any partial run it stays `false`.
 If the flow ends before signoff (interrupted, error, max turns exceeded), write the record immediately with the stages completed so far and `signoff_achieved: false`. Do not wait for a terminal signoff state.
 Create the file and parent directories if they do not exist.
 
@@ -157,7 +159,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "dft-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned",
+  "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",

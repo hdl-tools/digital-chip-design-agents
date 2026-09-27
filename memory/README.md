@@ -61,10 +61,14 @@ tool flags, and PDK/tool quirks. Intended to be periodically updated by a memory
   "key_metrics": { "<domain-specific fields — see table below>" },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
-  "signoff_achieved": true,
+  "signoff_achieved": false,
   "notes": "<free-text observations>"
 }
 ```
+
+`signoff_achieved` is a JSON boolean and defaults to `false`. Set it to `true` only when the
+sign-off stage passes all criteria; escalated, abandoned, and partial runs stay `false`.
+`distill.py` counts only a real `true`, so a string such as `"true"` is not a sign-off.
 
 ## Domain key_metrics Fields
 
