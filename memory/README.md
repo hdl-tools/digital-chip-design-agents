@@ -271,5 +271,5 @@ session start — with this `domain`, the current goal/issue as `query`, and kno
 `filters` (`pdk`, `tool_used`, `design_name`) — to surface ranked prior fixes.
 This **augments, never replaces**, the `knowledge.md` read: if the tool is
 absent, orchestrators proceed with `knowledge.md` exactly as before (the same
-skip-silently pattern as the optional claude-mem index above). All 15
+skip-silently pattern as the optional claude-mem index above). All 16
 orchestrators carry this optional note in their session-start memory block.

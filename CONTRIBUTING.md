@@ -37,7 +37,7 @@ Bullet list of files/artifacts the stage must produce.
 
 ## Adding a New Skill
 
-1. Create `skills/<new-domain>/SKILL.md` following the standard above.
+1. Create `plugins/<new-domain>/skills/<new-domain>/SKILL.md` following the standard above.
 
 2. Add an entry to `.claude-plugin/marketplace.json`:
 ```json
@@ -50,7 +50,7 @@ Bullet list of files/artifacts the stage must produce.
 }
 ```
 
-3. Create `agents/<new-domain>-orchestrator.md` with this minimum structure:
+3. Create `plugins/<new-domain>/agents/<new-domain>-orchestrator.md` with this minimum structure:
 ```markdown
 ---
 name: <new-domain>-orchestrator
@@ -76,21 +76,34 @@ stage_1 → stage_2 → stage_3
 1. ...
 ```
 
-4. Run validation locally:
+4. Add the shared sections. Every orchestrator carries a set of guards word for word
+   (stage gating and escalation, and an execution note where the domain has no MCP server).
+   They are not written by hand:
+```bash
+python3 tools/sync_agent_sections.py          # writes the shared blocks into each agent
+python3 tools/sync_agent_sections.py --list   # shows which block goes where
+```
+   The text lives once in `tools/agent_shared_sections.md` and is inserted after
+   `## Behaviour Rules`, between `BEGIN SHARED` / `END SHARED` marker comments. To change a
+   shared rule, edit that file and re-run the script — never edit between the markers. To
+   exclude a new agent from a block, add it to the block's `except:` list.
+
+5. Run validation locally:
 ```bash
 python3 -c "
-import json, os, sys
-for d in os.listdir('skills'):
-    p = f'skills/{d}/SKILL.md'
-    c = open(p).read()
+import glob
+for p in sorted(glob.glob('plugins/*/skills/*/SKILL.md')):
+    c = open(p, encoding='utf-8').read()
     assert c.startswith('---'), f'{p}: missing frontmatter'
     for s in ['## Purpose','## Domain Rules','## QoR Metrics','## Output Required']:
         assert s in c, f'{p}: missing {s}'
     print(f'OK: {p}')
 "
+python3 tools/sync_agent_sections.py --check
+python3 -m pytest tests/ -q
 ```
 
-5. Open a Pull Request — the CI `validate.yml` must pass before merge.
+6. Open a Pull Request — the CI `validate.yml` must pass before merge.
 
 ## Improving Existing Skills
 
@@ -104,9 +117,10 @@ for d in os.listdir('skills'):
 - [ ] SKILL.md has all four required sections
 - [ ] marketplace.json updated if new domain added
 - [ ] Orchestrator .md has frontmatter with `model`, `effort`, `maxTurns`, `skills`
-- [ ] Orchestrator .md has `## Stage Sequence`, `## Loop-Back Rules`, `## Sign-off Criteria`
+- [ ] Orchestrator .md has `## Stage Sequence`, `## Loop-Back Rules`, `## Sign-off Criteria`, `## Behaviour Rules`
+- [ ] Shared sections are in sync: `python3 tools/sync_agent_sections.py --check`
 - [ ] Local validation passes (see above)
-- [ ] Count remains consistent: skills = agents = marketplace entries
+- [ ] Count remains consistent: agents = marketplace entries, and skills ≥ agents (a plugin may register more than one skill)
 
 ## Versioning
 
@@ -128,5 +142,5 @@ be present. The canonical values are:
 "license":    "MIT"
 ```
 
-When updating these fields, change all 14 `plugin.json` files and
+When updating these fields, change all 16 `plugin.json` files and
 `.claude-plugin/marketplace.json` together.
