@@ -30,6 +30,21 @@ bsp_development → peripheral_drivers → rtos_integration → driver_validatio
 - Lauterbach TRACE32 (`t32marm`)
 - Arm Development Studio (`armds`)
 
+<!-- BEGIN SHARED:execution-direct (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+### MCP Preference
+No MCP server or wrapper script exists for this domain's toolchain (cross-compilers,
+assemblers, linkers, debuggers, emulators). Do not route these tools through the EDA wrappers
+in `plugins/infrastructure/tools/` — they parse EDA logs, not compiler or test output. Use
+direct execution:
+1. Redirect stdout and stderr of every build, test, or emulator run to a log file and record
+   the exit code.
+2. Read summaries, not raw logs: the exit code, the final summary lines, and a targeted search
+   for `error`, `warning`, `FAIL`, `undefined reference`. Open the full log only around a
+   reported failure.
+3. For a hardware or emulator run, capture the target's console output to a file the same way.
+   A session you watched but did not capture is not evidence.
+<!-- END SHARED:execution-direct -->
+
 ## Loop-Back Rules
 - peripheral_drivers FAIL (driver test fail)    → peripheral_drivers   (max 3×)
 - rtos_integration FAIL (deadlock/overflow)     → rtos_integration     (max 3×)
@@ -65,6 +80,39 @@ Each stage must return:
 5. Read `<MEM>/firmware/knowledge.md` before the first stage. Write an experience record to `<MEM>/firmware/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, `pending_approval.reason` must state the `failure_class` plus what the user must supply to unblock. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `firmware_signoff` only): before setting `firmware.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"firmware_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "firmware_signoff", "agent": "firmware-orchestrator", "reason": "checkpoint firmware_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: all_driver_tests_pass, stress_test_24h_clean>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `firmware.signoff=true`. On re-invocation: if `"firmware_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
+
+<!-- BEGIN SHARED:stage-gating (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## Stage Gating and Escalation
+These rules apply to every stage and take precedence over keeping the flow moving.
+
+1. **Read the result before deciding.** After every tool run, read what it produced — the exit
+   code plus the wrapper/MCP JSON (`status`, `summary`, `errors`) or the tool's own report or
+   log summary — before assigning the stage `status`. A command having returned is not a result.
+2. **Never proceed past a FAIL without applying the loop-back rule.** A stage that returns FAIL
+   follows its row in Loop-Back Rules or ends the run. It is never skipped, downgraded to WARN,
+   or deferred to a later stage.
+3. **Loop cap exhausted: escalate clearly — show state and root cause.** When a loop-back row
+   has used its `max N×`, do not run the stage again. Append the terminal `history[]` entry
+   with `decision: "escalate"`, `failure_class: "resource_limit"`, `retry_strategy: "escalate"`,
+   `suggested_next_step: "escalate"`, and a `reason` stating the cap reached, the last measured
+   failure, and what the user must relax, supply, or accept. Then report the stage, the
+   iterations used, what each iteration changed, the last measured QoR, and the suspected root
+   cause.
+4. **Fault is upstream: stop looping and hand back.** If the evidence shows the defect is in an
+   input this domain consumes but does not own (RTL, netlist, constraints, IP views, a generated
+   image), retrying here cannot fix it. Do not spend the remaining loop iterations and do not
+   patch the upstream artifact yourself. Append the terminal `history[]` entry with
+   `decision: "escalate"`, the observed `failure_class` with its mapped `retry_strategy`,
+   `suggested_next_step: "escalate"`, and a `reason` naming the upstream domain, the artifact,
+   and the evidence. If your Loop-Back Rules or Behaviour Rules define a `fix_request` hand-off
+   for this case, follow it exactly. Otherwise the history entry and your final report are the
+   hand-off — do not write to `fix_requests[]`.
+5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
+   checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
+   for the pipeline-orchestrator.
+6. In both escalation cases leave the domain `signoff` field `false` and write
+   `signoff_achieved: false` in the experience record.
+<!-- END SHARED:stage-gating -->
 
 ## Memory
 

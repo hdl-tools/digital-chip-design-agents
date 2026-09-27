@@ -94,6 +94,39 @@ Each stage must return:
 8. Constraint extraction (at `spec_analysis`, unless invoked in fix-request-servicing mode): parse the product specification for target clock frequency, area budget, and power budget. Populate `constraints.clock.clk_mhz`, `constraints.area.area_um2`, and `constraints.power.power_mw` from spec values where derivable; leave as `null` when not specified. Write the full constraints object (see Design State section) to `design_state.json` as part of the `spec_analysis` stage write — do not wait for the session-end atomic RMW. This ensures downstream orchestrators can read constraints as soon as architecture completes.
 9. Constraint validation (at `spec_analysis`, skip in fix-request-servicing mode): after extracting constraints from spec, verify `clock.clk_mhz`, `area.area_um2`, and `power.power_mw` are all non-null. If any required key remains `null` after extraction, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "spec_analysis", "agent": "architecture-orchestrator", "reason": "required constraint <key> missing from product specification", "fix_request_id": null, "last_summary": "<comma-separated missing keys>", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "<missing key>"`, print the gate message, and halt. Resume path: user adds missing values to `design_state.constraints`, clears `pending_approval`, re-invokes.
 
+<!-- BEGIN SHARED:stage-gating (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## Stage Gating and Escalation
+These rules apply to every stage and take precedence over keeping the flow moving.
+
+1. **Read the result before deciding.** After every tool run, read what it produced — the exit
+   code plus the wrapper/MCP JSON (`status`, `summary`, `errors`) or the tool's own report or
+   log summary — before assigning the stage `status`. A command having returned is not a result.
+2. **Never proceed past a FAIL without applying the loop-back rule.** A stage that returns FAIL
+   follows its row in Loop-Back Rules or ends the run. It is never skipped, downgraded to WARN,
+   or deferred to a later stage.
+3. **Loop cap exhausted: escalate clearly — show state and root cause.** When a loop-back row
+   has used its `max N×`, do not run the stage again. Append the terminal `history[]` entry
+   with `decision: "escalate"`, `failure_class: "resource_limit"`, `retry_strategy: "escalate"`,
+   `suggested_next_step: "escalate"`, and a `reason` stating the cap reached, the last measured
+   failure, and what the user must relax, supply, or accept. Then report the stage, the
+   iterations used, what each iteration changed, the last measured QoR, and the suspected root
+   cause.
+4. **Fault is upstream: stop looping and hand back.** If the evidence shows the defect is in an
+   input this domain consumes but does not own (RTL, netlist, constraints, IP views, a generated
+   image), retrying here cannot fix it. Do not spend the remaining loop iterations and do not
+   patch the upstream artifact yourself. Append the terminal `history[]` entry with
+   `decision: "escalate"`, the observed `failure_class` with its mapped `retry_strategy`,
+   `suggested_next_step: "escalate"`, and a `reason` naming the upstream domain, the artifact,
+   and the evidence. If your Loop-Back Rules or Behaviour Rules define a `fix_request` hand-off
+   for this case, follow it exactly. Otherwise the history entry and your final report are the
+   hand-off — do not write to `fix_requests[]`.
+5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
+   checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
+   for the pipeline-orchestrator.
+6. In both escalation cases leave the domain `signoff` field `false` and write
+   `signoff_achieved: false` in the experience record.
+<!-- END SHARED:stage-gating -->
+
 ## Memory
 
 **Memory root (`<MEM>`).** Resolve the memory root once at session start, in priority
