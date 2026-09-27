@@ -1,0 +1,7 @@
+# Text files are stored with LF in the repository and checked out in the
+# platform's native style.
+* text=auto
+
+# Shell scripts must stay LF in the working tree: a CRLF checkout cannot be run
+# by bash (Git Bash, WSL) and breaks the wrapper tests.
+*.sh text eol=lf
