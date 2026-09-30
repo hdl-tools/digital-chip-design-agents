@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — issue #85: retry_strategy mapping reachable by every orchestrator
+
+### Fixed
+
+- **15 of 16 orchestrators derived `retry_strategy` from a table they could not read.** Behaviour Rule 6 told every domain orchestrator to "derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill", but none of them declared that skill — only the meta orchestrator, which owns it, did. The values written into `design_state.json`'s `history[]` were therefore each agent's own inference, which contradicts the Reporting Contract's rule against reporting from memory what should be read from source. Since `format_version` 1.5 requires every entry to carry a `retry_strategy` and the pipeline-orchestrator reads those values to choose retry, cross-domain loop, or escalation, per-run inference means silent drift in the cross-domain hand-off.
+
+### Changed
+
+- **New shared section `failure-classification`**, synced into all 15 domain orchestrators by `tools/sync_agent_sections.py`: the 10-row `failure_class` → `retry_strategy` table plus what each of `regenerate`, `refine`, `escalate` and `none` means in practice. Behaviour Rule 6 now points at that table instead of an undeclared skill. Chosen over adding `chip-design-meta:pipeline-orchestration` to each agent's `skills:` list because that would load a 494-line orchestration skill into every domain agent for one table — and that skill carries pipeline-orchestrator-only rules, including the `pending_approval type: "escalation"` the Stage Gating block reserves for it, so handing it to domain agents invites the confusion that guard exists to prevent.
+
+### Added
+
+- **`tests/test_agent_contract.py::test_retry_strategy_mapping_matches_the_authoritative_table`** — the mapping now exists in two places, and `sync_agent_sections.py --check` only compares agents against the shared file, never the shared file against the skill that owns the table. This test closes that gap.
+- **`tests/test_agent_contract.py::test_retry_strategy_mapping_is_reachable_by_the_agent`** — an agent that writes `retry_strategy` must either carry the table or declare the skill holding it, and an agent that does not declare the skill may not refer to it. The second half caught a stale citation in `verification-orchestrator.md`, whose rule 6 named the mapping twice with different wording.
+
 ## [Unreleased] — feat/reporting-contract branch
 
 ### Added
