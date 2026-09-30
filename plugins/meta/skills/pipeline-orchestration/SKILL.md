@@ -308,6 +308,13 @@ They are complementary, not redundant.
 
 #### Mapping (authoritative — `failure_class` → default `retry_strategy`)
 
+This table is mirrored into every domain orchestrator by the `failure-classification` block
+in `tools/agent_shared_sections.md`, so an orchestrator can derive `retry_strategy` without
+loading this skill. **When editing the table below, update that block and run
+`python3 tools/sync_agent_sections.py`.**
+`tests/test_agent_contract.py::test_retry_strategy_mapping_matches_the_authoritative_table`
+fails if the two drift.
+
 | `failure_class` | `retry_strategy` | rationale | legacy alias |
 |---|---|---|---|
 | `none` | `none` | no failure | — |

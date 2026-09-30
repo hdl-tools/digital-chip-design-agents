@@ -98,3 +98,63 @@ def test_escalation_guidance_goes_in_history_reason(path):
     "escalation" belongs to the pipeline-orchestrator. A rule that puts every
     escalation's guidance in pending_approval.reason implies otherwise."""
     assert "When escalating, `pending_approval.reason` must state" not in _read(path)
+
+
+SHARED_SECTIONS = REPO_ROOT / "tools" / "agent_shared_sections.md"
+PIPELINE_SKILL = (
+    REPO_ROOT / "plugins" / "meta" / "skills" / "pipeline-orchestration" / "SKILL.md"
+)
+
+FAILURE_CLASSES = frozenset({
+    "none", "functional", "timing", "power_area", "coverage_gap",
+    "connectivity", "drc_lvs", "tool_error", "spec_gap", "resource_limit",
+})
+MAPPING_ROW = re.compile(r"^\|\s*`(\w+)`\s*\|\s*`(\w+)`\s*\|", re.M)
+MAPPING_HEADING = "Failure Classification & Retry Strategy"
+
+
+def _retry_mapping(path: Path) -> dict[str, str]:
+    return {
+        cls: strategy
+        for cls, strategy in MAPPING_ROW.findall(_read(path))
+        if cls in FAILURE_CLASSES
+    }
+
+
+def test_retry_strategy_mapping_matches_the_authoritative_table():
+    """Agents carry the mapping as a shared section so they need not load the
+    whole pipeline-orchestration skill (issue #85). That leaves two copies, and
+    ``sync_agent_sections.py --check`` compares agents against the shared file,
+    never the shared file against the skill that owns the table."""
+    skill = _retry_mapping(PIPELINE_SKILL)
+    shared = _retry_mapping(SHARED_SECTIONS)
+    assert len(skill) == len(FAILURE_CLASSES), (
+        f"pipeline-orchestration maps {sorted(skill)}; expected all of {sorted(FAILURE_CLASSES)}"
+    )
+    assert shared == skill, (
+        "shared section has drifted from the authoritative mapping: "
+        f"{sorted(set(shared.items()) ^ set(skill.items()))}"
+    )
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_retry_strategy_mapping_is_reachable_by_the_agent(path):
+    """An agent told to derive ``retry_strategy`` from a mapping must be able to
+    reach one: either it carries the table, or it declares the skill holding it.
+    Before issue #85, 15 of 16 did neither and inferred the values."""
+    text = _read(path)
+    if "retry_strategy" not in text:
+        pytest.skip("agent does not write retry_strategy")
+    carries_table = MAPPING_HEADING in text and len(_retry_mapping(path)) == len(FAILURE_CLASSES)
+    frontmatter = text.split("---", 2)[1] if text.startswith("---") else ""
+    declares_skill = "pipeline-orchestration" in frontmatter
+    assert carries_table or declares_skill, (
+        f"{_rel(path)}: derives retry_strategy from a mapping it cannot reach "
+        "- it neither carries the table nor declares the pipeline-orchestration skill"
+    )
+    # Pointing at a skill it does not declare is the defect itself: an agent that
+    # carries the table can still send a reader to an unreachable file.
+    if not declares_skill:
+        assert "pipeline-orchestration skill" not in text, (
+            f"{_rel(path)}: refers to the pipeline-orchestration skill without declaring it"
+        )

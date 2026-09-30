@@ -33,6 +33,45 @@ direct execution:
    A session you watched but did not capture is not evidence.
 <!-- END BLOCK execution-direct -->
 
+<!-- BLOCK failure-classification
+targets: agents
+except: meta
+after: ^## Behaviour Rules$
+-->
+## Failure Classification & Retry Strategy
+Every `history[]` entry carries both fields. `failure_class` says *what* went wrong;
+`retry_strategy` says *how* to recover and is **derived from it by this table, not chosen**.
+
+| `failure_class` | `retry_strategy` |
+|---|---|
+| `none` | `none` |
+| `functional` | `refine` |
+| `timing` | `refine` |
+| `power_area` | `refine` |
+| `coverage_gap` | `refine` |
+| `connectivity` | `refine` |
+| `drc_lvs` | `regenerate` |
+| `tool_error` | `regenerate` |
+| `spec_gap` | `escalate` |
+| `resource_limit` | `escalate` |
+
+- **regenerate** — discard the faulty artifact and re-run the *generating* stage from a clean
+  slate, using the error log as context. Action is usually `retry_stage` or
+  `loop_back_to:<generating stage>`.
+- **refine** — keep the artifact and re-run the stage against a *specific* identified defect
+  with detailed feedback (failing test plus waveform, timing path, coverage hole, violated
+  interface). Iterative, not from scratch; usually `loop_back_to:<stage>` carrying a
+  `fix_request`.
+- **escalate** — halt and request human input: the result cannot be improved automatically
+  (ambiguous spec), or a budget or cap was hit. Action is `escalate` or `abandon`.
+- **none** — no failure. Pairs only with `failure_class: "none"` (PASS, `await_approval`).
+
+`retry_strategy` is the strategy *label* and `suggested_next_step` the concrete *action* —
+complementary, not redundant. This table mirrors the authoritative copy in
+`plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
+mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
+<!-- END BLOCK failure-classification -->
+
 <!-- BLOCK stage-gating
 targets: agents
 except: meta

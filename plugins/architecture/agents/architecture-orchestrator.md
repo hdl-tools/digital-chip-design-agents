@@ -89,10 +89,45 @@ Each stage must return:
 3. If max iterations exceeded: stop, present full state and escalation report (procedure: Stage Gating and Escalation, item 3)
 4. On completion: produce microarchitecture document and RTL handoff package
 5. Read `<MEM>/architecture/knowledge.md` before the first stage. Write an experience record to `<MEM>/architecture/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
-6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the Failure Classification & Retry Strategy table below; `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `arch_signoff` only, unless invoked in fix-request-servicing mode — i.e. a `fix_request.id` was passed in the prompt): before setting `architecture.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"arch_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "arch_signoff", "agent": "architecture-orchestrator", "reason": "checkpoint arch_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: selected arch, estimated MHz, area>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `architecture.signoff=true`. On re-invocation: if `"arch_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Constraint extraction (at `spec_analysis`, unless invoked in fix-request-servicing mode): parse the product specification for target clock frequency, area budget, and power budget. Populate `constraints.clock.clk_mhz`, `constraints.area.area_um2`, and `constraints.power.power_mw` from spec values where derivable; leave as `null` when not specified. Write the full constraints object (see Design State section) to `design_state.json` as part of the `spec_analysis` stage write — do not wait for the session-end atomic RMW. This ensures downstream orchestrators can read constraints as soon as architecture completes.
 9. Constraint validation (at `spec_analysis`, skip in fix-request-servicing mode): after extracting constraints from spec, verify `clock.clk_mhz`, `area.area_um2`, and `power.power_mw` are all non-null. If any required key remains `null` after extraction, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "spec_analysis", "agent": "architecture-orchestrator", "reason": "required constraint <key> missing from product specification", "fix_request_id": null, "last_summary": "<comma-separated missing keys>", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "<missing key>"`, print the gate message, and halt. Resume path: user adds missing values to `design_state.constraints`, clears `pending_approval`, re-invokes.
+
+<!-- BEGIN SHARED:failure-classification (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## Failure Classification & Retry Strategy
+Every `history[]` entry carries both fields. `failure_class` says *what* went wrong;
+`retry_strategy` says *how* to recover and is **derived from it by this table, not chosen**.
+
+| `failure_class` | `retry_strategy` |
+|---|---|
+| `none` | `none` |
+| `functional` | `refine` |
+| `timing` | `refine` |
+| `power_area` | `refine` |
+| `coverage_gap` | `refine` |
+| `connectivity` | `refine` |
+| `drc_lvs` | `regenerate` |
+| `tool_error` | `regenerate` |
+| `spec_gap` | `escalate` |
+| `resource_limit` | `escalate` |
+
+- **regenerate** — discard the faulty artifact and re-run the *generating* stage from a clean
+  slate, using the error log as context. Action is usually `retry_stage` or
+  `loop_back_to:<generating stage>`.
+- **refine** — keep the artifact and re-run the stage against a *specific* identified defect
+  with detailed feedback (failing test plus waveform, timing path, coverage hole, violated
+  interface). Iterative, not from scratch; usually `loop_back_to:<stage>` carrying a
+  `fix_request`.
+- **escalate** — halt and request human input: the result cannot be improved automatically
+  (ambiguous spec), or a budget or cap was hit. Action is `escalate` or `abandon`.
+- **none** — no failure. Pairs only with `failure_class: "none"` (PASS, `await_approval`).
+
+`retry_strategy` is the strategy *label* and `suggested_next_step` the concrete *action* —
+complementary, not redundant. This table mirrors the authoritative copy in
+`plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
+mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
+<!-- END SHARED:failure-classification -->
 
 <!-- BEGIN SHARED:stage-gating (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Stage Gating and Escalation
