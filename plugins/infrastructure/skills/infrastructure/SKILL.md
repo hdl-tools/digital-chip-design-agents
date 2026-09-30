@@ -60,14 +60,64 @@ complete environment before any domain orchestrator begins work.
 - **GTKWave** (`gtkwave`) — waveform viewer for VCD/FST simulation output
 - **uv** (`uv`) — fast Python package and project manager (required for cocotb installs)
 
+#### Roles and dialects (open-source)
+
+`role` groups tools that do the same job. `dialect` names the command-line option and
+source-language vocabulary a tool accepts. Two tools with the same `role` and a
+different `dialect` are **not** substitutable — a command line built for one is not
+valid for the other.
+
+| Tool command | `role` | `dialect` |
+|---|---|---|
+| `verilator` | `rtl_simulator` | `verilator` |
+| `iverilog` | `rtl_simulator` | `icarus` |
+| `yosys` | `synthesis` | `yosys` |
+| `openroad` | `physical_design` | `openroad` |
+| `openlane` | `physical_design` | `openlane` |
+| `sta` | `sta` | `opensta` |
+| `sby` | `formal` | `symbiyosys` |
+| `klayout` | `drc_lvs` | `klayout` |
+| `bambu-hls` | `hls` | `bambu` |
+| `gem5` | `arch_simulator` | `gem5` |
+| `nextpnr` | `fpga_pnr` | `nextpnr` |
+
+Every other open-source tool — `slang`, `surelog`, `sv2v`, `abc`, `openFPGALoader`,
+`cocotb`, `llvm-config`, `gcc`, `openocd`, `xschem`, `gtkwave`, `uv`, `python3` — has
+no same-role peer here and is recorded `"role": null, "dialect": null`. Never invent a
+role to fill the field: a `null` cannot produce a false conflict.
+
 ### Proprietary (detect only — never install)
-- **Synopsys VCS** (`vcs`) — industry-standard RTL simulator
-- **Cadence Xcelium** (`xrun`, alt: `xmsim`) — next-generation simulation platform
-- **Synopsys Design Compiler** (`dc_shell`, alt: `dc_shell-t`) — logic synthesis
-- **Cadence Innovus** (`innovus`) — physical implementation
-- **Mentor QuestaSim** (`vsim`, alt: `questa`, `questasim`) — advanced simulation and verification
-- **Synopsys PrimeTime** (`pt_shell`, alt: `pt_shell64`) — sign-off static timing analysis
-- **Synopsys Formality** (`formality`, alt: `fm_shell`) — formal equivalence checking
+
+| Tool | Command (alt) | `role` | `dialect` | Version probe (license-free) |
+|---|---|---|---|---|
+| Synopsys VCS | `vcs` | `rtl_simulator` | `synopsys` | `vcs -ID` — parse the `Compiler version` line only |
+| Cadence Xcelium | `xrun` (`xmsim`) | `rtl_simulator` | `cadence` | `xrun -version` — parse the `TOOL:<tab>xrun(64)<tab><version>` line |
+| Mentor QuestaSim | `vsim` (`questa`, `questasim`) | `rtl_simulator` | `siemens` | none — UNVERIFIED |
+| Synopsys Design Compiler | `dc_shell` (`dc_shell-t`) | `synthesis` | `synopsys` | `dc_shell -version` — parse the `dc_shell version` line |
+| Cadence Innovus | `innovus` | `physical_design` | `cadence` | none — UNVERIFIED |
+| Synopsys PrimeTime | `pt_shell` (`pt_shell64`) | `sta` | `synopsys` | `pt_shell -version` — parse the `pt_shell version` line |
+| Synopsys Formality | `fm_shell` (`formality`) | `lec` | `synopsys` | `fm_shell -version` — parse the `Formality (R) Version` line |
+
+**`vcs -ID` also prints a FLEXlm host ID.** Parse and store the `Compiler version`
+value only — never write the host ID into `tool-status.json`.
+
+**A probe flag is listed only once confirmed on a real install** — a guessed flag can open
+an interactive shell or check out a license. The flags above were each measured: exit 0
+with the named line present, in 1–26 s, no license queue. `dc_shell -version` prints an
+unrelated ASLR advisory first, so parse the line containing `version`, never the first line
+of output.
+
+**The two `UNVERIFIED` rows are unverified upstream, not an oversight.** Neither could be
+confirmed on the reference host, and in both cases the obstacle was the install rather than
+the flag: `innovus -version` exits 0 reporting an expired build authorisation, and
+`vsim -version` exits 0 failing to load `libXext.so.6`. A site with a working install of
+either should confirm the flag and contribute it here.
+
+Note on Formality: the primary command is `fm_shell`. `formality` is the legacy GUI wrapper
+and is absent from recent installs, so it is listed as the alternate.
+
+Same `role` with a different `dialect` means the two tools are not interchangeable
+however similar their purpose. `environment_validation` reports such coexistence.
 
 ---
 
@@ -164,21 +214,48 @@ before falling back to the wrapper or direct execution.
      - Report MISSING if all attempted checks fail.
    - **openlane**: run `"$PYTHON_EXEC" -m pip show openlane 2>/dev/null`; if exit code 0 and `Name: openlane` appears in output, record FOUND and extract the `Version:` field; otherwise MISSING.
    - **uv**: if `python_env.type == "custom"` or `"module"`: check `"$PYTHON_BIN_DIR/uv" --version` first; fall back to `uv --version` (PATH). If `python_env.type == "system"`: use `uv --version` only.
-4. For proprietary tools: check PATH using `which <primary-executable>` only (see executable names in the Proprietary section above); never attempt install; record as `PROPRIETARY_ONLY` if found, `MISSING` otherwise
+4. **Proprietary tools**: check PATH using `which <primary-executable>` (primary and
+   alternate names are in the Proprietary table above); never attempt install; record as
+   `PROPRIETARY_ONLY` if found, `MISSING` otherwise. For a tool found in PATH that has a
+   version probe in that table, run the probe with a 60 s timeout, parse the documented
+   line, and store the parsed string in `version`. Do not use a short timeout: a Cadence
+   Common UI tool starts a full shell to answer `-version` and takes tens of seconds on a
+   cold NFS cache (`genus -version` measured 26 s cold, 12 s warm). For `vcs`, store the
+   `Compiler version` value only — discard the FLEXlm host ID.
+
+   Leave `version` empty and emit a WARN naming the tool and the reason when the table
+   lists no probe, when the probe times out, when it exits non-zero, **or when it exits 0
+   without printing the documented line**. That last case is the common one and exit status
+   will not reveal it: an expired build authorisation (`innovus -version` → exit 0,
+   "Your authorization to use this build expired") and a broken platform install
+   (`voltus -version` → exit 0, "cannot find a proper installation") both answer 0 and
+   print no version. Record the version only when the documented line was actually found.
+   A version probe never fails the stage.
 5. Record each tool as one of: `FOUND`, `MISSING`, or `PROPRIETARY_ONLY`
-6. Capture exact version string for each `FOUND` tool
-7. Never attempt installation in this stage
-8. Write results to `tool-status.json` before advancing
+6. Capture the exact version string for every tool found in PATH — `FOUND` tools via
+   rule 1, and `PROPRIETARY_ONLY` tools that have a version probe in the Proprietary
+   table via rule 4
+7. Set `role` and `dialect` on every entry in the `tools` array from the Proprietary and
+   Roles-and-dialects tables above; use `null` for both where the tool appears in neither
+8. Never attempt installation in this stage
+9. Write results to `tool-status.json` before advancing
 
 ### QoR Metrics to Evaluate
 - `tools_detected`: count of FOUND tools (target ≥ 10 for a functional open-source flow)
 - `tools_missing`: count of MISSING open-source tools
 - `proprietary_found`: count of PROPRIETARY_ONLY tools detected in PATH
+- `proprietary_versioned`: count of PROPRIETARY_ONLY tools with a non-empty `version`
+- `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
+  differing `dialect` values where at least one is `PROPRIETARY_ONLY`
 
 ### Output Required
 - `tool-status.json` — contains two top-level keys:
   - `python_env`: `{ "exec": "", "type": "module|system|custom", "bin_dir": "", "module_name": "" }` — populated by rule 2
-  - `tools`: array of `{ "tool": "", "command": "", "status": "FOUND|MISSING|PROPRIETARY_ONLY", "version": "", "path": "" }`
+  - `tools`: array of `{ "tool": "", "command": "", "status": "FOUND|MISSING|PROPRIETARY_ONLY", "version": "", "path": "", "role": null, "dialect": null }`
+
+`role` and `dialect` are always present on every entry — a string from the tables above,
+or `null`. `version` is non-empty for every `FOUND` tool and for every `PROPRIETARY_ONLY`
+tool whose probe succeeded.
 
 Note: module-based availability (`FOUND_PREFER_MODULE`, `MISSING_LOAD_MODULE`) and the `module_names`/`versions_available` fields are added in the next stage (`module_discovery`).
 
@@ -248,12 +325,16 @@ Fields added by this stage to each entry in the `tools` array (backward-compatib
   "status": "FOUND | FOUND_PREFER_MODULE | MISSING | MISSING_LOAD_MODULE | PROPRIETARY_ONLY",
   "version": "",
   "path": "",
+  "role": null,
+  "dialect": null,
   "module_names": [],
   "versions_available": []
 }
 ```
 
-Note: The top-level `python_env` object is **preserved unchanged** during this stage — only entries in the `tools` array are modified. The `python3` tool entry is treated like any other: if `python_env.type == "module"`, its `tools` array status is upgraded from `FOUND` to `FOUND_PREFER_MODULE` and it is included in `load-modules.sh`.
+Note: The top-level `python_env` object is **preserved unchanged** during this stage — only entries in the `tools` array are modified. The `python3` tool entry is treated like any other: if `python_env.type == "module"`, its `tools` array status is upgraded from `FOUND` to `FOUND_PREFER_MODULE` and it is included in `load-modules.sh`. The
+`version`, `role` and `dialect` fields written by `tool_discovery` are also preserved
+unchanged — this stage adds module fields and may change `status`, nothing else.
 
 ### QoR Metrics to Evaluate
 - `module_system_detected`: bool — true if classic Environment Modules (TCL) found
@@ -560,8 +641,25 @@ Printed MCP config snippets for each tool with resolved absolute paths
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 snippets) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) is still `MISSING`
 6. For each tool with status `MISSING_LOAD_MODULE` in `tool-status.json`: emit a WARN issue with description `"<tool> not in PATH — available via module"` and fix `"source load-modules.sh, then re-run environment_validation"`
-7. If any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
-8. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
+7. **Dialect-conflict check** — group by `role` every tool whose status is `FOUND`,
+   `FOUND_PREFER_MODULE`, `PROPRIETARY_ONLY` or `MISSING_LOAD_MODULE`, ignoring entries whose
+   `role` is `null`. A `MISSING_LOAD_MODULE` tool counts: it is one the user will load and
+   build a command line for, which is exactly what this check warns about. Only `MISSING`
+   is excluded. Emit **one** WARN issue per `role` that holds two or more distinct `dialect`
+   values **and** at least one `PROPRIETARY_ONLY` tool.
+   One WARN per role, never one per pair: a role with five members yields ten pairs saying
+   the same thing, and that volume is what makes a warning ignorable.
+   - description: `"role <role> is held by tools of differing dialects: <tool_a> (<dialect_a>), <tool_b> (<dialect_b>), … — command lines are not portable between them"`
+   - fix: `"pick one dialect per role for this flow and build command lines from that vendor's option set; do not reuse a command line across dialects"`
+
+   List every member tool in the one description, so the reader sees the whole conflicting
+   set. Report the number of such **roles** — not pairs, not tools — as `dialect_conflicts`.
+   This is WARN only: it never FAILs the stage and never blocks `environment.signoff`.
+   Coexistence is normal — what is not normal is assuming substitutability. Requiring at
+   least one proprietary tool in the group keeps the WARN rare enough to be read; two
+   open-source simulators are on nearly every host.
+8. If any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
+9. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
 
 ### Sign-off Checklist
 - [ ] `tool-status.json` written with all tools surveyed (includes `python_env` object)
@@ -573,6 +671,8 @@ Printed MCP config snippets for each tool with resolved absolute paths
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`
+- [ ] `role` and `dialect` recorded on every entry in `tool-status.json`, and every
+      same-role/different-dialect coexistence involving a proprietary tool reported
 
 ### Output Required
 - Printed environment validation report

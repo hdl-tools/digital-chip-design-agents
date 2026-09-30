@@ -33,8 +33,18 @@ tool_discovery → module_discovery → tool_installation → wrapper_deployment
 - xschem (`xschem`), GTKWave (`gtkwave`), uv (`uv`)
 
 ### Proprietary (detect only — never install)
-- Synopsys VCS, Cadence Xcelium, Synopsys Design Compiler
-- Cadence Innovus, Mentor QuestaSim, Synopsys PrimeTime, Synopsys Formality
+Same `role`, different `dialect` — these are not a substitutable menu. A command line
+built for one dialect is not valid for another of the same role.
+
+| Tool | `role` | `dialect` |
+|---|---|---|
+| Synopsys VCS (`vcs`) | `rtl_simulator` | `synopsys` |
+| Cadence Xcelium (`xrun`) | `rtl_simulator` | `cadence` |
+| Mentor QuestaSim (`vsim`) | `rtl_simulator` | `siemens` |
+| Synopsys Design Compiler (`dc_shell`) | `synthesis` | `synopsys` |
+| Cadence Innovus (`innovus`) | `physical_design` | `cadence` |
+| Synopsys PrimeTime (`pt_shell`) | `sta` | `synopsys` |
+| Synopsys Formality (`formality`) | `lec` | `synopsys` |
 
 > Proprietary tools not found in PATH may still be available via TCL Environment Modules.
 > The `module_discovery` stage enumerates available versions and generates `load-modules.sh`.
@@ -47,6 +57,7 @@ tool_discovery → module_discovery → tool_installation → wrapper_deployment
 - environment_validation FAIL (python_env.type == module, module unloaded) → escalate: "Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation"
 - environment_validation FAIL (critical tool MISSING)           → tool_installation    (max 2×)
 - environment_validation WARN (critical tool MISSING_LOAD_MODULE)    → escalate: instruct user to source load-modules.sh and re-run
+- environment_validation WARN (same-role/different-dialect coexistence) → proceed (report the WARN in the sign-off summary; never blocks sign-off)
 - wrapper_deployment FAIL (permission denied)                   → escalate with `sudo chmod +x plugins/infrastructure/tools/*.sh`
 
 ## State Object
@@ -76,6 +87,8 @@ Initialise and maintain this JSON state across all stages:
   "wrappers_deployed": 0,
   "mcp_servers_configured": 0,
   "mcp_target": 10,
+  "proprietary_versioned": 0,
+  "dialect_conflicts": 0,
   "install_scripts_generated": 0,
   "loop_count": {},
   "current_stage": null,
@@ -97,6 +110,8 @@ Each stage must return:
     "tools_missing": 0,
     "module_system_detected": false,
     "tools_found_via_modules": 0,
+    "proprietary_versioned": 0,
+    "dialect_conflicts": 0,
     "wrappers_deployed": 0,
     "mcp_servers_configured": 0
   },
@@ -263,9 +278,12 @@ prefer entries whose environment fingerprint matches the current host. Read
 Upsert one record (create-or-replace by `run_id`) into `<MEM>/infrastructure/experiences.jsonl`
 using the atomic read-modify-write protocol in `memory/README.md`. Records are
 **environment-keyed** so cross-machine data never collides. `design_name` is typically `null`
-(infrastructure is design-independent). Populate `key_metrics.tool_versions` from the `FOUND`
-entries in `tool-status.json` — this per-tool version map is the primary value-add for
-version-mismatch debugging.
+(infrastructure is design-independent). Populate `key_metrics.tool_versions` from every
+entry in `tool-status.json` with a non-empty `version` — `FOUND`, `FOUND_PREFER_MODULE`
+and `PROPRIETARY_ONLY` alike. This per-tool version map is the primary value-add for
+version-mismatch debugging, and the proprietary entries are what let a later session scope
+a vendor-option lookup to the exact build in use instead of re-deriving it from the tool's
+own help output.
 
 ```json
 {

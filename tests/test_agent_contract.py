@@ -98,3 +98,43 @@ def test_escalation_guidance_goes_in_history_reason(path):
     "escalation" belongs to the pipeline-orchestrator. A rule that puts every
     escalation's guidance in pending_approval.reason implies otherwise."""
     assert "When escalating, `pending_approval.reason` must state" not in _read(path)
+
+
+INFRA_SKILL = REPO_ROOT / "plugins" / "infrastructure" / "skills" / "infrastructure" / "SKILL.md"
+
+# The Proprietary table rows: | Tool | Command (alt) | role | dialect | probe |
+PROPRIETARY_ROW = re.compile(r"^\|\s*(?:Synopsys|Cadence|Mentor|Siemens)\s[^|]*\|(.*)$", re.M)
+
+
+def test_proprietary_tools_carry_role_and_dialect():
+    """A proprietary tool with no role/dialect is modelled as substitutable with
+    every other tool of its kind (issue #82): a command line built for one vendor
+    then looks portable to another whose option vocabulary is disjoint."""
+    text = _read(INFRA_SKILL)
+    rows = PROPRIETARY_ROW.findall(text)
+    assert len(rows) == 7, f"expected 7 proprietary rows, found {len(rows)}"
+
+    for row in rows:
+        command, role, dialect, probe = [c.strip() for c in row.split("|")[:4]]
+        assert role and role != "-", f"proprietary row {command!r} has no role"
+        assert dialect and dialect != "-", f"proprietary row {command!r} has no dialect"
+        # Every row states its probe or says UNVERIFIED -- never blank, and never a
+        # flag with no provenance, which is how a guessed flag that grabs a license
+        # or opens an interactive shell would get in.
+        if "UNVERIFIED" in probe:
+            assert not probe.startswith("`"), (
+                f"{command}: row is both UNVERIFIED and carries a command"
+            )
+        else:
+            assert probe.startswith("`"), (
+                f"{command}: probe must be a command in backticks, or say UNVERIFIED"
+            )
+        # vcs and xrun were verified first and must never regress to UNVERIFIED.
+        if "`vcs`" in command or "`xrun`" in command:
+            assert "UNVERIFIED" not in probe, f"{command}: verified probe expected"
+
+    # The schema downstream stages read must carry both fields, or the table above
+    # is documentation with no recorded output.
+    schema = text.split("## Stage: tool_discovery", 1)[1].split("## Stage: module_discovery", 1)[0]
+    for field in ('"role"', '"dialect"'):
+        assert field in schema, f"tool_discovery output schema omits {field}"
