@@ -225,12 +225,17 @@ before falling back to the wrapper or direct execution.
 
    Leave `version` empty and emit a WARN naming the tool and the reason when the table
    lists no probe, when the probe times out, when it exits non-zero, **or when it exits 0
-   without printing the documented line**. That last case is the common one and exit status
-   will not reveal it: an expired build authorisation (`innovus -version` → exit 0,
-   "Your authorization to use this build expired") and a broken platform install
-   (`voltus -version` → exit 0, "cannot find a proper installation") both answer 0 and
-   print no version. Record the version only when the documented line was actually found.
-   A version probe never fails the stage.
+   without printing the documented line**. Record a version only when that line was actually
+   found: exit 0 does not mean a version was printed.
+
+   Measured on the reference host by invoking each tool directly: `innovus -version` answers
+   0 with an expired build authorisation, `voltus -version` answers 0 with "cannot find a
+   proper installation", and `vsim -version` answers 0 having failed to load a shared
+   library. **None of those three has a probe in the table above**, so this stage reaches an
+   empty `version` for them through the no-probe condition, not the last one. They are cited
+   as evidence that a broken install answers 0 whatever the vendor — which is why the last
+   condition has to guard the five tools that *do* carry a probe, whose installs can break
+   the same way. A version probe never fails the stage.
 5. Record each tool as one of: `FOUND`, `MISSING`, or `PROPRIETARY_ONLY`
 6. Capture the exact version string for every tool found in PATH — `FOUND` tools via
    rule 1, and `PROPRIETARY_ONLY` tools that have a version probe in the Proprietary
