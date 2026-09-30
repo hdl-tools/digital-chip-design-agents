@@ -121,7 +121,11 @@ enum (`functional | protocol | coverage_gap | formal_cex`) and always carries
 into a row above.
 
 `retry_strategy` is the strategy *label* and `suggested_next_step` the concrete *action* —
-complementary, not redundant. This table mirrors the authoritative copy in
+complementary, not redundant. **Where they disagree, the stage-specific Loop-Back Rules row
+wins** and `suggested_next_step` follows it: a row that says `proceed` on a WARN is not
+overridden by a mapped `regenerate`, and a row that still has an iteration left is not
+overridden by a mapped `escalate`. Record the mapped `retry_strategy` anyway, so the
+disagreement stays visible in `history[]` instead of being resolved silently. This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->
