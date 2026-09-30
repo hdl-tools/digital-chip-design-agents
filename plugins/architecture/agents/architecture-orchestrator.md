@@ -133,7 +133,13 @@ complementary, not redundant. **Where they disagree, the stage-specific Loop-Bac
 wins** and `suggested_next_step` follows it: a row that says `proceed` on a WARN is not
 overridden by a mapped `regenerate`, and a row that still has an iteration left is not
 overridden by a mapped `escalate`. Record the mapped `retry_strategy` anyway, so the
-disagreement stays visible in `history[]` instead of being resolved silently. This table mirrors the authoritative copy in
+disagreement stays visible in `history[]` instead of being resolved silently.
+
+Where a condition has **no** Loop-Back Rules row at all, there is nothing to defer to and no
+class to map from. Do not invent a `failure_class` to manufacture one: record the stage
+result, set `suggested_next_step` to the least destructive action consistent with it, and name
+the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
+than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->
