@@ -110,6 +110,11 @@ Every `history[]` entry carries both fields. `failure_class` says *what* went wr
   (ambiguous spec), or a budget or cap was hit. Action is `escalate` or `abandon`.
 - **none** — no failure. Pairs only with `failure_class: "none"` (PASS, `await_approval`).
 
+This table covers `history[]` entries only. A `fix_requests[]` entry uses its own smaller
+enum (`functional | protocol | coverage_gap | formal_cex`) and always carries
+`retry_strategy: "refine"` — do not look those classes up here, and do not force one of them
+into a row above.
+
 `retry_strategy` is the strategy *label* and `suggested_next_step` the concrete *action* —
 complementary, not redundant. This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
