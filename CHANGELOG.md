@@ -1,5 +1,63 @@
 # Changelog
 
+## [Unreleased] — issue #112: the Verilator MCP server's lint mode could never run
+
+### Fixed
+
+- **`mode: "lint"` handed `--lint-only` to a wrapper that expects a simulation binary.**
+  `mcp-adapter.py` built `["--lint-only", …]` and passed it to the server's one `--wrapper`,
+  `wrap-verilator-sim.sh`, which reported `sim binary not found or not executable: --lint-only`.
+  Verilator was never invoked, so `rtl-design` `lint_check` and `soc-integration`
+  `top_integration` had no working structured lint path and fell through to direct execution.
+  Lint mode now runs `wrap-verilator-lint.sh` from the same directory as the configured
+  wrapper, so an MCP config pasted before this change keeps working unedited.
+- **The adapter raised on a wrapper without the executable bit.** `PermissionError` was not
+  caught, which ends the server loop. It now returns `FAIL` with a `chmod +x` hint — relevant
+  here because an existing install ran `chmod +x` before the ninth wrapper existed.
+- **`rtl-design` and `soc-integration` named the sim wrapper as their lint wrapper**, and the
+  `mcp-verilator.json` description promised lint counts the wrapper could not produce.
+
+### Added
+
+- **`plugins/infrastructure/tools/wrap-verilator-lint.sh`.** Runs `verilator --lint-only`
+  (added unless already given) and counts `%Error` and `%Warning-<CODE>` lines into
+  `error_count`, `warning_count` and `warnings_by_code`. Verilator's closing
+  `%Error: Exiting due to N …` line is not counted as a finding; it is recorded as
+  `exited_on: "errors" | "warnings"`, because Verilator exits non-zero on warnings unless
+  `-Wno-fatal` is passed and a warnings-only run must not read as one error.
+- **Evidence for a clean lint.** A clean `verilator --lint-only` run prints nothing, and exit 0
+  with empty output is not a pass under the Reporting Contract. The wrapper reports `PASS` /
+  `verified: true` only when at least one argument names a design file that exists; a
+  `--version` run, or a run whose input files are all missing, is `WARN` / `verified: false`.
+- **Tests** `tests/test_wrappers.py::test_lint_*` (clean, warning, error, warnings-fatal,
+  `--version`, missing input, missing tool) and
+  `tests/test_mcp_adapter.py::test_lint_mode_end_to_end_*`, which drive `mode: "lint"` through
+  the real wrappers with a fake `verilator` on `PATH`.
+  `tests/test_wrappers.py::test_every_wrapper_script_is_exercised_here` fails if a wrapper is
+  added without tests.
+
+### Changed
+
+- **Wrapper count 8 → 9** in the infrastructure skill (`wrapper_deployment`,
+  `environment_validation`, sign-off checklist) and agent. MCP target stays 10: the lint wrapper
+  is reached through the existing `verilator` server.
+  **Test** `tests/test_agent_contract.py::test_stated_wrapper_count_matches_the_tools_directory`
+  compares every stated count with the `wrap-*.sh` files on disk.
+
+## [Unreleased] — issue #95: the wrapper smoke test could not tell a working `wrap-verilator-sim.sh` from a mis-invoked one
+
+### Fixed
+
+- **`wrap-verilator-sim.sh --version` reported a missing simulation binary.** `wrapper_deployment`
+  rule 4 smoke-tests every wrapper with `--version` or `--help`, but this wrapper's first
+  argument is the binary to run, so the flag was taken as a path and the result was the same
+  `FAIL` a broken wrapper gives. The wrapper now answers `--version`, `--help` and `-h` itself
+  with `WARN` / `verified: false` and its usage — what the other wrappers return on a
+  `--version` run — and a path that is not an executable still fails. Rule 4 says so.
+  **Tests** `tests/test_wrappers.py::test_verilator_sim_answers_version_and_help_itself`,
+  `::test_verilator_sim_still_fails_on_a_missing_binary` and
+  `tests/test_agent_contract.py::test_smoke_test_rule_covers_the_wrapper_that_takes_a_binary`.
+
 ## [Unreleased] — follow-up to #107: a loop-back cap bounded retries but not whether they converged
 
 ### Added

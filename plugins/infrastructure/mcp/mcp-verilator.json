@@ -1,5 +1,5 @@
 {
-  "_comment": "Verilator batch MCP server — paste the mcpServers block into your .claude/settings.json. Replace /absolute/path/to with the actual repo root path.",
+  "_comment": "Verilator batch MCP server — paste the mcpServers block into your .claude/settings.json. Replace /absolute/path/to with the actual repo root path. Lint mode runs wrap-verilator-lint.sh from the same directory as --wrapper.",
   "mcpServers": {
     "verilator": {
       "type": "stdio",
@@ -8,7 +8,7 @@
         "/absolute/path/to/plugins/infrastructure/tools/mcp-adapter.py",
         "--wrapper", "/absolute/path/to/plugins/infrastructure/tools/wrap-verilator-sim.sh",
         "--tool", "verilator",
-        "--description", "Run Verilator lint or simulation binary and return compact JSON: test_passed, coverage_pct, error/warning counts"
+        "--description", "Run Verilator and return compact JSON. mode lint: verilator --lint-only on args, returns error_count, warning_count, warnings_by_code. mode sim (default): run a compiled simulation binary, returns test_passed, coverage_pct"
       ],
       "env": {
         "VERILATOR_ROOT": "/usr/share/verilator",

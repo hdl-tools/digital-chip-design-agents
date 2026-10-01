@@ -33,8 +33,8 @@ module_planning → rtl_coding → lint_check → cdc_rdc_analysis → synth_che
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:
-1. **MCP server** — use `verilator` MCP if active in `.claude/settings.json` (lowest context overhead)
-2. **Wrapper script** — `wrap-verilator-sim.sh` (structured JSON with lint error/warning counts)
+1. **MCP server** — use `verilator` MCP with `mode: "lint"` if active in `.claude/settings.json` (lowest context overhead)
+2. **Wrapper script** — `wrap-verilator-lint.sh` (structured JSON with lint error/warning counts, warnings per code). Verilator exits non-zero on warnings unless `-Wno-fatal` is passed: read `summary.error_count`, not the exit code, to tell errors from warnings
 3. **Direct execution** — last resort; Verilator lint output accumulates quickly across loop-back iterations
 
 ## Loop-Back Rules

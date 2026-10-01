@@ -13,6 +13,17 @@ fi
 
 SIM_BIN="$1"
 
+# The first argument is the simulation binary, so --version / --help never reach
+# a tool. Answer them here the way the other wrappers do on a --version run:
+# nothing was verified, but the wrapper ran and printed its JSON.
+if [[ "$SIM_BIN" == "--version" || "$SIM_BIN" == "--help" || "$SIM_BIN" == "-h" ]]; then
+  python3 - <<'PYEOF'
+import json
+print(json.dumps({"tool":"verilator-sim","exit_code":0,"status":"WARN","verified":False,"summary":{},"errors":[],"warnings":["no simulation run - not verified: usage: wrap-verilator-sim.sh <sim_binary> [args...] (for Verilator lint use wrap-verilator-lint.sh)"],"raw_log":""}))
+PYEOF
+  exit 0
+fi
+
 if [[ ! -x "$SIM_BIN" ]]; then
   python3 - "$SIM_BIN" <<'PYEOF'
 import json, sys

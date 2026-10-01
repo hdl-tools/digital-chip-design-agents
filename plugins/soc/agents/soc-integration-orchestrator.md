@@ -32,8 +32,8 @@ ip_procurement → ip_configuration → bus_fabric_setup → top_integration →
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:
-1. **MCP server** — use `verilator` MCP if active in `.claude/settings.json` (lowest context overhead)
-2. **Wrapper script** — `wrap-verilator-sim.sh` (structured JSON with pass/fail and coverage)
+1. **MCP server** — use `verilator` MCP if active in `.claude/settings.json` (lowest context overhead): `mode: "lint"` for integration lint, `mode: "sim"` for chip-level simulation
+2. **Wrapper script** — `wrap-verilator-lint.sh` for lint (structured JSON with error/warning counts), `wrap-verilator-sim.sh` for simulation (structured JSON with pass/fail and coverage)
 3. **Direct execution** — last resort; chip-level simulation logs are very large
 
 ## Loop-Back Rules
