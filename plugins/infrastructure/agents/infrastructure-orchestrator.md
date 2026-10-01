@@ -46,14 +46,18 @@ built for one dialect is not valid for another of the same role.
 | Synopsys PrimeTime (`pt_shell`) | `sta` | `synopsys` |
 | Synopsys Formality (`formality`) | `lec` | `synopsys` |
 
-> Proprietary tools not found in PATH may still be available via TCL Environment Modules.
-> The `module_discovery` stage enumerates available versions and generates `load-modules.sh`.
+> Proprietary tools not found in PATH may still be available via a module system — classic
+> Environment Modules or a site-local `module` wrapper. The `module_discovery` stage classifies
+> which, proves the listing is obtainable, enumerates available versions and generates
+> `load-modules.sh`.
 
 ## Loop-Back Rules
 - tool_installation FAIL (python3 missing)                      → escalate immediately (python3 required for all wrappers)
 - tool_installation FAIL (python3 module not loaded)            → escalate: "Python available via module `<python_env.module_name>` — source load-modules.sh then re-run"
-- module_discovery WARN (module system not found)               → proceed (module system is optional)
-- module_discovery WARN (listing command error)                 → proceed (non-fatal; downgrade to WARN since module system is optional)
+- module_discovery WARN (`module_system` "none")                 → proceed (no module system present; module system is optional)
+- module_discovery WARN (detected, `module_listing` UNAVAILABLE, no critical tool MISSING) → proceed (record the WARN; `tools_via_modules` is empty because the listing failed, not because no modules exist)
+- module_discovery WARN (`module_listing` UNAVAILABLE and critical tool MISSING) → escalate: "<module_system> module system at $MODULESHOME could not be listed; <tools> may be available via modules and were never checked. Re-run from a shell where `module` resolves — bash: `source $MODULESHOME/module.sh`, tcsh: `source $MODULESHOME/module.csh` — then re-run module_discovery"
+- module_discovery (one invocation-ladder rung fails)           → advance to the next rung; only an exhausted ladder is a WARN
 - environment_validation FAIL (python_env.type == module, module unloaded) → escalate: "Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation"
 - environment_validation FAIL (critical tool MISSING)           → tool_installation    (max 2×)
 - environment_validation WARN (critical tool MISSING_LOAD_MODULE)    → escalate: instruct user to source load-modules.sh and re-run
@@ -83,6 +87,8 @@ Initialise and maintain this JSON state across all stages:
     "module_name": null
   },
   "module_system": null,
+  "module_system_detail": null,
+  "module_listing": null,
   "tools_via_modules": [],
   "wrappers_deployed": 0,
   "mcp_servers_configured": 0,
@@ -109,6 +115,7 @@ Each stage must return:
     "tools_detected": 0,
     "tools_missing": 0,
     "module_system_detected": false,
+    "module_listing_ok": false,
     "tools_found_via_modules": 0,
     "proprietary_versioned": 0,
     "dialect_conflicts": 0,
@@ -356,7 +363,7 @@ own help output.
     "tools_missing": 0,
     "wrappers_deployed": 0,
     "mcp_servers_configured": 0,
-    "module_system": "tclmod | none",
+    "module_system": "tclmod | custom | none",
     "tool_versions": { "yosys": "0.36", "verilator": "5.028" }
   },
   "issues_encountered": [],

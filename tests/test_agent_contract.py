@@ -197,3 +197,54 @@ def test_proprietary_tools_carry_role_and_dialect():
     schema = text.split("## Stage: tool_discovery", 1)[1].split("## Stage: module_discovery", 1)[0]
     for field in ('"role"', '"dialect"'):
         assert field in schema, f"tool_discovery output schema omits {field}"
+
+
+INFRA_AGENT = (
+    REPO_ROOT / "plugins" / "infrastructure" / "agents" / "infrastructure-orchestrator.md"
+)
+
+MODULE_SYSTEM_ENUM = frozenset({"tclmod", "custom", "none"})
+# Only the enum form matches: `"module_system": null` in the run-state object has no quotes,
+# and `module_system: "none"` in prose does not quote the key.
+MODULE_SYSTEM_FIELD = re.compile(r'"module_system"\s*:\s*"([^"]*\|[^"]*)"')
+
+
+def _module_system_enum(path: Path, text: str) -> set[str]:
+    enums = MODULE_SYSTEM_FIELD.findall(text)
+    assert len(enums) == 1, (
+        f"{_rel(path)}: expected exactly one module_system enum, found {enums}"
+    )
+    return {value.strip() for value in enums[0].split("|")}
+
+
+def test_module_system_records_a_custom_wrapper_and_a_listing_status():
+    """A two-value `tclmod | none` enum forced every site whose `module` is a custom
+    shell wrapper to be recorded as classic Environment Modules (issue #87), and an
+    empty `tools_via_modules` could not be told apart from a listing that never ran -
+    which silently lost the seven tools that host provided only via modules."""
+    stage = (
+        _read(INFRA_SKILL)
+        .split("## Stage: module_discovery", 1)[1]
+        .split("## Stage: tool_installation", 1)[0]
+    )
+
+    assert _module_system_enum(INFRA_SKILL, stage) == set(MODULE_SYSTEM_ENUM), (
+        "module-status.json cannot record a module system that is neither Environment "
+        "Modules nor absent"
+    )
+
+    # The memory record carries its own copy of the enum and nothing cross-checks it.
+    assert _module_system_enum(INFRA_AGENT, _read(INFRA_AGENT)) == set(MODULE_SYSTEM_ENUM), (
+        "the orchestrator's memory template has drifted from the skill's enum"
+    )
+
+    # Trustworthiness of the listing has to be recorded separately from what is installed,
+    # or an unreachable `module` is indistinguishable from a host with no modules.
+    assert '"module_listing"' in stage, (
+        "module-status.json schema omits module_listing - an empty tools_via_modules is "
+        "then unreadable"
+    )
+    assert "because the listing failed" in stage, (
+        "module_discovery no longer states that an empty tools_via_modules may mean the "
+        "listing failed rather than that no modules exist"
+    )
