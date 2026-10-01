@@ -33,6 +33,60 @@ direct execution:
    A session you watched but did not capture is not evidence.
 <!-- END BLOCK execution-direct -->
 
+<!-- BLOCK failure-classification
+targets: agents
+except: meta
+after: ^## Behaviour Rules$
+-->
+## Failure Classification & Retry Strategy
+Every `history[]` entry carries both fields. `failure_class` says *what* went wrong;
+`retry_strategy` says *how* to recover and is **derived from it by this table, not chosen**.
+
+| `failure_class` | `retry_strategy` |
+|---|---|
+| `none` | `none` |
+| `functional` | `refine` |
+| `timing` | `refine` |
+| `power_area` | `refine` |
+| `coverage_gap` | `refine` |
+| `connectivity` | `refine` |
+| `drc_lvs` | `regenerate` |
+| `tool_error` | `regenerate` |
+| `spec_gap` | `escalate` |
+| `resource_limit` | `escalate` |
+
+- **regenerate** — discard the faulty artifact and re-run the *generating* stage from a clean
+  slate, using the error log as context. Action is usually `retry_stage` or
+  `loop_back_to:<generating stage>`.
+- **refine** — keep the artifact and re-run the stage against a *specific* identified defect
+  with detailed feedback (failing test plus waveform, timing path, coverage hole, violated
+  interface). Iterative, not from scratch; usually `loop_back_to:<stage>` carrying a
+  `fix_request`.
+- **escalate** — halt and request human input: the result cannot be improved automatically
+  (ambiguous spec), or a budget or cap was hit. Action is `escalate` or `abandon`.
+- **none** — no failure. Pairs only with `failure_class: "none"` (PASS, `await_approval`).
+
+This table covers `history[]` entries only. A `fix_requests[]` entry uses its own smaller
+enum (`functional | protocol | coverage_gap | formal_cex`) and always carries
+`retry_strategy: "refine"` — do not look those classes up here, and do not force one of them
+into a row above.
+
+`retry_strategy` is the strategy *label* and `suggested_next_step` the concrete *action* —
+complementary, not redundant. **Where they disagree, the stage-specific Loop-Back Rules row
+wins** and `suggested_next_step` follows it: a row that says `proceed` on a WARN is not
+overridden by a mapped `regenerate`, and a row that still has an iteration left is not
+overridden by a mapped `escalate`. Record the mapped `retry_strategy` anyway, so the
+disagreement stays visible in `history[]` instead of being resolved silently.
+
+Where a condition has **no** Loop-Back Rules row at all, there is nothing to defer to and no
+class to map from. Do not invent a `failure_class` to manufacture one: record the stage
+result, set `suggested_next_step` to the least destructive action consistent with it, and name
+the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
+than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+`plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
+mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
+<!-- END BLOCK failure-classification -->
+
 <!-- BLOCK stage-gating
 targets: agents
 except: meta
