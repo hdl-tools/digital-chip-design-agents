@@ -774,32 +774,87 @@ wrapper itself produced no result.
 ## Stage: mcp_configuration
 
 ### Domain Rules
-1. Emit MCP config snippets for all 10 MCP configs (8 batch + 2 session)
+1. Emit MCP config snippets for the 10 tool servers (8 batch + 2 session). Also resolve the
+   path in `mcp-memory.json`, the optional `chip-design-memory` server that provides the
+   `query_experiences` tool the orchestrators' "semantic experience lookup" uses. It is not a
+   tool server and is not counted, so `plugins/infrastructure/mcp/` holds 11 files.
 2. All batch configs use `"command": "python3"` with `mcp-adapter.py` — never point
    directly to the wrapper script as the command; wrapper scripts are not MCP servers
-3. Session configs use `mcp-session-adapter.py` with `--tool openroad` or `--tool opensta`
-4. Resolve the absolute adapter and wrapper paths at runtime using `realpath` or `pwd` —
-   never leave the placeholder `/absolute/path/to/` in the emitted snippets
+3. Session configs use `mcp-session-adapter.py` with `--tool openroad` or `--tool opensta`.
+   `mcp-memory.json` runs `mcp-memory.py` directly, with no `--wrapper` or `--tool`
+4. Resolve the absolute adapter, wrapper and `mcp-memory.py` paths at runtime using `realpath`
+   or `pwd` — never leave the placeholder `/absolute/path/to/` in the emitted snippets. No
+   installer does this: `install.sh`, `install.ps1` and `bin/install.mjs` never touch the MCP
+   configs
 5. Print each snippet with explicit instruction:
    "Paste the `mcpServers` block into your `.claude/settings.json`"
 6. Write the snippet files to `plugins/infrastructure/mcp/`
 7. Do not modify `.claude/settings.json` automatically — user must do this manually
 
-### MCP Config Template
+### MCP Config Templates
+The `command` is always `python3`, and the first argument is the MCP server script — never a
+`wrap-*.sh` (rule 2). The files in `plugins/infrastructure/mcp/` are the reference for each
+tool's `--description` and `env`; edit their paths, not their shape.
+
+Batch (Tier 1) — `mcp-adapter.py` runs the wrapper named by `--wrapper`:
 ```json
 {
   "mcpServers": {
     "<tool>": {
       "type": "stdio",
-      "command": "/absolute/path/to/plugins/infrastructure/tools/wrap-<tool>.sh",
-      "args": []
+      "command": "python3",
+      "args": [
+        "/absolute/path/to/plugins/infrastructure/tools/mcp-adapter.py",
+        "--wrapper", "/absolute/path/to/plugins/infrastructure/tools/wrap-<tool>.sh",
+        "--tool", "<tool>",
+        "--description", "<what the tool returns>"
+      ],
+      "env": {
+        "TOOL_TIMEOUT_S": "300"
+      }
+    }
+  }
+}
+```
+
+Session (Tier 2) — `mcp-session-adapter.py` keeps the tool process alive:
+```json
+{
+  "mcpServers": {
+    "openroad-session": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/absolute/path/to/plugins/infrastructure/tools/mcp-session-adapter.py",
+        "--tool", "openroad"
+      ],
+      "env": {
+        "SESSION_TIMEOUT_S": "120"
+      }
+    }
+  }
+}
+```
+
+Memory (optional) — `mcp-memory.py` is the server itself:
+```json
+{
+  "mcpServers": {
+    "chip-design-memory": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/absolute/path/to/plugins/infrastructure/tools/mcp-memory.py"
+      ],
+      "env": {}
     }
   }
 }
 ```
 
 ### QoR Metrics to Evaluate
-- `mcp_servers_configured`: count of MCP snippet files written (target: 10)
+- `mcp_servers_configured`: count of tool-server snippet files written (target: 10;
+  `mcp-memory.json` is optional and not counted)
 
 ### Output Required
 Batch MCP configs (Tier 1):
@@ -815,6 +870,9 @@ Batch MCP configs (Tier 1):
 Session MCP configs (Tier 2):
 - `plugins/infrastructure/mcp/mcp-openroad-session.json`
 - `plugins/infrastructure/mcp/mcp-opensta-session.json`
+
+Optional memory server config (not a tool server, not counted):
+- `plugins/infrastructure/mcp/mcp-memory.json`
 
 Adapter scripts (required — MCP servers will not start without these):
 - `plugins/infrastructure/tools/mcp-adapter.py`
@@ -865,7 +923,7 @@ silent pass.
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
 3. Verify all 9 wrapper scripts exist and have executable bit set
-4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 snippets) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
+4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 tool-server snippets; `mcp-memory.json` is optional and its absence is not a FAIL) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
    `install-<toolname>.sh` and never executes it (`tool_installation` rule 1), so no retry can
@@ -900,7 +958,7 @@ silent pass.
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
 - [ ] All 9 wrappers deployed and executable
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
-- [ ] All 10 MCP config snippets written with resolved absolute paths and printed
+- [ ] All 10 tool-server MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`
 - [ ] `role` and `dialect` recorded on every entry in `tool-status.json`, and every
       same-role/different-dialect coexistence involving a proprietary tool reported

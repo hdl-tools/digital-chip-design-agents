@@ -6,6 +6,7 @@ so a defect in the template becomes a defect in every run's output.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -309,6 +310,88 @@ def test_smoke_test_rule_covers_the_wrapper_that_takes_a_binary():
     flat = " ".join(stage.split())
     assert "`wrap-verilator-sim.sh` takes a simulation binary" in flat
     assert "never a mis-invocation" in flat
+
+
+INFRA_TOOLS = REPO_ROOT / "plugins" / "infrastructure" / "tools"
+MCP_DIR = REPO_ROOT / "plugins" / "infrastructure" / "mcp"
+MCP_CONFIGS = sorted(MCP_DIR.glob("mcp-*.json"))
+MCP_SERVER_SCRIPTS = frozenset({"mcp-adapter.py", "mcp-session-adapter.py", "mcp-memory.py"})
+# The memory server is optional and is not one of the tool servers the stage counts.
+OPTIONAL_MCP_CONFIGS = frozenset({"mcp-memory.json"})
+MCP_COUNT = re.compile(
+    r"(\d+) tool-server|(\d+) tool servers|"
+    r"tool-server snippet files written \(target: (\d+)",
+    re.I,
+)
+
+
+def _mcp_stage() -> str:
+    return (
+        _read(INFRA_SKILL)
+        .split("## Stage: mcp_configuration", 1)[1]
+        .split("\n## Stage: ", 1)[0]
+    )
+
+
+def _mcp_servers():
+    """(source, server name, server object) for every MCP server the infrastructure
+    skill shows as a template and every config on disk."""
+    sources = [
+        (f"{_rel(INFRA_SKILL)} json block {n}", json.loads(block))
+        for n, block in enumerate(JSON_FENCE.findall(_read(INFRA_SKILL)), 1)
+        if '"mcpServers"' in block
+    ]
+    assert sources, "no mcpServers template found in the infrastructure skill"
+    sources += [(_rel(p), json.loads(_read(p))) for p in MCP_CONFIGS]
+    for source, doc in sources:
+        for name, server in doc["mcpServers"].items():
+            yield source, name, server
+
+
+def test_mcp_configs_run_a_server_script_not_a_wrapper():
+    """Issue #117: the `mcp_configuration` template set `command` to `wrap-<tool>.sh`,
+    contradicting rule 2 directly above it. A wrapper prints one JSON object and
+    exits; it does not speak MCP, so a config copied from the template never
+    completes `initialize` - and rule 6 writes it over the working config."""
+    for source, name, server in _mcp_servers():
+        command = server["command"]
+        assert not command.endswith(".sh"), f"{source} {name}: command is a wrapper: {command}"
+        assert command == "python3", f"{source} {name}: command is {command!r}, not python3"
+        script = server["args"][0].rsplit("/", 1)[-1]
+        assert script in MCP_SERVER_SCRIPTS, f"{source} {name}: args[0] runs {script!r}"
+        assert (INFRA_TOOLS / script).is_file(), f"{source} {name}: {script} not in tools/"
+
+
+def test_no_mcp_config_credits_an_installer():
+    """Issue #117: `mcp-openroad.json` said `install.sh` copies and path-substitutes
+    the template. No installer ever has; the user is left with `/absolute/path/to/`."""
+    for path in MCP_CONFIGS:
+        for name in ("install.sh", "install.ps1", "install.mjs"):
+            assert name not in _read(path), f"{_rel(path)} credits {name} with MCP setup"
+
+
+def test_stated_mcp_count_matches_the_mcp_directory():
+    """Issue #117: `mcp-memory.json` was the eleventh file in `mcp/` while the stage
+    named ten, so its path was never resolved and every "10" read as wrong.
+    Every config on disk must be named in the stage, and each stated count must
+    count the tool servers - the files on disk minus the optional ones."""
+    stage = _mcp_stage()
+    unnamed = [p.name for p in MCP_CONFIGS if p.name not in stage]
+    assert not unnamed, f"mcp_configuration does not name {unnamed}"
+
+    tool_servers = len([p for p in MCP_CONFIGS if p.name not in OPTIONAL_MCP_CONFIGS])
+    stated = []
+    for path in (INFRA_SKILL, INFRA_AGENT):
+        for match in MCP_COUNT.finditer(_read(path)):
+            stated.append((_rel(path), int(next(g for g in match.groups() if g))))
+    assert len(stated) >= 5, f"expected the count in at least 5 places, found {stated}"
+    wrong = [s for s in stated if s[1] != tool_servers]
+    assert not wrong, f"{tool_servers} tool-server configs on disk, but these say otherwise: {wrong}"
+    # No bare "N MCP config" count may survive that could mean all files on disk.
+    for path in (INFRA_SKILL, INFRA_AGENT):
+        bare = re.findall(r"\ball (\d+) (?:MCP|snippets)", _read(path))
+        assert not bare, f"{_rel(path)}: ambiguous MCP count(s) {bare}"
+
 
 MODULE_SYSTEM_ENUM = frozenset({"tclmod", "custom", "none"})
 # Only the enum form matches: `"module_system": null` in the run-state object has no quotes,

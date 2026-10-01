@@ -262,7 +262,8 @@ stdio tool, `query_experiences`, following the protocol of the EDA tool adapters
 (MCP `2024-11-05`). Register it from the template at
 `plugins/infrastructure/mcp/mcp-memory.json` (server name `chip-design-memory`)
 by pasting the `mcpServers` block into your `.claude/settings.json` and replacing
-the placeholder repo path.
+the placeholder repo path. The infrastructure orchestrator's `mcp_configuration`
+stage resolves that path along with the tool-server configs.
 
 ### Optional orchestrator read-path
 
