@@ -120,7 +120,9 @@ complementary, not redundant. **Where they disagree, the stage-specific Loop-Bac
 wins** and `suggested_next_step` follows it: a row that says `proceed` on a WARN is not
 overridden by a mapped `regenerate`, and a row that still has an iteration left is not
 overridden by a mapped `escalate`. Record the mapped `retry_strategy` anyway, so the
-disagreement stays visible in `history[]` instead of being resolved silently.
+disagreement stays visible in `history[]` instead of being resolved silently. Stage Gating and
+Escalation items 4 and 7 are different in kind: they stop a loop on evidence (the fault is
+upstream, or the retries are not converging), whatever the row still allows.
 
 Where a condition has **no** Loop-Back Rules row at all, there is nothing to defer to and no
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
@@ -160,8 +162,33 @@ These rules apply to every stage and take precedence over keeping the flow movin
 5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
    checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
    for the pipeline-orchestrator.
-6. In both escalation cases leave the domain `signoff` field `false` and write
+6. Whenever item 3, 4 or 7 escalates, leave the domain `signoff` field `false` and write
    `signoff_achieved: false` in the experience record.
+7. **A retry must make measurable progress toward the same target.** A Loop-Back Rules row
+   sets the most attempts a failure may have, not a number that must be spent: this item stops
+   a loop early and takes precedence over the iterations a row still allows. For a row marked
+   `unlimited` it is the only stop. Keep the last artifact that measured better until its
+   replacement has been measured, and after every loop-back iteration compare the stage's
+   measured result — the QoR numbers, or the set of failures rather than their count — with
+   the previous iteration's:
+   - **Regression** — the result is worse, or a failure appeared that was not there before.
+     Restore the previous artifact. The iteration still counts against the row's cap.
+   - **No progress** — two consecutive iterations leave the result where it was. Do not run
+     the stage again; escalate.
+   - **Moved target** — the result improved because the thing being checked changed: a
+     constraint relaxed, a waiver, exception or exclusion added, a check, test or assumption
+     weakened, or the design's behaviour changed to silence a tool. A pass obtained by changing
+     the target is not a pass. Undo the change — unless the target itself was wrong, in which
+     case name the spec clause or constraint source that says so in the `history[]` `reason`
+     and in the stage's waiver or exception record. A target that another domain or the user
+     owns (`design_state.constraints`, the spec, an upstream artifact) is never yours to
+     change: that is item 4. If the stage can only pass by moving the target, escalate.
+
+   When this item escalates, append the terminal `history[]` entry with `decision: "escalate"`,
+   the observed `failure_class` with its mapped `retry_strategy`,
+   `suggested_next_step: "escalate"`, and a `reason` naming which of the three fired, the
+   measured result of each iteration, and what the user must decide. Do not record
+   `resource_limit` — the cap was not reached.
 <!-- END SHARED:stage-gating -->
 
 <!-- BEGIN SHARED:long-running-jobs (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
