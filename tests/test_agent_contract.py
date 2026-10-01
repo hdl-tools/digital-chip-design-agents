@@ -93,6 +93,30 @@ def test_decision_enum_lists_every_value_the_agent_writes(path):
 
 
 @pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_decision_enum_lists_loop_back_for_agents_with_loop_back_rules(path):
+    """A FAIL/WARN that a Loop-Back Rules row sends to another stage is recorded as
+    decision "loop_back" (see tools/agent_shared_sections.md), not "proceed" — the
+    enum every such agent copies from must offer it. Unlike await_approval, this
+    condition doesn't depend on the agent declaring the literal value anywhere, since
+    the previous gap (#94) was exactly that nothing declared it."""
+    text = _read(path)
+    if path.parent.parent.name == "meta":
+        pytest.skip(
+            "pipeline-orchestrator writes history only at signoff_or_escalate's "
+            "two terminal branches, never per internal loop-back"
+        )
+    if "## Loop-Back Rules" not in text:
+        pytest.skip("agent has no Loop-Back Rules section")
+    enums = DECISION_ENUM.findall(text)
+    assert enums, f"{_rel(path)}: no history decision enum found"
+    for enum in enums:
+        values = [v.strip() for v in enum.split("|")]
+        assert "loop_back" in values, (
+            f"{_rel(path)}: decision enum {values} omits loop_back"
+        )
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
 def test_escalation_guidance_goes_in_history_reason(path):
     """Domain orchestrators set pending_approval only at their gates; type
     "escalation" belongs to the pipeline-orchestrator. A rule that puts every

@@ -210,7 +210,9 @@ Atomic read-modify-write of `design_state.json`:
 9. Append one entry to `history[]`.
 10. Write to `design_state.tmp`, then rename to `design_state.json`.
 
-History entry to append:
+History entry to append (only at `signoff_or_escalate` — the internal loop back to
+`dispatch_to_producer` in `check_iteration_cap` writes no history entry of its own, so
+`decision` never needs a `loop_back` value here):
 ```json
 {
   "timestamp": "<ISO-8601>",

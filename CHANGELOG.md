@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased] — issue #94: a loop-back FAIL had no `decision` value of its own
+
+### Fixed
+
+- **A stage that FAILed and looped back was recorded as `decision: "proceed"`.** The
+  `history[]` schema's `decision` enum (`proceed | escalate | abandoned | await_approval`)
+  had no value for the commonest non-terminal outcome: the stage FAILed, and a Loop-Back
+  Rules row sent the run to another stage to retry. Behaviour Rule 6 requires one entry per
+  completed stage including failing ones, so every such entry had to pick the closest
+  existing value — `proceed`, the one that means the opposite of what happened. Measured on a
+  real host: `environment_validation` FAILed twice on critical tools MISSING and looped back
+  to `tool_installation` each time, and both were written as `decision: "proceed"`.
+  `design_state.json`'s `history[]` is the cross-orchestrator hand-off the
+  pipeline-orchestrator reads to decide whether to retry, loop across domains, or escalate —
+  a FAIL filed as `proceed` is indistinguishable there from a clean PASS. Added `loop_back` to
+  the `decision` enum in all 15 domain orchestrators. `plugins/meta/agents/pipeline-orchestrator.md`
+  keeps its narrower `proceed | escalate` enum, with a note explaining why: its own history
+  entry is written only at the two terminal branches of `signoff_or_escalate`, never at the
+  internal loop back inside `check_iteration_cap`.
+- **`tools/agent_shared_sections.md`'s `failure-classification` block** now states when to
+  write `decision: "loop_back"` instead of `"proceed"`, synced into all 15 agents via
+  `tools/sync_agent_sections.py`.
+
+### Added
+
+- **Test** `tests/test_agent_contract.py::test_decision_enum_lists_loop_back_for_agents_with_loop_back_rules`,
+  parametrized over every agent with a `## Loop-Back Rules` section, so a new loop-back row
+  cannot be added to an orchestrator whose `decision` enum omits the value it needs to record.
+
 ## [Unreleased] — issue #98: module version selection
 
 ### Fixed
