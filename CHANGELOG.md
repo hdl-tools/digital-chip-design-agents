@@ -19,7 +19,17 @@ targets, caps or thresholds, or rows only one side had.
   system prompt. PD's `## Failure Escalation` list in the Sign-off skill spec and the §7 build
   step now point at the agent too. Overview, shared-state and skill-spec content is unchanged.
 - **`docs/MASTER_INDEX.md`** states that the agent files are authoritative for stage sequence,
-  loop-back rules, stage gating and escalation. `docs/PIPELINE.md` marks its PD example as an
+  loop-back rules, stage gating and escalation.
+- **`docs/Infrastructure_Setup_Flow.md`** is new. `MASTER_INDEX.md` had listed it since the
+  infrastructure plugin was added, but the file was never written. It is a map in the same
+  shape, with no restated tables or counts:
+  - the shared state files, with one writer each;
+  - one summary per stage;
+  - the execution tiers domain agents use;
+  - an "adding a tool" checklist;
+  - the handoff, including that no domain orchestrator reads `environment.signoff` today.
+
+  It is registered in `FLOW_DOCS`, so the new tests cover it. `docs/PIPELINE.md` marks its PD example as an
   illustration and points at the agents.
 
 ### Added

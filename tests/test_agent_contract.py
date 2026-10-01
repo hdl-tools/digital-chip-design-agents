@@ -888,6 +888,7 @@ FLOW_DOCS = {
     "FPGA_Emulation_Flow.md": "fpga/agents/fpga-orchestrator.md",
     "Functional_Verification_Flow.md": "verification/agents/verification-orchestrator.md",
     "HLS_Flow.md": "hls/agents/hls-orchestrator.md",
+    "Infrastructure_Setup_Flow.md": "infrastructure/agents/infrastructure-orchestrator.md",
     "Logic_Synthesis_Flow.md": "synthesis/agents/synthesis-orchestrator.md",
     "Memory_IP_Design_Flow.md": "memory-ip/agents/memory-ip-orchestrator.md",
     "PD_Flow_Architecture.md": "pd/agents/physical-design-orchestrator.md",
