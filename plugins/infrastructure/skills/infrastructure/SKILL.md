@@ -763,7 +763,33 @@ silent pass.
 1. **Python environment check** — before any other check: read `python_env` from `tool-status.json`:
    - If `python_env.type == "module"`: run `which python3` to verify the module is still loaded. If it fails, FAIL immediately with: `"Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation."`
    - If `python_env.type == "custom"` or `"system"`: run `which python3` and verify the path matches `python_env.exec`; emit WARN if it differs.
-2. Re-run tool presence checks using the same Python-aware detection as `tool_discovery` rules 2–3: use `"$PYTHON_EXEC" -m pip show` for `openlane`, `"$PYTHON_BIN_DIR/cocotb-config"` for `cocotb`, `"$PYTHON_BIN_DIR/uv"` for `uv` — do not fall back to bare `which` for Python packages. Compare results against `tool-manifest.json`.
+2. Re-run tool presence checks using **exactly** the detection `tool_discovery` rules 2–3 perform —
+   including their PATH fallbacks, and including their `python_env.type` branches. A stage that
+   detects the same tool by a different method will disagree with `tool_discovery` on real installs,
+   and the disagreement is silent:
+   - `openlane`: `"$PYTHON_EXEC" -m pip show openlane` — unchanged, rule 3 has no fallback for it
+   - `cocotb`, `uv`: where `python_env.type` is `custom` or `module`, try
+     `"$PYTHON_BIN_DIR/<tool>"` first and **fall back to the PATH command**; where it is `system`,
+     use the PATH command only — rule 3 never builds a `$PYTHON_BIN_DIR` probe in that case, so
+     neither may this rule.
+
+   Record for each package which path resolved it, as `resolved_via` in `tool-manifest.json`. Where
+   a package resolved **via the PATH fallback** while `python_env.type` is `custom` or `module`,
+   emit a WARN — the tool exists, so this is never an absence:
+   - description: `"<tool> resolved on PATH at <path>, outside the active Python environment's bin dir (<python_env.bin_dir>) — it may target a different interpreter than <python_env.exec>"`
+   - fix: `"confirm <tool> operates on the intended interpreter, or reinstall it into the active environment with \"$PYTHON_EXEC\" -m pip install <tool>"`
+
+   This is the hazard the probe is for, and it is common: `tool_installation` prefers the standalone
+   astral.sh installer for `uv`, which installs into its own prefix rather than `$PYTHON_BIN_DIR`.
+   Measured on the reference host, `uv` resolves from a shared `bin` directory unrelated to the
+   active interpreter's prefix, which is exactly this case.
+   Never emit it for `python_env.type == "system"`, where PATH *is* the active environment.
+
+   Compare results against `tool-status.json` — written by `tool_discovery`, updated in place by
+   `module_discovery`, and the only tool record that exists when this rule runs. Never compare
+   against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
+   compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
+   WARN, never a status downgrade.
 3. Verify all 8 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 snippets) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
@@ -797,7 +823,7 @@ silent pass.
 - [ ] `module-status.json` written (even if `module_system` is `"none"`)
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
-- [ ] `tool-manifest.json` written
+- [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
 - [ ] All 8 wrappers deployed and executable
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 MCP config snippets written with resolved absolute paths and printed
@@ -807,4 +833,50 @@ silent pass.
 
 ### Output Required
 - Printed environment validation report
-- Updated `tool-manifest.json` with final confirmed state
+- `tool-manifest.json` — written by this stage. There is no prior manifest to update: no earlier
+  stage produces one, so this stage creates it.
+
+`tool-manifest.json` is a **validation receipt, not a tool list.** It records what this stage
+measured and *references* per-tool state rather than copying it — `tool-status.json` already carries
+every per-tool field (`tool`, `command`, `status`, `version`, `path`, `role`, `dialect`,
+`module_names`, `versions_available`) and `python_env`, and `module_discovery` sets the precedent
+that a later stage updates that file in place rather than forking a parallel copy. A manifest that
+restated those fields would be a second source of truth for the same facts.
+
+What this stage establishes that `tool-status.json` cannot express is `python_env` **liveness** (the
+recorded module may no longer be loaded, the recorded `exec` may no longer match), wrapper
+executable bits, MCP artifact presence, the computed dialect-conflict set, and the sign-off verdict:
+
+```json
+{
+  "run_id": "",
+  "timestamp": "<ISO-8601>",
+  "host": "",
+  "tool_status_source": "tool-status.json",
+  "python_env_live": {
+    "type": "module | system | custom",
+    "exec_expected": "",
+    "exec_actual": "",
+    "matches": false
+  },
+  "python_packages": [
+    {
+      "tool": "",
+      "resolved_via": "python_env_bin_dir | path | pip_show",
+      "path": ""
+    }
+  ],
+  "wrappers": { "expected": 8, "executable": 0, "missing": [] },
+  "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
+  "dialect_conflicts": [
+    { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
+  ],
+  "critical_path": { "required": ["yosys", "verilator", "openroad", "sta"], "missing": [] },
+  "signoff": false
+}
+```
+
+`python_packages[].resolved_via` is the record behind rule 2's WARN: it is what makes "found, but
+outside the active environment" auditable after the run instead of print-only. `dialect_conflicts`
+lists the members per role, not just the count rule 7 reports, so the conflict can be read back
+without re-deriving it.
