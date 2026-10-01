@@ -29,7 +29,14 @@ targets, caps or thresholds, or rows only one side had.
   - an "adding a tool" checklist;
   - the handoff, including that no domain orchestrator reads `environment.signoff` today.
 
-  It is registered in `FLOW_DOCS`, so the new tests cover it. `docs/PIPELINE.md` marks its PD example as an
+  It is registered in `FLOW_DOCS`, so the new tests cover it.
+
+### Fixed
+
+- **The `tool-manifest.json` schema said `"wrappers": { "expected": 8 }`; there are 9.** The
+  number was not raised when `wrap-verilator-lint.sh` was added (#112). The wrapper-count test
+  only matched counts written as prose, so it missed this one. It now also matches the JSON
+  field form, and the MCP count test likewise matches `"snippets_expected"` and `"mcp_target"`. `docs/PIPELINE.md` marks its PD example as an
   illustration and points at the agents.
 
 ### Added

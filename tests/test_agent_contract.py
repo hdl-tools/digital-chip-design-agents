@@ -277,7 +277,8 @@ INFRA_AGENT = (
 
 WRAPPER_COUNT = re.compile(
     r"all (\d+) wrappers?\b|(\d+) executable wrapper scripts|"
-    r"wrapper scripts with executable bit set \(target: (\d+)\)",
+    r"wrapper scripts with executable bit set \(target: (\d+)\)|"
+    r'"wrappers": \{ "expected": (\d+)',
     re.I,
 )
 
@@ -320,7 +321,8 @@ MCP_SERVER_SCRIPTS = frozenset({"mcp-adapter.py", "mcp-session-adapter.py", "mcp
 OPTIONAL_MCP_CONFIGS = frozenset({"mcp-memory.json"})
 MCP_COUNT = re.compile(
     r"(\d+) tool-server|(\d+) tool servers|"
-    r"tool-server snippet files written \(target: (\d+)",
+    r"tool-server snippet files written \(target: (\d+)|"
+    r'"snippets_expected": (\d+)|"mcp_target": (\d+)',
     re.I,
 )
 

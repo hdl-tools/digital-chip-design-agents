@@ -998,7 +998,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
       "path": ""
     }
   ],
-  "wrappers": { "expected": 8, "executable": 0, "missing": [] },
+  "wrappers": { "expected": 9, "executable": 0, "missing": [] },
   "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
