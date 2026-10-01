@@ -180,10 +180,17 @@ before falling back to the wrapper or direct execution.
 2. **Python interpreter detection** — run once at the start of tool_discovery, before checking any Python packages. Detection order (first match wins):
 
    **Step A — Module system probe (runs before PATH check)**:
-   a. Check if a module system is available: test `$MODULESHOME` is set OR `modulecmd` exists in PATH.
-   b. If a module system is available, run `module avail 2>&1` and search for entries matching `python` or `python3` (case-insensitive).
+   a. Classify the module system and prove it is invocable using the detection rules and the
+      invocation ladder in `module_discovery` below. Do not re-derive either here, and never treat
+      `$MODULESHOME` alone as proof that `module` can be run.
+   b. If a listing was obtained (`module_listing` is `"LISTED"`), search it for entries matching
+      `python` or `python3` (case-insensitive).
    c. If one or more Python module entries are found: select the latest version (highest semver/lexicographic), load it via `module load <python-module>`, then run `which python3` to resolve `PYTHON_EXEC`. Set `python_env.type = "module"` and record `python_env.module_name` with the loaded module name. **Keep the module loaded for the entire orchestrator run** — do not unload it; subsequent stages (tool_installation, wrapper_deployment, environment_validation) all depend on `PYTHON_EXEC` being resolvable. The generated `load-modules.sh` handles persistent loading for future shell sessions.
-   d. If no module system is available, or no Python module entries are found: proceed to Step B.
+   d. Proceed to Step B where `module_system` is `"none"`, where the ladder was exhausted
+      (`module_listing` is `"UNAVAILABLE"`), or where the listing holds no Python module entries.
+      A detected-but-unlistable module system is **not** the same as no module system: it still
+      falls through to the PATH interpreter here, but the WARN it owes is emitted by
+      `module_discovery` and is not suppressed because this step recovered an interpreter.
 
    **Step B — PATH-based fallback**:
    e. Run `which python3` to get the interpreter path; store as `PYTHON_EXEC`.
@@ -270,13 +277,87 @@ Note: module-based availability (`FOUND_PREFER_MODULE`, `MISSING_LOAD_MODULE`) a
 
 ### Domain Rules
 
-#### Module system detection (in order of preference)
-1. **Classic Environment Modules (TCL)** — check `$MODULESHOME` is set, or `modulecmd` binary exists in PATH
-2. **Neither** — set `module_system: "none"`, emit WARN, skip remaining rules, write empty `module-status.json`, advance to `tool_installation`
+#### Module system detection
 
-#### Module listing commands
-- **Classic**: `module avail 2>&1` — parse text; entries appear as `<name>/<version>`
-- If the listing command exits non-zero: emit WARN, record the error, proceed
+A set environment variable is not proof that `module` can be run. Classify first, then **prove
+invocability** with the ladder below — the ladder decides, not the classification.
+
+1. `modulecmd` is in PATH ⇒ `module_system: "tclmod"`. Record in `module_system_detail` whether
+   `$MODULESHOME` is also set.
+2. `$MODULESHOME` is set and `modulecmd` is **not** in PATH ⇒ `module_system: "custom"`. Read this
+   as *not confirmed Environment Modules*, never as *proven bespoke*: a classic install can have
+   `modulecmd` off PATH, and rung 3 below is what tells the two apart.
+3. Neither ⇒ `module_system: "none"`, `module_listing: "UNAVAILABLE"`,
+   `module_listing_error: "no module system present"`; emit the "none" WARN below, skip the
+   remaining rules, write `module-status.json`, advance to `tool_installation`.
+
+#### Module invocation ladder
+`module` is frequently a **shell function or alias**, not a binary, so it is absent from a
+non-interactive shell even on a host where a module system is plainly installed. Probe the
+invocation; never infer it from an env var. Try these in order, stop at the first rung that
+**succeeds** by the test below, and record that rung verbatim in `module_invocation`.
+
+| # | Invocation | When, and what it proves |
+|---|---|---|
+| 1 | `module avail` | the orchestrator's own shell may already define `module`, if it was started as an interactive or login shell |
+| 2 | `modulecmd bash avail` | only where `modulecmd` is in PATH; a listing here confirms `tclmod` |
+| 3 | `. "$MODULESHOME/init/bash"; module avail` | classic Environment Modules ships `init/bash`; a listing here **upgrades** `custom` to `tclmod`, and `module_system_detail` records that `modulecmd` was merely off PATH |
+| 4 | `. "$MODULESHOME/module.sh"; module avail` | a site wrapper's sh init. Measured on the reference host: `module` becomes a shell function and `module avail` exits 0 in 159.5 s with 3813 lines, 3812 of them entry-shaped. Classification stays `custom` |
+| 5 | `MODULESHOME="$MODULESHOME" "$MODULESHOME/module" avail` | last resort, where the wrapper is itself an executable script. Export in addition any path variable the wrapper's own init script sets, which a site wrapper commonly uses in place of `$MODULESHOME` |
+
+- **A rung succeeds only where it exits 0 *and* its output holds at least one entry-shaped line.
+  Either test alone is insufficient; a failed rung means advance to the next, never conclude the
+  host has no modules.** Both halves are measured. Rung 5 on the reference host exits **1** and
+  prints `Usage: [-n] subcommand [arguments ...]` — and that usage text itself contains the lines
+  `modulename/scope`, `modulename/version` and `modulename/scope/version`, so an output-shape test
+  on its own reads a failed rung as a successful listing of three modules named `modulename`. The
+  converse case — exit 0 with no listing — is the failure mode already documented for version
+  probes in `tool_discovery` rule 4, where a broken install answers 0 whatever the vendor.
+- **Wrap the shell, not the command.** `timeout` execs a binary and cannot wrap a shell function:
+  measured, `timeout 60 module avail` returns 127 with `timeout: failed to run command 'module'`
+  on a host where rung 4 had just succeeded. Run every rung as
+  `timeout 300 bash -c '<rung>; module avail </dev/null 2>&1'`.
+- **Budget 300 s, not the 60 s used for version probes.** The listing walks every modulefile tree:
+  159.5 s measured on a warm NFS cache, emitting `ls: cannot access ...` noise from stale paths on
+  the way. A short budget records a working module system as unprobeable.
+- **Always redirect stdin from `/dev/null`.** A wrapper that prompts would otherwise block the
+  whole run and produce no output to diagnose.
+- Where every rung is exhausted: set `module_listing: "UNAVAILABLE"` and put the last rung's
+  stderr in `module_listing_error`. Only an exhausted ladder is a WARN — an individual failed rung
+  is not.
+
+#### Listing entry format
+Entries hold **two or more** `/`-separated segments and may carry a trailing parenthesised
+annotation. Measured on the reference host: `klayout/adi/0.29.0`, `verilator/adi/3.922`,
+`klayout/adi/0.27.11 (adi default)`. Take the version as the **last** `/`-separated segment after
+stripping any trailing `(...)` annotation, and keep the full entry string in `module_names`. Never
+assume `<name>/<version>` — that records `adi` as the version of `klayout/adi/0.29.0`.
+
+Match the mapping table against the entry read as a list of `/`-delimited tokens, case-insensitively:
+a pattern matches only where it covers **whole tokens** — one token, or a contiguous run of them for
+a pattern that itself contains `/`. **Never match an arbitrary substring.** Measured against a
+real 3812-entry listing, substring matching produced two classes of false positive: a module whose
+name merely *ends* with a mapped command (an optimisation tool named `...slang` matched `slang`),
+and a module whose name or version string merely *contains* one (a verification tool whose version
+ends `_python2`, and a GUI tool bundle whose name contains `python3`, both matched `python3`). The
+second class is the damaging one: `tool_discovery` Step A loads the *latest* matched Python module
+and keeps it loaded for the whole orchestrator run, and the highest-sorting substring match was
+that GUI bundle rather than an interpreter. Whole-token matching drops both classes and leaves the
+12 genuine tools.
+
+#### WARN taxonomy
+| Condition | Severity | `description` / `fix` |
+|---|---|---|
+| `module_system: "none"` | WARN, proceed | `"no module system found - $MODULESHOME unset and modulecmd not in PATH; no tools surveyed via modules"` / `"no action needed if every required tool is in PATH"` |
+| `module_system` is not `"none"` and `module_listing: "UNAVAILABLE"` | WARN, proceed | `"<module_system> module system detected (<module_system_detail>) but no invocation produced a listing (<module_listing_error>) - tools_via_modules is empty because the listing failed, not because no modules exist"` / `"re-run from a shell where module resolves, or source $MODULESHOME/module.sh (bash) or $MODULESHOME/module.csh (tcsh) first, then re-run module_discovery"` |
+| the row above **and** a critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) is `MISSING` in `tool-status.json` | WARN **and escalate** | that description with `" - critical tool(s) <list> are MISSING and could not be checked against the module listing"` appended; `failure_class: "tool_error"`, `suggested_next_step: "escalate"` |
+
+An empty `tools_via_modules` is evidence that the host offers no modules **only** when
+`module_listing` is `"LISTED"`. Never report an exhausted ladder as "no modules found": the two
+are indistinguishable in the artifact unless `module_listing` is read.
+
+The fix text names both init scripts because the probes all run under `bash -c` regardless of the
+user's login shell, but a user re-running by hand may be in either `bash` or `tcsh`.
 
 #### Module-to-tool mapping table
 
@@ -311,15 +392,20 @@ Note: module-based availability (`FOUND_PREFER_MODULE`, `MISSING_LOAD_MODULE`) a
 | `openocd` | `openocd` |
 
 #### Rules
-1. Detect module system using the detection order above
-2. Run the appropriate listing command for the detected system
-3. For each entry in the listing, test against the mapping table (case-insensitive)
-4. For each matched tool, collect all available version strings
-5. Write `module-status.json` before advancing
-6. For each tool marked `FOUND` in `tool-status.json` that also has a module available: change status to `FOUND_PREFER_MODULE`, add `module_names` and `versions_available` fields, include in `load-modules.sh` — module takes precedence over PATH version
-7. For each tool marked `MISSING` in `tool-status.json` that has modules available: change status to `MISSING_LOAD_MODULE`, add `module_names` and `versions_available` fields
-8. Generate `load-modules.sh` for all `FOUND_PREFER_MODULE` and `MISSING_LOAD_MODULE` tools; default to the latest version (highest semver/lexicographic); comment out alternative versions inline
-9. Never auto-run `load-modules.sh` — print: "Review and source `load-modules.sh` to load EDA modules, then re-run the flow"
+1. Classify the module system using the detection rules above
+2. Obtain a listing using the invocation ladder above; record `module_invocation` and
+   `module_listing`, and on exhaustion `module_listing_error`
+3. If `module_listing` is `"UNAVAILABLE"`: emit the matching WARN from the taxonomy above —
+   escalating first where a critical-path tool is `MISSING` — write `module-status.json` with
+   `tools_via_modules: []`, and advance. Skip rules 4-9: no tool can be matched against a listing
+   that was never obtained, and an unmatched tool is not evidence that no module provides it
+4. For each entry in the listing, test against the mapping table (case-insensitive)
+5. For each matched tool, collect all available version strings per the entry-format rules above
+6. Write `module-status.json` before advancing
+7. For each tool marked `FOUND` in `tool-status.json` that also has a module available: change status to `FOUND_PREFER_MODULE`, add `module_names` and `versions_available` fields, include in `load-modules.sh` — module takes precedence over PATH version
+8. For each tool marked `MISSING` in `tool-status.json` that has modules available: change status to `MISSING_LOAD_MODULE`, add `module_names` and `versions_available` fields
+9. Generate `load-modules.sh` for all `FOUND_PREFER_MODULE` and `MISSING_LOAD_MODULE` tools; default to the latest version (highest semver/lexicographic); comment out alternative versions inline
+10. Never auto-run `load-modules.sh` — print: "Review and source `load-modules.sh` to load EDA modules, then re-run the flow"
 
 #### Extended `tool-status.json` schema
 Fields added by this stage to each entry in the `tools` array (backward-compatible additions):
@@ -342,14 +428,16 @@ Note: The top-level `python_env` object is **preserved unchanged** during this s
 unchanged — this stage adds module fields and may change `status`, nothing else.
 
 ### QoR Metrics to Evaluate
-- `module_system_detected`: bool — true if classic Environment Modules (TCL) found
+- `module_system_detected`: bool — true when `module_system` is not `"none"`; a custom wrapper counts
+- `module_listing_ok`: bool — true when `module_listing` is `"LISTED"`. `tools_found_via_modules: 0` is only meaningful when this is true; where it is false the count says nothing about what the host offers
 - `tools_found_via_modules`: count of tools with status `MISSING_LOAD_MODULE` or `FOUND_PREFER_MODULE`
 
 ### Stage Output Summary
 Print a human-readable table before advancing:
 ```text
-Module system : Environment Modules 4.8.0 (TCL)
-Tools in PATH : 12
+Module system     : custom - $MODULESHOME=<site path>, no modulecmd in PATH, no init/bash
+Module listing    : LISTED via `. "$MODULESHOME/module.sh"; module avail` (3813 entries, 160s)
+Tools in PATH     : 12
 Tools via modules : 5
   vcs        — synopsys/vcs/2020.03, synopsys/vcs/2021.01
   xrun       — cadence/xcelium/20.09
@@ -358,16 +446,24 @@ Tools via modules : 5
   pt_shell   — synopsys/primetime/2022.06
 ```
 
+Where the invocation ladder was exhausted, the second line reads
+`Module listing    : UNAVAILABLE (<module_listing_error>)` and the `Tools via modules` count is
+printed as `not surveyed` — never as `0`, which reads as a surveyed host that offers nothing.
+
 ### Output Required
 - `module-status.json` — module system details and per-tool module listings
 - Updated `tool-status.json` — statuses and module fields added for matched tools
-- `load-modules.sh` — generated when any tool has status `FOUND_PREFER_MODULE` or `MISSING_LOAD_MODULE`; omitted when `module_system` is `"none"`
+- `load-modules.sh` — generated when any tool has status `FOUND_PREFER_MODULE` or `MISSING_LOAD_MODULE`; omitted when **no tool qualifies**, which includes but is not limited to `module_system: "none"`. Never infer the omission from `module_system` alone: a detected system whose `module_listing` is `"UNAVAILABLE"` also yields no qualifying tools, and that is the WARN case above, not a clean skip
 
 `module-status.json` schema:
 ```json
 {
-  "module_system": "tclmod | none",
+  "module_system": "tclmod | custom | none",
+  "module_system_detail": "<evidence: $MODULESHOME value, whether modulecmd was in PATH, what was found under $MODULESHOME>",
   "module_system_version": "",
+  "module_listing": "LISTED | UNAVAILABLE",
+  "module_invocation": "<the ladder rung that produced the listing, verbatim, or null>",
+  "module_listing_error": null,
   "tools_via_modules": [
     {
       "tool": "<command>",
@@ -377,6 +473,12 @@ Tools via modules : 5
   ]
 }
 ```
+
+`module_system` says what is installed; `module_listing` says whether `tools_via_modules` can be
+trusted. The two are independent: a `tclmod` host can be `UNAVAILABLE`, and a `custom` host can
+be `LISTED`. `module_system: "none"` always pairs with `module_listing: "UNAVAILABLE"` and
+`module_listing_error: "no module system present"`, so one field answers trustworthiness in every
+case.
 
 `load-modules.sh` format:
 ```bash
