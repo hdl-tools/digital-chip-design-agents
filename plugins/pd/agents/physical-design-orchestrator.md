@@ -115,6 +115,11 @@ Every `history[]` entry carries both fields. `failure_class` says *what* went wr
   (ambiguous spec), or a budget or cap was hit. Action is `escalate` or `abandon`.
 - **none** — no failure. Pairs only with `failure_class: "none"` (PASS, `await_approval`).
 
+A FAIL or WARN that a Loop-Back Rules row sends to another stage records
+`decision: "loop_back"`, not `"proceed"`. `"proceed"` means the stage's own result
+allowed the flow to continue; `"escalate"` is terminal. The target stage is named by
+`suggested_next_step: "loop_back_to:<stage>"`.
+
 This table covers `history[]` entries only. A `fix_requests[]` entry uses its own smaller
 enum (`functional | protocol | coverage_gap | formal_cex`) and always carries
 `retry_strategy: "refine"` — do not look those classes up here, and do not force one of them
@@ -310,7 +315,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "physical-design-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned | await_approval",
+  "decision": "proceed | loop_back | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",
