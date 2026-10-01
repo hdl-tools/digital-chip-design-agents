@@ -248,3 +248,79 @@ def test_module_system_records_a_custom_wrapper_and_a_listing_status():
         "module_discovery no longer states that an empty tools_via_modules may mean the "
         "listing failed rather than that no modules exist"
     )
+
+
+CRITICAL_PATH_COMMANDS = ("yosys", "verilator", "openroad", "sta")
+
+# "critical-path tool (...)" / "critical tool (...)" -- the parenthesised set a rule enumerates.
+CRITICAL_SET = re.compile(r"critical(?:-path)? tools? \(([^)]*)\)")
+PRODUCT_NAMES = re.compile(r"Yosys|Verilator|OpenROAD|OpenSTA")
+
+# Open-Source list entries: - **Verilator** (`verilator`) -- ...
+OPEN_SOURCE_ENTRY = re.compile(r"^- \*\*[^*]+\*\* \(`([^`]+)`\)", re.M)
+
+# Proprietary table: | Synopsys Formality | `fm_shell` (`formality`) | lec | synopsys | probe |
+PROPRIETARY_PRIMARY = re.compile(
+    r"^\|\s*(?:Synopsys|Cadence|Mentor|Siemens)[^|]*\|\s*`([^`]+)`", re.M
+)
+MAPPING_KEY = re.compile(r"^\|\s*`([^`]+)`\s*\|", re.M)
+
+
+def _loop_back_rows(text: str) -> list[str]:
+    block = text.split("## Loop-Back Rules", 1)[1].split("\n## ", 1)[0]
+    return [line for line in block.splitlines() if line.startswith("- ")]
+
+
+def test_critical_path_tools_are_keyed_by_command():
+    """`tool-status.json` keys entries by command, and OpenSTA's command is `sta`
+    (issue #92). A rule naming the product matches no entry and concludes the tool
+    is absent from the table, not that it is missing -- a silent pass on a FAIL
+    gate. Issue #86 is the companion: the loop-back that gate used could never
+    change a tool's status, because `tool_installation` never runs installs."""
+    skill = _read(INFRA_SKILL)
+    agent = _read(INFRA_AGENT)
+
+    # 1. No enumerated critical-path set may name a product. This is the assertion
+    #    that would have caught the third site, added by the #87 fix.
+    for found in CRITICAL_SET.findall(skill):
+        assert not PRODUCT_NAMES.search(found), (
+            f"critical-path set names a product rather than a command: ({found}) -- "
+            "tool-status.json has no entry keyed 'OpenSTA'"
+        )
+
+    # 2. The commands are grounded in the authoritative Open-Source list, so the set
+    #    cannot drift from the table it is supposed to key against.
+    listed = set(OPEN_SOURCE_ENTRY.findall(skill))
+    for command in CRITICAL_PATH_COMMANDS:
+        assert command in listed, (
+            f"critical-path command {command!r} is not listed as a command in the "
+            "Open-Source tool table"
+        )
+
+    # 3. No loop-back row may route a missing critical tool back to tool_installation:
+    #    that stage only generates install scripts and never executes them, so the
+    #    condition cannot change and the cap is spent on identical checks (issue #86).
+    #    Matched on the closing paren so MISSING_LOAD_MODULE rows are not caught, and
+    #    on the row's target rather than its prose -- an escalation row may legitimately
+    #    name the stage while explaining why looping back to it cannot work.
+    for row in _loop_back_rows(agent):
+        if "critical tool MISSING)" in row and "\u2192" in row:
+            target = row.split("\u2192", 1)[1].strip()
+            assert not target.startswith("tool_installation"), (
+                "loop-back routes a missing critical tool to tool_installation, which "
+                f"never installs anything, so the loop cannot succeed: {row.strip()!r}"
+            )
+
+    # 4. Every proprietary tool's module-mapping row is keyed on its primary command.
+    #    Formality's was keyed on the legacy `formality` while #82 made `fm_shell`
+    #    primary, so the module upgrade silently skipped it on a modern install.
+    stage = skill.split("## Stage: module_discovery", 1)[1].split(
+        "## Stage: tool_installation", 1
+    )[0]
+    table = stage.split("#### Module-to-tool mapping table", 1)[1].split("#### Rules", 1)[0]
+    mapping_keys = set(MAPPING_KEY.findall(table))
+    for primary in PROPRIETARY_PRIMARY.findall(skill):
+        assert primary in mapping_keys, (
+            f"proprietary primary command {primary!r} has no module-mapping row keyed "
+            "on it, so module_discovery cannot upgrade its tool-status entry"
+        )

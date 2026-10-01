@@ -44,7 +44,7 @@ built for one dialect is not valid for another of the same role.
 | Synopsys Design Compiler (`dc_shell`) | `synthesis` | `synopsys` |
 | Cadence Innovus (`innovus`) | `physical_design` | `cadence` |
 | Synopsys PrimeTime (`pt_shell`) | `sta` | `synopsys` |
-| Synopsys Formality (`formality`) | `lec` | `synopsys` |
+| Synopsys Formality (`fm_shell`, alt `formality`) | `lec` | `synopsys` |
 
 > Proprietary tools not found in PATH may still be available via a module system — classic
 > Environment Modules or a site-local `module` wrapper. The `module_discovery` stage classifies
@@ -59,7 +59,7 @@ built for one dialect is not valid for another of the same role.
 - module_discovery WARN (`module_listing` UNAVAILABLE and critical tool MISSING) → escalate: "<module_system> module system at $MODULESHOME could not be listed; <tools> may be available via modules and were never checked. Re-run from a shell where `module` resolves — bash: `source $MODULESHOME/module.sh`, tcsh: `source $MODULESHOME/module.csh` — then re-run module_discovery"
 - module_discovery (one invocation-ladder rung fails)           → advance to the next rung; only an exhausted ladder is a WARN
 - environment_validation FAIL (python_env.type == module, module unloaded) → escalate: "Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation"
-- environment_validation FAIL (critical tool MISSING)           → tool_installation    (max 2×)
+- environment_validation FAIL (critical tool MISSING)           → escalate: "Critical tool(s) `<tools>` MISSING; per-tool install scripts were generated in install-missing-tools/. Review and run them, then re-run environment_validation. tool_installation only generates scripts and never executes them, so no retry can change this status."
 - environment_validation WARN (critical tool MISSING_LOAD_MODULE)    → escalate: instruct user to source load-modules.sh and re-run
 - environment_validation WARN (same-role/different-dialect coexistence) → proceed (report the WARN in the sign-off summary; never blocks sign-off)
 - wrapper_deployment FAIL (permission denied)                   → escalate with `sudo chmod +x plugins/infrastructure/tools/*.sh`
