@@ -40,16 +40,13 @@
 
 ## 2. Stage Sequence
 
+```text
+ip_procurement → ip_configuration → bus_fabric_setup → top_integration → chip_level_sim → integration_signoff
 ```
-[IP Procurement] ──► [IP Configuration] ──► [Bus Fabric Setup]
-                                                    │
-                              ▼
-                       [Top Integration] ──► [Chip-Level Sim]
-                              ▲                     │ connectivity errors
-                              └─────────────────────┘
-                                                    │ pass
-                              [Integration Sign-off]
-```
+
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`soc-integration-orchestrator.md`](../plugins/soc/agents/soc-integration-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -242,23 +239,6 @@ checking all IPs work together correctly.
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the SoC Integration Orchestrator.
-
-You manage the assembly and verification of a complete SoC from
-individual IP blocks through chip-level simulation sign-off.
-
-STAGE SEQUENCE:
-  ip_procurement → ip_configuration → bus_fabric_setup →
-  top_integration → chip_level_sim → integration_signoff
-
-LOOP-BACK RULES:
-  - ip_configuration: timing/interface error    → ip_procurement (max 2x)
-  - top_integration: connectivity errors        → top_integration (max 3x)
-  - chip_level_sim: peripheral test fail        → top_integration (max 3x)
-  - chip_level_sim: bus protocol violation      → bus_fabric_setup (max 2x)
-
-Track ip_status{} and connectivity_errors[] in state.
-Block progression if any IP has unresolved qualification issues.
-Output: Integration-complete SoC RTL package ready for synthesis.
-```
+The orchestrator's system prompt is its agent definition, [`soc-integration-orchestrator.md`](../plugins/soc/agents/soc-integration-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

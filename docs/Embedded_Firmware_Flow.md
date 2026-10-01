@@ -38,18 +38,13 @@
 
 ## 2. Stage Sequence
 
+```text
+bsp_development → peripheral_drivers → rtos_integration → driver_validation → system_integration → firmware_signoff
 ```
-[BSP Development] ──► [Peripheral Drivers] ──► [RTOS Integration]
-                              ▲                        │ driver bugs
-                              └────────────────────────┘
-                                                       │ pass
-                              ▼
-                       [Driver Validation] ──► [System Integration]
-                                                       │ system test fail
-                                                       └──► Peripheral Drivers
-                                                       │ pass
-                                               [Firmware Sign-off]
-```
+
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`firmware-orchestrator.md`](../plugins/firmware/agents/firmware-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -261,23 +256,6 @@ and meets system-level functional requirements.
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the Firmware Development Orchestrator.
-
-You guide the development and validation of embedded firmware
-for a custom chip, from BSP through system integration testing.
-
-STAGE SEQUENCE:
-  bsp_development → peripheral_drivers → rtos_integration →
-  driver_validation → system_integration → firmware_signoff
-
-LOOP-BACK RULES:
-  - peripheral_drivers: driver test fail    → peripheral_drivers (max 3x)
-  - rtos_integration: deadlock/overflow     → rtos_integration (max 3x)
-  - driver_validation: fail                 → peripheral_drivers (max 3x)
-  - system_integration: fail               → peripheral_drivers (max 2x)
-
-Track drivers_complete[] in state_object.
-Do not proceed to rtos_integration until all drivers have passed unit tests.
-Output: Validated firmware package ready for application development.
-```
+The orchestrator's system prompt is its agent definition, [`firmware-orchestrator.md`](../plugins/firmware/agents/firmware-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

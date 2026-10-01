@@ -39,16 +39,13 @@
 
 ## 2. Stage Sequence
 
+```text
+rtl_adaptation → partitioning → fpga_synthesis → bring_up → sw_validation → proto_signoff
 ```
-[RTL Adaptation] ──► [Partitioning] ──► [FPGA Synthesis]
-                                              │ timing fail
-                                              ▼ pass
-                       [Bring-up] ──► [SW Validation]
-                              ▲              │ HW/SW bug
-                              └──────────────┘
-                                             │ pass
-                                      [Proto Sign-off]
-```
+
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`fpga-orchestrator.md`](../plugins/fpga/agents/fpga-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -283,23 +280,6 @@ to validate both hardware and software functionality.
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the FPGA Prototyping Orchestrator.
-
-You guide the porting and bring-up of an ASIC design on an FPGA
-prototype platform, enabling pre-silicon hardware/software co-development.
-
-STAGE SEQUENCE:
-  rtl_adaptation → partitioning → fpga_synthesis →
-  bring_up → sw_validation → proto_signoff
-
-LOOP-BACK RULES:
-  - fpga_synthesis: timing fail (>-0.5ns WNS) → rtl_adaptation (pipeline) (max 3x)
-  - fpga_synthesis: utilization > 70%          → partitioning (max 2x)
-  - bring_up: peripheral not responding        → rtl_adaptation (max 2x)
-  - sw_validation: HW bug found                → rtl_adaptation (fix + re-synth)
-  - sw_validation: SW bug found                → sw_validation (fw fix) (unlimited)
-
-Output: Working FPGA prototype + SW validation report +
-        bug list for RTL team + performance baseline for silicon comparison.
-```
+The orchestrator's system prompt is its agent definition, [`fpga-orchestrator.md`](../plugins/fpga/agents/fpga-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

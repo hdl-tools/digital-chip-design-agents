@@ -277,7 +277,8 @@ INFRA_AGENT = (
 
 WRAPPER_COUNT = re.compile(
     r"all (\d+) wrappers?\b|(\d+) executable wrapper scripts|"
-    r"wrapper scripts with executable bit set \(target: (\d+)\)",
+    r"wrapper scripts with executable bit set \(target: (\d+)\)|"
+    r'"wrappers": \{ "expected": (\d+)',
     re.I,
 )
 
@@ -320,7 +321,8 @@ MCP_SERVER_SCRIPTS = frozenset({"mcp-adapter.py", "mcp-session-adapter.py", "mcp
 OPTIONAL_MCP_CONFIGS = frozenset({"mcp-memory.json"})
 MCP_COUNT = re.compile(
     r"(\d+) tool-server|(\d+) tool servers|"
-    r"tool-server snippet files written \(target: (\d+)",
+    r"tool-server snippet files written \(target: (\d+)|"
+    r'"snippets_expected": (\d+)|"mcp_target": (\d+)',
     re.I,
 )
 
@@ -863,17 +865,72 @@ def test_rtl_lint_gate_covers_an_aborted_run(path):
 
 
 def test_rtl_flow_doc_and_knowledge_follow_the_agent():
-    """docs/RTL_Design_Flow.md restates the stage sequence by hand, and the knowledge
-    file is read before the first stage - the cheapest place to stop the misroute."""
-    doc = _read(RTL_FLOW_DOC)
-    block = doc.split("STAGE SEQUENCE:", 1)[1].split("LOOP-BACK RULES:", 1)[0]
-    doc_stages = [stage.strip() for stage in block.replace("\n", " ").split("→")]
-    assert doc_stages == _stage_sequence(_read(RTL_AGENT))
-    assert '"design_input_check"' in doc
+    """The flow doc's shared-state object names the new stage (its stage sequence is
+    checked for every flow doc below), and the knowledge file is read before the
+    first stage - the cheapest place to stop the misroute."""
+    assert '"design_input_check"' in _read(RTL_FLOW_DOC)
 
     knowledge = _flat(_read(RTL_KNOWLEDGE))
     for clause in ("first-match-wins", "zero rules ran", "user-override"):
         assert clause in knowledge, f"rtl-design knowledge.md is missing {clause!r}"
+
+
+# --- issue #118: flow docs point at the agent instead of restating its rules ----
+# Each docs/*Flow*.md restated its orchestrator's loop-back rules in a table and a
+# system-prompt block. The agents were corrected (#86, #102, #113, #83) and the
+# docs were not, so 8 of 13 disagreed - three describing loop-backs the agent
+# escalates instead. The agent file is the one copy; the docs link to it.
+
+FLOW_DOCS = {
+    "Architecture_Evaluation_Flow.md": "architecture/agents/architecture-orchestrator.md",
+    "Compiler_Toolchain_Flow.md": "compiler/agents/compiler-orchestrator.md",
+    "DFT_Flow.md": "dft/agents/dft-orchestrator.md",
+    "Embedded_Firmware_Flow.md": "firmware/agents/firmware-orchestrator.md",
+    "Formal_Verification_Flow.md": "formal/agents/formal-orchestrator.md",
+    "FPGA_Emulation_Flow.md": "fpga/agents/fpga-orchestrator.md",
+    "Functional_Verification_Flow.md": "verification/agents/verification-orchestrator.md",
+    "HLS_Flow.md": "hls/agents/hls-orchestrator.md",
+    "Infrastructure_Setup_Flow.md": "infrastructure/agents/infrastructure-orchestrator.md",
+    "Logic_Synthesis_Flow.md": "synthesis/agents/synthesis-orchestrator.md",
+    "Memory_IP_Design_Flow.md": "memory-ip/agents/memory-ip-orchestrator.md",
+    "PD_Flow_Architecture.md": "pd/agents/physical-design-orchestrator.md",
+    "RTL_Design_Flow.md": "rtl-design/agents/rtl-design-orchestrator.md",
+    "SoC_IP_Integration_Flow.md": "soc/agents/soc-integration-orchestrator.md",
+    "STA_Flow.md": "sta/agents/sta-orchestrator.md",
+}
+# A restated rule, in any of the forms the docs used.
+RESTATED_RULES = re.compile(
+    r"LOOP-BACK RULES:|^#+ .*Loop-Back Rules|\|\s*Loops? back to\s*\||"
+    r"^## Failure Escalation|loop back to|→ back to",
+    re.I | re.M,
+)
+
+
+def test_every_flow_doc_is_mapped_to_its_agent():
+    on_disk = {p.name for p in (REPO_ROOT / "docs").glob("*Flow*.md")}
+    assert on_disk == set(FLOW_DOCS), f"unmapped or missing flow docs: {on_disk ^ set(FLOW_DOCS)}"
+
+
+@pytest.mark.parametrize("doc", sorted(FLOW_DOCS))
+def test_flow_docs_do_not_restate_loop_back_rules(doc):
+    text = _read(REPO_ROOT / "docs" / doc)
+    restated = [m.group(0) for m in RESTATED_RULES.finditer(text)]
+    assert not restated, f"docs/{doc} restates loop-back rules: {restated}"
+
+    agent = REPO_ROOT / "plugins" / FLOW_DOCS[doc]
+    assert f"](../plugins/{FLOW_DOCS[doc]})" in text, f"docs/{doc} does not link to {_rel(agent)}"
+    assert "## Loop-Back Rules" in _read(agent), f"{_rel(agent)} has no Loop-Back Rules"
+
+
+@pytest.mark.parametrize("doc", sorted(FLOW_DOCS))
+def test_flow_doc_stage_sequence_matches_the_agent(doc):
+    text = _read(REPO_ROOT / "docs" / doc)
+    section = re.split(r"^#+ (?:\d+\. )?Stage Sequence\s*$", text, maxsplit=1, flags=re.M)
+    assert len(section) == 2, f"docs/{doc} has no Stage Sequence heading"
+    line = next(l for l in section[1].splitlines() if "→" in l)
+    doc_stages = [stage.strip() for stage in line.split("→")]
+    agent = _read(REPO_ROOT / "plugins" / FLOW_DOCS[doc])
+    assert doc_stages == _stage_sequence(agent)
 
 
 # A `.json` artifact a stage promises to produce.

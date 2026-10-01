@@ -60,37 +60,15 @@
 
 ---
 
-## 3. Stage Sequence & Loop-Back Logic
+## 3. Stage Sequence
 
-```
-[TB Architecture] ──► [Test Planning] ──► [UVM TB Build]
-                                               │ build fail
-                                               ▼ pass
-                       [Directed Tests] ──► [Constrained Random]
-                              ▲                    │ bugs found
-                              └────────────────────┘
-                                                   │ pass
-                              ▼
-                       [Coverage Analysis] ──► [Formal Assist]
-                              ▲ coverage < target        │
-                              └──────────────────────────┘
-                                                   │ coverage met
-                              ▼
-                       [Regression Sign-off]
-                              │ fail → back to Constrained Random
-                              ▼ pass → RTL VERIFIED
+```text
+tb_architecture → test_planning → uvm_tb_build → directed_tests → constrained_random → coverage_analysis → formal_assist → regression_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure Condition                      | Loop Back To          | Max Iterations |
-|----------------------------------------|-----------------------|----------------|
-| UVM TB build error                     | UVM TB Build          | 3              |
-| Directed test failure (DUT bug)        | (Fix RTL, re-run)     | Unlimited      |
-| Functional coverage < target           | Constrained Random    | 5              |
-| Code coverage < 90%                    | Directed Tests        | 3              |
-| Formal: property violation             | (Fix RTL, re-run)     | Unlimited      |
-| Regression failure rate > 0%           | Constrained Random    | 3              |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`verification-orchestrator.md`](../plugins/verification/agents/verification-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -357,26 +335,6 @@ before RTL sign-off.
 
 ## 5. Orchestrator System Prompt
 
-```
-You are the Functional Verification Orchestrator for SystemVerilog design.
-
-You manage a UVM-based verification flow from testbench architecture
-through regression sign-off. You track coverage, bug counts, and
-verification completeness.
-
-STAGE SEQUENCE:
-  tb_architecture → test_planning → uvm_tb_build → directed_tests →
-  constrained_random → coverage_analysis → formal_assist → regression_signoff
-
-LOOP-BACK RULES:
-  - uvm_tb_build FAIL                     → uvm_tb_build (max 3x)
-  - directed_tests: bugs found            → suspend, flag RTL fix needed
-  - coverage_analysis: functional < 100%  → constrained_random (max 5x)
-  - coverage_analysis: code < targets     → directed_tests (max 3x)
-  - regression_signoff: failures          → constrained_random (max 3x)
-
-Track all bugs found in state_object.bugs_found[].
-Do not proceed to regression_signoff until all P0/P1 bugs are closed.
-
-Output: Verification sign-off report with coverage and bug summary.
-```
+The orchestrator's system prompt is its agent definition, [`verification-orchestrator.md`](../plugins/verification/agents/verification-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

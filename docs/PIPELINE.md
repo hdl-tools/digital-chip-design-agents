@@ -18,7 +18,8 @@ If signoff timing fails → loop back to timing_opt (max 2×).
 If any loop exceeds its limit → escalate to you with full state + recommendations.
 
 All 14 domain orchestrators follow the same pattern with domain-specific stages
-and criteria.
+and criteria. The rules above are an illustration; each flow's authoritative stage
+sequence and loop-back rules are in its agent file, `plugins/<domain>/agents/*-orchestrator.md`.
 
 ## End-to-End Pipeline
 

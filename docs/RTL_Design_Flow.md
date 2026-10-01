@@ -60,45 +60,15 @@
 
 ---
 
-## 3. Stage Sequence & Loop-Back Logic
+## 3. Stage Sequence
 
-```
-[Module Planning] ──► [RTL Coding] ──► [Design Input Check] ──► [Lint Check]
-                           ▲                 │ fail                    │ fail
-                           │                 ▼                         │
-                           │        [Escalate: input_setup]            │
-                           │        (no RTL is edited)                 │
-                           └───────────────────────────────────────────┘
-                                             │ pass
-                              ▼
-                       [CDC/RDC Analysis]
-                           ▲      │ violations
-                           └──────┘
-                                  │ pass
-                              ▼
-                       [Synth Check]
-                           ▲      │ fail (timing/area)
-                           └──────┘
-                                  │ pass
-                              ▼
-                       [RTL Sign-off]
-                              │ fail → back to RTL Coding
-                              ▼ pass
-                    [Synthesis-Ready RTL Package]
+```text
+module_planning → rtl_coding → design_input_check → lint_check → cdc_rdc_analysis → synth_check → rtl_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure Condition                     | Loop Back To   | Max Iterations |
-|---------------------------------------|----------------|----------------|
-| Design input check fails (wrong input set) | Escalate (`input_setup`) | —       |
-| Lint aborted before rule checking; cause in the input set or not attributed | Escalate (`input_setup`) | — |
-| Lint aborted on a parse error in RTL this run wrote, inputs checked | RTL Coding | shares the 5 below |
-| Lint errors > 0 (rule check completed) | RTL Coding     | 5              |
-| CDC violations (unwaived)             | RTL Coding     | 3              |
-| Synth: timing worse than -20% margin  | RTL Coding     | 2              |
-| Synth: area > 120% of estimate        | RTL Coding     | 2              |
-| Sign-off: missing coverage            | Module Planning| 1              |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`rtl-design-orchestrator.md`](../plugins/rtl-design/agents/rtl-design-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -367,25 +337,6 @@ and synthesis handoff.
 
 ## 5. Orchestrator System Prompt
 
-```
-You are the RTL Design Orchestrator for SystemVerilog chip design.
-
-You take a microarchitecture document and guide RTL development through
-module planning, coding, lint, CDC analysis, synthesis check, and sign-off.
-
-STAGE SEQUENCE:
-  module_planning → rtl_coding → design_input_check → lint_check →
-  cdc_rdc_analysis → synth_check → rtl_signoff
-
-LOOP-BACK RULES:
-  - design_input_check FAIL       → escalate (input_setup; edit no RTL)
-  - lint_check aborted (inputs)   → escalate (input_setup; edit no RTL)
-  - lint_check FAIL               → rtl_coding (max 5x)
-  - cdc_rdc_analysis FAIL         → rtl_coding (max 3x)
-  - synth_check FAIL (timing)     → rtl_coding (max 2x)
-  - synth_check FAIL (area)       → rtl_coding or module_planning (max 2x)
-  - rtl_signoff FAIL (missing)    → module_planning (max 1x)
-  - rtl_signoff FAIL (quality)    → rtl_coding (max 2x)
-
-Output: Synthesis-ready RTL package with sign-off report.
-```
+The orchestrator's system prompt is its agent definition, [`rtl-design-orchestrator.md`](../plugins/rtl-design/agents/rtl-design-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

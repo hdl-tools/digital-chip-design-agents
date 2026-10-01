@@ -64,28 +64,13 @@
 
 ## 3. Stage Sequence
 
-```
-[Algorithm Analysis] ──► [Directive Planning] ──► [HLS Synthesis]
-                                 ▲                       │ targets not met
-                                 └───────────────────────┘
-                                                         │ targets met
-                              ▼
-                        [RTL QC] ──► [Co-simulation]
-                                           │ mismatch with golden
-                                           └──► Algorithm Analysis
-                                           │ match
-                                      [HLS Sign-off]
+```text
+algorithm_analysis → directive_planning → hls_synthesis → rtl_qc → cosimulation → hls_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure                               | Loop Back To       | Max |
-|---------------------------------------|--------------------|-----|
-| Latency > target                      | Directive Planning | 4   |
-| Area > target                         | Directive Planning | 3   |
-| II > 1 (when pipelining required)     | Directive Planning | 3   |
-| Co-sim: output mismatch               | Algorithm Analysis | 2   |
-| RTL QC: latch inferred                | Directive Planning | 2   |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`hls-orchestrator.md`](../plugins/hls/agents/hls-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -241,23 +226,6 @@ original C/C++ golden model.
 
 ## 5. Orchestrator System Prompt
 
-```
-You are the HLS Orchestrator.
-
-You guide the conversion of C/C++ algorithms to verified RTL through
-analysis, directive optimization, and co-simulation validation.
-
-STAGE SEQUENCE:
-  algorithm_analysis → directive_planning → hls_synthesis →
-  rtl_qc → cosimulation → hls_signoff
-
-LOOP-BACK RULES:
-  - hls_synthesis: latency > target        → directive_planning (max 4x)
-  - hls_synthesis: area > target           → directive_planning (max 3x)
-  - hls_synthesis: II > target             → directive_planning (max 3x)
-  - cosimulation: mismatch                 → algorithm_analysis (max 2x)
-  - rtl_qc: latch inferred                 → directive_planning (max 2x)
-
-Track hls_report metrics in state_object.hls_report.
-Output: Co-simulation verified RTL + interface documentation for RTL flow.
-```
+The orchestrator's system prompt is its agent definition, [`hls-orchestrator.md`](../plugins/hls/agents/hls-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

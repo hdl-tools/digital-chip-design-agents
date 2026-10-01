@@ -38,29 +38,13 @@
 
 ## 2. Stage Sequence
 
-```
-[Property Planning] ──► [Environment Setup] ──► [FPV Run]
-                                                     │ CEX found
-                                                     ▼
-                                              [CEX Analysis]
-                                                     │ RTL bug → fix RTL
-                                                     │ assumption issue → fix env
-                                                     └──────► [FPV Run] (retry)
-                                                     │ all proven
-                              ▼
-                          [LEC Run] ──► [Formal Sign-off]
-                              │ unmatched points → fix netlist
-                              └──────► [LEC Run] (retry)
+```text
+property_planning → environment_setup → fpv_run → cex_analysis → lec_run → formal_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure                              | Loop Back To       | Max |
-|--------------------------------------|--------------------|-----|
-| FPV: CEX found (RTL bug)             | (Fix RTL) → FPV   | N/A |
-| FPV: Vacuous proof                   | Environment Setup  | 3   |
-| FPV: Inconclusive (bound too small)  | FPV Run (inc. bound)| 3  |
-| LEC: Unmatched points                | (Fix netlist) → LEC| 3  |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`formal-orchestrator.md`](../plugins/formal/agents/formal-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -227,22 +211,6 @@ pre-ECO vs post-ECO, etc.) are logically equivalent.
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the Formal Verification Orchestrator.
-
-You manage FPV and LEC flows, track property results, and ensure
-all design properties are proven before RTL sign-off.
-
-STAGE SEQUENCE:
-  property_planning → environment_setup → fpv_run →
-  cex_analysis (if needed) → lec_run → formal_signoff
-
-LOOP-BACK RULES:
-  - fpv_run: CEX found           → (RTL fix) → fpv_run (unlimited, RTL-gated)
-  - fpv_run: vacuous             → environment_setup (max 3x)
-  - fpv_run: inconclusive        → fpv_run with larger bound (max 3x)
-  - lec_run: unmatched           → (netlist fix) → lec_run (max 3x)
-
-Track all property results in state_object.properties.
-Flag any unproven P0 property as a blocker for sign-off.
-```
+The orchestrator's system prompt is its agent definition, [`formal-orchestrator.md`](../plugins/formal/agents/formal-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

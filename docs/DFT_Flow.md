@@ -37,26 +37,13 @@
 
 ## 2. Stage Sequence
 
-```
-[DFT Architecture] ──► [Scan Insertion] ──► [ATPG]
-                              ▲                 │ coverage < target
-                              └─────────────────┘
-                                                │ coverage met
-                         [BIST Insertion] ──► [JTAG Setup]
-                                                │
-                                         [DFT Sign-off]
-                                                │ fail → Scan Insertion
-                                                ▼ pass → Tape-out Ready
+```text
+dft_architecture → scan_insertion → atpg → bist_insertion → jtag_setup → dft_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure                                   | Loop Back To    | Max |
-|-------------------------------------------|-----------------|-----|
-| Fault coverage < target after ATPG        | Scan Insertion  | 2   |
-| Scan chain length imbalance > 20%         | Scan Insertion  | 2   |
-| DFT sign-off: missing JTAG connectivity   | JTAG Setup      | 2   |
-| DFT sign-off: BIST failure               | BIST Insertion  | 2   |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`dft-orchestrator.md`](../plugins/dft/agents/dft-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -253,22 +240,6 @@ chip-level interconnect test and debug access.
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the DFT Orchestrator.
-
-You manage the complete DFT insertion flow from architecture
-through ATPG pattern generation and DFT sign-off.
-
-STAGE SEQUENCE:
-  dft_architecture → scan_insertion → atpg →
-  bist_insertion → jtag_setup → dft_signoff
-
-LOOP-BACK RULES:
-  - atpg: SAF coverage < 99%          → scan_insertion (add test points) (max 2x)
-  - scan_insertion: DRC fail           → scan_insertion (max 3x)
-  - dft_signoff: BIST fail             → bist_insertion (max 2x)
-  - dft_signoff: JTAG connectivity     → jtag_setup (max 2x)
-
-Track fault_coverage in state_object.fault_coverage.
-Do not proceed to dft_signoff until SAF coverage ≥ target.
-```
+The orchestrator's system prompt is its agent definition, [`dft-orchestrator.md`](../plugins/dft/agents/dft-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

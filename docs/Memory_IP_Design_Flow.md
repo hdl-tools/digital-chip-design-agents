@@ -60,22 +60,15 @@ Written into `design_state.json` under the `memory_ip` key:
 
 ---
 
-## Stage Sequence & Loop-Back Logic
+## Stage Sequence
 
 ```text
-memory_requirements → macro_selection → array_architecture → redundancy_repair →
-view_generation → integration_prep → memory_signoff
+memory_requirements → macro_selection → array_architecture → redundancy_repair → view_generation → integration_prep → memory_signoff
 ```
 
-| Failing stage | Condition | Loops back to | Max |
-|---|---|---|---|
-| `macro_selection` | no candidate meets access time | `memory_requirements` | 2× |
-| `array_architecture` | area > 120% budget | `macro_selection` | 3× |
-| `array_architecture` | bandwidth < target | `memory_requirements` | 1× |
-| `redundancy_repair` | projected yield < target | `array_architecture` | 2× |
-| `view_generation` | view QA errors > 0 | `macro_selection` | 2× |
-| `integration_prep` | placement/channel infeasible | `array_architecture` | 2× |
-| `memory_signoff` | Vmin margin short | `array_architecture` | 1× |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`memory-ip-orchestrator.md`](../plugins/memory-ip/agents/memory-ip-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ### Sign-off criteria (machine-checkable gates)
 - `view_qa_errors: 0`
