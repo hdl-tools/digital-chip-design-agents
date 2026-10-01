@@ -1,0 +1,19 @@
+{
+  "_comment": "NEGATIVE fixture — intentionally invalid. The schema MUST reject it. Seeded fault: history[0] pairs failure_class 'input_setup' with retry_strategy 'regenerate'. A wrong input set reproduces verbatim on a retry, so input_setup maps to 'escalate' only (issue #83).",
+  "format_version": "1.5",
+  "design_name": "invalid_example",
+  "fix_requests": [],
+  "history": [
+    {
+      "timestamp": "2026-10-01T08:42:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "lint_check",
+      "decision": "loop_back",
+      "confidence": "high",
+      "failure_class": "input_setup",
+      "retry_strategy": "regenerate",
+      "suggested_next_step": "retry_stage",
+      "reason": "seeded fault: retry_strategy should be 'escalate' for input_setup"
+    }
+  ]
+}

@@ -79,6 +79,11 @@ Apply the decision table in the pipeline-orchestration skill (Programmatic branc
   unreliable.
 - If the re-verifier's `failure_class=resource_limit` OR `suggested_next_step=abandon`:
   escalate immediately.
+- If the terminal entry of the re-verifier, or of the RTL orchestrator before it, carries
+  `failure_class=input_setup`: escalate immediately. The tool ran on the wrong inputs
+  (filelist, include path, config, generated headers), so the design was never evaluated: do
+  not open a `fix_request`, do not re-dispatch either orchestrator, and carry the child's
+  `reason` — the input to repoint — into `pending_approval.reason`.
 - If `verification_status.signoff=true` (or `formal_signoff=true` for formal flows) AND no
   new open `fix_requests[]` entry was written: loop converged → proceed to
   `signoff_or_escalate` (success branch).
@@ -91,9 +96,9 @@ Apply the decision table in the pipeline-orchestration skill (Programmatic branc
 2. Reset `cross_domain_iteration_count` to 0. Set `pipeline_session_id` to null.
 3. Append a pipeline-orchestrator history entry with `decision=proceed`, `confidence=high`, `failure_class=none`, `retry_strategy=none`, `suggested_next_step=proceed`, and a one-line convergence summary. Exit.
 
-**Escalation branch** (cap exceeded, RTL abandoned, or unreliable result): perform an atomic RMW of `design_state.json`:
+**Escalation branch** (cap exceeded, RTL abandoned, wrong input set, or unreliable result): perform an atomic RMW of `design_state.json`:
 1. Set `pending_approval = { "type": "escalation", "stage": null, "agent": "pipeline-orchestrator", "reason": "<existing reason or '<failure_class>: fix_request loop exceeded <max_cross_domain_iterations> cross-domain iterations — relax the constraint, raise the cap, or accept current QoR'>", "fix_request_id": "<id>", "last_summary": "<last RTL response diff_summary>", "requires_user": true }`. The `reason` must carry the `failure_class` plus actionable guidance (what the user must supply to unblock — see the Actionable escalation guidance subsection of the pipeline-orchestration skill). If `pending_approval.reason` already exists (e.g., from divergence detection), preserve it; only set the iteration-cap template if `reason` is empty/undefined, or append the iteration-cap text to the existing reason.
-2. Append history entry with `decision=escalate`, `confidence=low`, `failure_class=resource_limit` (cap exceeded) or `functional` (divergence detected) or the re-verifier's `failure_class` if escalating on low confidence, `retry_strategy=escalate`, `suggested_next_step=escalate`, and `reason` summarising the last iterations.
+2. Append history entry with `decision=escalate`, `confidence=low`, `failure_class=resource_limit` (cap exceeded) or `functional` (divergence detected) or `input_setup` (a child reported it) or the re-verifier's `failure_class` if escalating on low confidence, `retry_strategy=escalate`, `suggested_next_step=escalate`, and `reason` summarising the last iterations.
 3. Print a clear escalation message to the user: include the fix_request id, failure class, the actionable guidance (what to supply), summary, and the last RTL diff attempted.
 
 ## Loop-Back Rules
@@ -112,7 +117,7 @@ Each stage must return:
   "stage": "<stage_name>",
   "status": "PASS | FAIL | WARN",
   "confidence": "high | medium | low",
-  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | input_setup | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",
   "qor": {},
   "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
@@ -248,7 +253,7 @@ History entry to append (only at `signoff_or_escalate` — the internal loop bac
   "stage": "signoff_or_escalate",
   "decision": "proceed | escalate",
   "confidence": "high | medium | low",
-  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | input_setup | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<convergence or escalation summary>",

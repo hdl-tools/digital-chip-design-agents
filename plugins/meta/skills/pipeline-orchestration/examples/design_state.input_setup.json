@@ -1,0 +1,58 @@
+{
+  "_comment": "rtl-design run that stopped at design_input_check: a stale generated register-map header tree was listed ahead of the current one on the include path. The run escalates with failure_class input_setup and edits no RTL (issue #83).",
+  "format_version": "1.5",
+  "design_name": "uart_bridge",
+  "created_at": "2026-10-01T08:00:00Z",
+  "updated_at": "2026-10-01T08:42:00Z",
+  "pipeline_config": { "max_cross_domain_iterations": 3, "checkpoints": [] },
+  "pending_approval": null,
+  "approved_checkpoints": [],
+  "constraints": { "clock": { "clk_mhz": 100 } },
+  "fix_requests": [],
+  "rtl": {
+    "top_module": "uart_bridge",
+    "files": ["rtl/uart_bridge.sv", "rtl/uart_regs.sv"],
+    "lint_clean": false,
+    "cdc_clean": false,
+    "unverified": [],
+    "signoff": false
+  },
+  "history": [
+    {
+      "timestamp": "2026-10-01T08:10:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "module_planning",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "retry_strategy": "none",
+      "suggested_next_step": "proceed",
+      "constraint_ref": "clock.clk_mhz",
+      "reason": "2 modules planned; clock.clk_mhz present"
+    },
+    {
+      "timestamp": "2026-10-01T08:35:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "rtl_coding",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "retry_strategy": "none",
+      "suggested_next_step": "proceed",
+      "constraint_ref": null,
+      "reason": "2 modules written"
+    },
+    {
+      "timestamp": "2026-10-01T08:42:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "design_input_check",
+      "decision": "escalate",
+      "confidence": "high",
+      "failure_class": "input_setup",
+      "retry_strategy": "escalate",
+      "suggested_next_step": "escalate",
+      "constraint_ref": null,
+      "reason": "input_setup: regmap_fields.vh resolves from /proj/regmap_gen/output/verilog ahead of /proj/regmap_gen_v2/output/verilog (different content; include search is first-match-wins) - repoint line 3 of rtl/uart_bridge.f to regmap_gen_v2 and re-run; no RTL was edited"
+    }
+  ]
+}

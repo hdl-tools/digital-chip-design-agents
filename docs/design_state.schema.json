@@ -61,8 +61,8 @@
     "confidence": { "enum": ["high", "medium", "low"] },
     "historyFailureClass": {
       "enum": ["none", "functional", "timing", "power_area", "drc_lvs",
-               "coverage_gap", "connectivity", "tool_error", "spec_gap",
-               "resource_limit"]
+               "coverage_gap", "connectivity", "tool_error", "input_setup",
+               "spec_gap", "resource_limit"]
     },
     "retryStrategy": { "enum": ["none", "regenerate", "refine", "escalate"] },
     "suggestedNextStep": {
@@ -141,6 +141,7 @@
         { "if": { "properties": { "failure_class": { "const": "connectivity" } } },  "then": { "properties": { "retry_strategy": { "const": "refine" } } } },
         { "if": { "properties": { "failure_class": { "const": "drc_lvs" } } },       "then": { "properties": { "retry_strategy": { "const": "regenerate" } } } },
         { "if": { "properties": { "failure_class": { "const": "tool_error" } } },    "then": { "properties": { "retry_strategy": { "const": "regenerate" } } } },
+        { "if": { "properties": { "failure_class": { "const": "input_setup" } } },   "then": { "properties": { "retry_strategy": { "const": "escalate" } } } },
         { "if": { "properties": { "failure_class": { "const": "spec_gap" } } },      "then": { "properties": { "retry_strategy": { "const": "escalate" } } } },
         { "if": { "properties": { "failure_class": { "const": "resource_limit" } } },"then": { "properties": { "retry_strategy": { "const": "escalate" } } } }
       ]

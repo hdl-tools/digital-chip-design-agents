@@ -234,7 +234,7 @@ All agents in this system share these configurations:
     "stage": "string",
     "status": "PASS | FAIL | WARN",
     "confidence": "high | medium | low",
-    "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+    "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | input_setup | spec_gap | resource_limit",
     "qor": "object — metrics per skill definition",
     "issues": "array — [{severity, description, fix}]",
     "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
@@ -258,6 +258,7 @@ All agents in this system share these configurations:
 - `coverage_gap` — verification coverage shortfall
 - `connectivity` — CDC/RDC, protocol, or interface mismatch
 - `tool_error` — EDA tool crash, license issue, or infrastructure failure
+- `input_setup` — the tool ran correctly on the wrong inputs (filelist, include path, config, generated headers, library views); always escalates, never retried and never looped back
 - `spec_gap` — missing or ambiguous specification or requirement
 - `resource_limit` — max iterations, max turns, or compute budget exceeded
 
