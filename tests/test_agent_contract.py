@@ -395,6 +395,64 @@ def test_stated_mcp_count_matches_the_mcp_directory():
         assert not bare, f"{_rel(path)}: ambiguous MCP count(s) {bare}"
 
 
+# A metric bullet under `### QoR Metrics to Evaluate`: "- `name`: ...".
+QOR_BULLET = re.compile(r"^- `(\w+)`", re.M)
+
+
+def _agent_qor_keys(text: str) -> set[str]:
+    block = text.split("## Stage Agent Output Format", 1)[1]
+    return set(json.loads(JSON_FENCE.search(block).group(1))["qor"])
+
+
+def test_every_infrastructure_qor_key_is_declared_by_the_stage_that_computes_it():
+    """Issue #104: two stages had no QoR section, so `install_scripts_generated` was
+    declared nowhere, and `dialect_conflicts` was declared by `tool_discovery`
+    although only `environment_validation` rule 7 computes it."""
+    stages = _stage_sections(_read(INFRA_SKILL))
+    declared: dict[str, str] = {}
+    for stage, body in stages.items():
+        section = _subsection(body, "### QoR Metrics to Evaluate")
+        assert section, f"infrastructure stage {stage} has no QoR Metrics to Evaluate"
+        for key in QOR_BULLET.findall(section):
+            assert key not in declared, f"{key} declared by both {declared[key]} and {stage}"
+            declared[key] = stage
+
+    assert declared["dialect_conflicts"] == "environment_validation"
+    assert declared["install_scripts_generated"] == "tool_installation"
+    assert _agent_qor_keys(_read(INFRA_AGENT)) == set(declared), (
+        "the agent's qor block and the stages' declared metrics differ"
+    )
+    # A stage returns only the metrics it owns, so none is obliged to invent a value.
+    assert "omit" in _flat(_read(INFRA_AGENT).split("## Stage Agent Output Format", 1)[1].split("\n## ", 1)[0])
+
+
+TOOL_COMMANDS = re.compile(r"^\| `([^`]+)` \|", re.M)
+ROOT_VAR_ROW = re.compile(r"^\s+- `([^`]+)` \([^)]*\) → `([A-Z_]+)`", re.M)
+
+
+def test_modulefile_root_vars_are_keyed_by_command():
+    """Issue #103: the table was keyed by product name, so the `LLVM` row could never
+    match the `llvm-config` entry and a generated LLVM modulefile omitted LLVM_DIR."""
+    stage = _stage_sections(_read(INFRA_SKILL))["tool_installation"]
+    commands = set(TOOL_COMMANDS.findall(_subsection(stage, "### Package Name Mapping Table")))
+    rows = dict(ROOT_VAR_ROW.findall(stage))
+    assert len(rows) >= 4, f"expected the root-var rows keyed by command, found {rows}"
+    unknown = set(rows) - commands
+    assert not unknown, f"root-var rows keyed by something other than a command: {unknown}"
+    assert rows["llvm-config"] == "LLVM_DIR"
+    assert "`cocotb-config`" in stage.split("Tool-specific root vars", 1)[1].split("###", 1)[0]
+
+
+def test_custom_module_system_is_warned_about_tcl_modulefiles():
+    """Issue #99: both warnings tested `module_system == "none"` only, so a `custom`
+    wrapper - the case least likely to read a TCL-classic modulefile - got none, and
+    the `$MODULEPATH` registration was presented as universal."""
+    flat = _flat(_stage_sections(_read(INFRA_SKILL))["tool_installation"])
+    assert flat.count('module_system == "custom"') >= 2, "both guards must name custom"
+    assert "TCL classic" in flat and "module_system_detail" in flat
+    assert "site's own documentation" in flat, "custom registration must not reuse $MODULEPATH"
+
+
 MODULE_SYSTEM_ENUM = frozenset({"tclmod", "custom", "none"})
 # Only the enum form matches: `"module_system": null` in the run-state object has no quotes,
 # and `module_system: "none"` in prose does not quote the key.

@@ -114,10 +114,12 @@ Each stage must return:
   "qor": {
     "tools_detected": 0,
     "tools_missing": 0,
+    "proprietary_found": 0,
     "module_system_detected": false,
     "module_listing_ok": false,
     "tools_found_via_modules": 0,
     "proprietary_versioned": 0,
+    "install_scripts_generated": 0,
     "dialect_conflicts": 0,
     "wrappers_deployed": 0,
     "mcp_servers_configured": 0
@@ -127,6 +129,12 @@ Each stage must return:
   "output": {}
 }
 ```
+
+The `qor` block above lists every key any stage can return. Each stage returns **only** the
+keys declared under its own `### QoR Metrics to Evaluate` in the skill, and omits the rest.
+It never returns `0` or `null` for a key it does not own: a placeholder `0` is indistinguishable
+from a measured zero. For example, `dialect_conflicts` comes from `environment_validation`
+only, and `install_scripts_generated` from `tool_installation` only.
 
 ## Behaviour Rules
 1. Read the infrastructure skill before executing each stage
