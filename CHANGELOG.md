@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased] — issue #76: no orchestrator had guidance for jobs that outlive a turn
+
+### Added
+
+- **New shared section `## Long-Running Jobs`**, synced into all 16 orchestrators and the
+  Codex/Gemini/Copilot headers by `tools/sync_agent_sections.py`. Before this, only
+  `physical-design-orchestrator` said anything about jobs that outlive a turn (which files to
+  read after an ORFS/LibreLane flow finishes), and nothing anywhere covered background
+  execution, polling cadence, telling a slow job from a hung one, or handing off a job that will
+  outlast the turn budget. Measured cost: `firmware-orchestrator` spent ~250k tokens busy-waiting
+  on its own background build, never finished verification, and shipped a failing suite — while
+  its own sign-off criteria demand a 24-hour stress test, the longest job in the family. A second
+  measured case: a Verilated SoC model compiled for ~20 minutes with a completely static log
+  while `cc1plus` sat at 99.9% CPU, so log silence had to be named explicitly as a normal state,
+  not evidence of a hang. The new section: background the job and record its id/log; check at an
+  interval matched to the job, not a tight loop; confirm liveness before calling a quiet log
+  hung; stop and hand off (job id, log, invocation, remaining stages) if the job will outlive the
+  turn budget; and never report a result from a job you have not read. Deliberately does **not**
+  raise any orchestrator's `maxTurns` — more turns without a wait protocol just buys a longer
+  stall; the protocol is the fix.
+- **Test** `tests/test_agent_contract.py::test_long_running_jobs_guidance_present`, so the
+  section's load-bearing clauses cannot be trimmed back out of the canonical block.
+
 ## [Unreleased] — issue #102: `lec_run` looped back to a stage that cannot fix a netlist
 
 ### Fixed

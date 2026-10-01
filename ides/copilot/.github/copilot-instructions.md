@@ -27,6 +27,10 @@ memory IP design, compiler toolchain, embedded firmware, and FPGA emulation.
 - Separate measured values from inference.
 - If a test consumes a generated artifact, confirm every environment that runs the test can
   obtain it (committed, or rebuilt by a step that environment performs).
+- For a job that outlives a turn, background it with its output captured and check back at an
+  interval matched to the job; a quiet log is not a hung job.
+- If such a job will outlive your turn budget, stop and report what is running, its log, and
+  what remains, rather than waiting on it unverified.
 <!-- END SHARED:ide-guards -->
 
 ## Domain-Specific Rules

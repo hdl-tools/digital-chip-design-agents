@@ -165,6 +165,27 @@ These rules apply to every stage and take precedence over keeping the flow movin
    `signoff_achieved: false` in the experience record.
 <!-- END SHARED:stage-gating -->
 
+<!-- BEGIN SHARED:long-running-jobs (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## Long-Running Jobs
+Builds, simulations, and PD/formal/verification flows routinely exceed a single turn.
+
+1. **Background it, and record how to find it again.** Redirect stdout and stderr to a log
+   file and capture the job id. Never run a long job in the foreground, and never busy-poll it
+   in a tight loop — a wait loop spends the same turn budget as real work and produces nothing.
+2. **Check at intervals matched to the job.** Minutes for a compile or simulation, not seconds.
+   Each check costs a turn; pick a cadence the job's expected duration can actually afford.
+3. **A quiet log is not a hung job.** A compile or simulation can sit with a completely static
+   log for many minutes while its process consumes CPU normally — that is a normal state, not
+   a hang. Before concluding a hang, confirm liveness (the process still running and consuming
+   CPU, or its output files still growing); log silence alone is evidence of neither state.
+4. **If the job will outlive your turn budget, stop and hand it over.** Report what is running,
+   its job id and log path, the invocation that started it, how to tell when it has finished,
+   and exactly which stages and Sign-off Criteria remain. A partial report naming the job is far
+   more useful than an unverified success claim.
+5. **Never report a result you have not read.** A gate whose job is still running is NOT RUN —
+   see the Reporting Contract's rule on this. "Still running" is a valid, useful answer.
+<!-- END SHARED:long-running-jobs -->
+
 <!-- BEGIN SHARED:reporting-contract (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Reporting Contract
 Applies to every report you make: a stage result, an escalation, and the final summary.
