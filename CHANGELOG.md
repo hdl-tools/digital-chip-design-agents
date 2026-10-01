@@ -1,5 +1,63 @@
 # Changelog
 
+## [Unreleased] — issue #107: `rtl-design` rules contradicted safe FSM recovery, and slang lint could not see latches
+
+### Fixed
+
+- **Synthesis Safety rule 3 mandated `unique case`** in place of `casez`/`casex`, which cannot
+  coexist with the `default` recovery arm an FSM needs: `unique` asserts the illegal state
+  cannot occur, `default` exists to recover when it does, and slang flags the pair
+  (`-Wcase-redundant-default`). The rule now forbids `casex`, unjustified `casez` and
+  `full_case`/`parallel_case` — its real intent — and a new rule 7 states the FSM policy: plain
+  `case` + `default` to a recovery state by default, or `unique case` without `default` plus a
+  recovery assertion, never both.
+- **Synthesis Safety rule 2 forbade every `initial` block in ASIC RTL**, including the
+  elaboration-time parameter assertion that stops an illegal configuration (a gray-coded FIFO
+  at depth 12) from building broken logic. Guarded assertions (`initial` + `$fatal` inside
+  `// synthesis translate_off` / `translate_on`) are now the one exception.
+- **The skill and orchestrator named slang with no invocation, and the command in
+  `memory/rtl-design/knowledge.md` lacked `-Weverything`.** `lint_check` puts latches and multiply-driven signals at ERROR level, but
+  `slang --lint-only` skips elaboration and drops both diagnostics, so a latch reports as clean;
+  `-Wall` is not a slang option at all. The skill, the orchestrator and the knowledge seed now
+  give `slang -Weverything --ignore-unknown-modules` and forbid `--lint-only`. Both slang
+  behaviours are taken from the transcripts in #107 and from `hdl-rtl-skill`'s generated
+  `hooks/slang-warnings.txt`; they were not re-run for this change.
+- **`hls` `rtl_qc` applied "the same rules as the rtl-design skill" to generated RTL**, naming
+  and style included, which a generator will not follow. It now lints for correctness only and
+  states that its latch check needs slang full elaboration.
+- **A `fix_request` could be closed `fixed` without the fix being linted.** `rtl-design`
+  Behaviour Rule 10 now requires `lint_check` to pass first and the result to be recorded in
+  `rtl_response.diff_summary`; `pipeline-orchestrator` `await_completion` says how to treat a
+  fix that arrives without one.
+
+### Added
+
+- **New shared section `## RTL Lint Gate`**, synced into the five orchestrators that write,
+  modify or generate RTL (`rtl-design`, `fpga`, `soc`, `memory-ip`, `hls`). Only `rtl-design`
+  loads the `rtl-design` skill, so the other four had a "lint clean" QoR line and no rules
+  behind it. The gate covers slang invocation, filelist context, stubbed modules, evidence
+  tiers (tool-proven vs `UNVERIFIED`), and three guards on auto-fixes: regression, no progress,
+  and intent drift.
+- **`rtl-design` `lint_check` rules 6–11** carry the same rules for IDEs that load skills
+  without agents, plus a severity mapping (`BLOCKER`/`HIGH` → ERROR, `MEDIUM` → WARNING) so
+  `lint_waivers.csv` keeps working with tools that report their own levels.
+- **Naming precedence** in `rtl-design`: the suite's conventions are the project standard for
+  new RTL, an existing file's conventions win when modifying it, and `_i`/`_o` is permitted but
+  not required. Defaults are unchanged.
+- **Per-domain RTL rules**: `fpga` `rtl_adaptation` (re-lint after loop-back edits, `initial`
+  only in FPGA-only code, vendor primitives are stubs), `soc` `top_integration` (named ports,
+  lint in full-filelist context, black-boxed IP is a stub), `memory-ip` (wrapper RTL follows
+  the RTL rules; the behavioural model is simulation-only and exempt).
+- **`hdl-rtl-skill` as an optional companion**, not a dependency. It is Claude-Code-only and
+  installs by symlink plus a hand-pasted hook, so depending on it would leave the Copilot,
+  Gemini, OpenCode and Codex adapters with nothing. The rules above are absorbed here; its
+  `rtl-lint` runner, templates and catalogue are used when present and skipped silently when
+  not.
+- **Tests** `tests/test_agent_contract.py::test_slang_is_never_invoked_with_lint_only_or_wall`,
+  `::test_rtl_lint_gate_present_in_rtl_authoring_agents` and
+  `::test_rtl_design_rules_do_not_contradict_safe_fsm_recovery`, so the slang flags, the gate's
+  load-bearing clauses and the two amended rules cannot regress.
+
 ## [Unreleased] — issue #76: no orchestrator had guidance for jobs that outlive a turn
 
 ### Added

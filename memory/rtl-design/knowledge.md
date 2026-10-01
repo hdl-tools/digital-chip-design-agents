@@ -18,8 +18,11 @@
 
 - `verilator --lint-only -Wall -Wno-DECLFILENAME <files>` — `-Wno-DECLFILENAME` suppresses the
   common false positive where file name doesn't match module name; keep all other `-Wall` checks.
-- `slang --allow-use-before-declare --strict-driver-checking <files>` — `--strict-driver-checking`
-  catches multi-driven signals that Verilator misses.
+- `slang -Weverything --ignore-unknown-modules --allow-use-before-declare --strict-driver-checking <files>`
+  — full elaboration; `--strict-driver-checking` catches multi-driven signals that Verilator misses.
+  Never add `--lint-only` to a slang run: it skips elaboration and silently drops inferred-latch
+  and multiple-driver diagnostics, so a latch reports as clean. `-Wall` is a Verilator and
+  Icarus flag, not a slang one — slang rejects it; use `-Weverything`.
 - `sv2v --top <module> <files> > out.v && iverilog -Wall out.v` — useful for catching
   SystemVerilog elaboration issues in tools that don't support SV directly.
 

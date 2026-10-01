@@ -155,6 +155,7 @@ for STA, behavioural models for verification.
 5. Define the scrubbing policy where ECC is used: background scrub interval must be short enough that the probability of a second bit flip accumulating in one word stays below the FIT-rate target
 6. Determine Vmin and assist-circuit requirements per bitcell type — read assist (wordline underdrive, negative bitline) and write assist (boosted wordline, collapsed cell supply) are what make low-Vmin operation viable, and they cost area and complexity
 7. Verify the resulting architecture still meets the bandwidth figure computed at `memory_requirements`; loop back rather than compensating downstream
+8. Where the wrapper is delivered as RTL rather than only specified (byte-enable decode, pipelining, ECC encode/decode), it is synthesisable RTL: it follows the rtl-design skill's coding rules and must pass lint with 0 errors. The macro it instantiates is a stub in that lint run — undriven-net findings on the macro's outputs are not wrapper bugs
 
 ### QoR Metrics to Evaluate
 - Bandwidth achieved (GB/s) vs. target
@@ -202,7 +203,7 @@ for STA, behavioural models for verification.
 3. Verify every port has complete timing arcs in the `.lib`: setup/hold on all inputs, clock-to-Q on all outputs. Missing arcs cause STA to under-report violations rather than error out
 4. Check corner count matches the required PVT list exactly; a `.lib` set characterised at only typical is not sign-off usable
 5. Verify `.lef` obstruction layers are complete — missing obstructions let the router place wires over the array and produce DRC or noise failures found only at PD
-6. Confirm the behavioural model matches the timing model: it must enforce the same setup/hold via timing checks and must propagate X on the write-during-read collision policy fixed at `array_architecture`. A permissive behavioural model hides bugs until silicon
+6. Confirm the behavioural model matches the timing model: it must enforce the same setup/hold via timing checks and must propagate X on the write-during-read collision policy fixed at `array_architecture`. A permissive behavioural model hides bugs until silicon. The behavioural model is simulation-only: `initial` blocks, `#delay` and timing checks are correct in it, and the RTL synthesis-safety rules and lint gate do not apply to it
 7. Run macro-level DRC/LVS on the generated layout where the flow produces layout (OpenRAM, custom); skip for vendor pre-hardened macros where these are pre-signed-off
 
 ### QoR Metrics to Evaluate

@@ -53,6 +53,13 @@ Read `design_state.json`. Verify the `fix_request` entry now has `status=fixed` 
 `rtl_response` populated. If `status` is still `claimed` (RTL terminated early without
 closing), mark the entry `status=abandoned` and proceed to escalation.
 
+The RTL orchestrator sets `status=fixed` only after the fix passes its own `lint_check`, and
+records the post-fix lint result in `rtl_response.diff_summary`. A fix it could not make
+lint-clean, or one its lint gate reverted for regression or intent drift, arrives here still
+`claimed` and takes the abandoned branch above — do not re-dispatch it. If `status=fixed` but
+`rtl_response.diff_summary` carries no lint result, the fix is unverified: say so in the
+`history[]` `reason` and still run `re_verify`, which is the check that decides.
+
 ### re_verify
 Spawn the originating orchestrator — determined by `fix_request.created_by`:
 - `verification-orchestrator` → `subagent_type: chip-design-verification:verification-orchestrator`

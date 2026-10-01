@@ -86,6 +86,19 @@ provides functional and architectural validation months before silicon.
 3. Maintain same ratio between clock domains
 4. Use BUFG for all global clocks — never route clocks on data fabric
 
+### Adapted RTL Rules
+1. Adapted RTL meets the rtl-design skill's `lint_check` ERROR rules (latches, multiple
+   drivers, undriven outputs). Re-lint after every edit, including edits made on a loop-back
+   from `fpga_synthesis`, `bring_up` or `sw_validation`
+2. Match the conventions of the ASIC file being adapted; do not restyle RTL you are only
+   retargeting
+3. `initial` blocks are permitted for FPGA memory and register initialisation, but only in
+   FPGA-only files or under an FPGA-specific `` `ifdef `` — the ASIC source must stay free of
+   them
+4. Vendor primitives and macros (`XPM_MEMORY`, MMCM, BUFG, IOBUF) are unknown modules to an
+   open-source linter. Lint with unknown modules ignored and treat undriven-net findings on
+   their outputs as stub artefacts, not errors
+
 ### QoR Metrics to Evaluate
 - No ASIC-specific primitives remain in adapted RTL
 - All memories mapped to BRAM or external DDR

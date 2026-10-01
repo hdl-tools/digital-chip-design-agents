@@ -50,7 +50,8 @@ and synthesis handoff.
 
 ### Open-Source
 - **Verilator** (`verilator --lint-only`) — fast lint and simulation
-- **Slang** (`slang`) — modern, standards-compliant SV parser and elaborator
+- **Slang** (`slang`) — modern, standards-compliant SV parser and elaborator; lint with
+  `slang -Weverything --ignore-unknown-modules` (full elaboration — see `lint_check` rule 6)
 - **Surelog** (`surelog`) — SystemVerilog pre-processor and front-end for Yosys
 - **sv2v** (`sv2v`) — SystemVerilog-to-Verilog converter
 - **Icarus Verilog** (`iverilog`) — Verilog/SV simulator for quick sanity checks
@@ -101,14 +102,32 @@ and synthesis handoff.
 - Next-state:   `signal_d` suffix
 - Parameters:   `UPPER_SNAKE_CASE`
 - Modules/Signals: `lower_snake_case`
+- Port direction: `_i` / `_o` suffixes are permitted, not required
+
+Precedence: these conventions are this suite's project standard for new RTL. When modifying
+an existing file, match that file's conventions instead — one block in a different style is a
+worse outcome than the deviation — and record the difference as informational, not as a
+lint finding.
 
 ### Domain Rules — Synthesis Safety
 1. No delays (#) in RTL — simulation only
-2. No initial blocks in ASIC RTL
-3. Use `unique case` with explicit don't-cares instead of casez/casex
+2. No `initial` blocks for logic in ASIC RTL. One exception: an elaboration-time parameter
+   assertion (`initial` + `$fatal` on an illegal parameter value), wrapped in
+   `// synthesis translate_off` / `// synthesis translate_on` so it is never read as
+   synthesised logic. A parameterised block must refuse to elaborate on a value it cannot
+   implement (e.g. a gray-coded FIFO at a non-power-of-two depth) rather than build broken logic
+3. No `casex`; `casez` only with a written justification; no `full_case` / `parallel_case`
+   pragmas. Write don't-care decodes as explicit `case` items
 4. Flag any net with fanout > `design_state.constraints.timing.fanout_max` (default: 32) for buffering intent review
 5. No combinational loops — will cause synthesis errors
 6. Pipeline registers: clearly marked with `_q` suffix at each stage
+7. FSM case policy — pick one per FSM and state it in a comment:
+   - **Default:** plain `case` with a `default` arm that goes to a recovery or error state.
+     Illegal states are reachable in silicon (SEU, X during bring-up); the FSM must not wedge
+   - **Alternative:** `unique case` with no `default`, plus a concurrent assertion that covers
+     illegal-state recovery. Keeps the simulation/formal uniqueness check
+   - Never `unique case` together with `default`: `unique` asserts the illegal state cannot
+     occur, `default` exists to recover when it does (slang: `-Wcase-redundant-default`)
 
 ### Domain Rules — CDC
 1. Two-FF synchroniser for every single-bit CDC crossing
@@ -163,6 +182,26 @@ a fallback.
 3. All waivers: must include signal name, rule ID, justification, approver
 4. No ERROR-level waivers without architect approval
 5. All waivers logged in `lint_waivers.csv`
+6. Slang must run full elaboration: `slang -Weverything --ignore-unknown-modules <files>`.
+   Never pass `--lint-only` — it skips elaboration and silently drops inferred-latch and
+   multiple-driver diagnostics, both ERROR level here, so a latch reports as clean. `-Wall` is
+   not a slang option. Verilator is unaffected: `verilator --lint-only -Wall` is correct
+7. Lint in filelist context: compile the block's filelist as one unit, then report findings
+   for the files written or changed. A file linted alone reports its submodules as unknown and
+   its cross-file widths as unchecked
+8. A module missing from the filelist (library cell, hard macro, black-boxed IP) is a stub.
+   Undriven or unused findings on nets that only a stub drives are not ERRORs; record them as
+   informational and name the stubbed module
+9. Every finding states its evidence. Tool-proven: quote the tool's message and rule name.
+   Reasoned without a tool run: label it `UNVERIFIED`. A clean lint run proves nothing about
+   CDC, reset sequencing, FSM reachability, protocol deadlock or arithmetic overflow
+10. Fixing a finding must not change what the module does. After each fix compare the set of
+    findings, not the count: a new ERROR is a regression — revert it; the same findings twice
+    running is no progress — escalate rather than spend the remaining iterations; a fix that
+    changes behaviour to silence a warning (narrowing a signal to stop a truncation warning
+    implements the truncation) is intent drift — revert and escalate
+11. Where a tool reports its own severities, map them onto the levels above so waivers still
+    apply: `BLOCKER` / `HIGH` → ERROR, `MEDIUM` → WARNING, `LOW` / `INFO` → informational
 
 ### QoR Metrics to Evaluate
 - ERROR count: must be 0 before proceeding
@@ -237,7 +276,7 @@ a fallback.
 - [ ] Synthesis check: WNS within acceptable range
 - [ ] All ports connected in integration
 - [ ] SVA assertions in place for key properties
-- [ ] Code review completed
+- [ ] Code review completed; any CDC, reset or protocol conclusion not closed by a tool run is recorded as `UNVERIFIED`
 - [ ] File list and compile order documented
 - [ ] ICG cells inserted for all high/moderate gating opportunity domains
 - [ ] Always-on domains annotated with `/* always-on: <reason> */`
@@ -294,3 +333,13 @@ Create the file and parent directories if they do not exist.
 If `mcp__plugin_ecc_memory__add_observations` is available in this session, emit each
 applied fix as an observation to entity `chip-design-rtl-design-fixes` after writing to
 `experiences.jsonl`. Skip silently if the tool is absent — JSONL is the canonical record.
+
+### Optional: hdl-rtl-skill
+If the `hdl-rtl-skill` skills (`rtl-style-guide`, `rtl-golden-templates`, `rtl-anti-patterns`,
+`rtl-review-signoff`, `rtl-workflow`) are available in this session, use them alongside this
+skill: its `rtl-lint` script as the slang runner at `lint_check` (it applies rules 6–8 and
+reports the severities mapped by rule 11), its golden templates as the starting point at
+`rtl_coding` for FIFOs, synchronisers, arbiters, FSMs and ready/valid stages, and its
+anti-pattern catalogue during code review. The rules in this file are the project standard
+its style guide defers to, so where the two differ — clock/reset naming, `_i`/`_o` — follow
+this file. Skip silently if it is absent — every rule above stands on its own.

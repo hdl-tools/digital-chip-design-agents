@@ -394,6 +394,81 @@ def test_lec_mismatch_escalates_instead_of_looping_back_to_lec_run():
     pytest.fail("lec_run: unmatched points row not found in Loop-Back Rules")
 
 
+KNOWLEDGE_FILES = sorted(REPO_ROOT.glob("memory/*/knowledge.md"))
+RTL_SKILL = REPO_ROOT / "plugins" / "rtl-design" / "skills" / "rtl-design" / "SKILL.md"
+
+# A backticked command line that invokes slang, e.g. `slang -Weverything top.sv`.
+# Prose that names a flag on its own (`--lint-only`) is how the rules forbid it and
+# is allowed; only a slang command carrying the flag is a recommendation to run it.
+SLANG_COMMAND = re.compile(r"`(slang\s[^`]*)`")
+SLANG_BAD_FLAGS = ("--lint-only", "-Wall")
+
+# Orchestrators that write, modify or generate synthesisable RTL (issue #107).
+RTL_AUTHORING_AGENTS = frozenset({"rtl-design", "fpga", "soc", "memory-ip", "hls"})
+
+
+@pytest.mark.parametrize(
+    "path",
+    AGENT_FILES + SKILL_FILES + KNOWLEDGE_FILES + [SHARED_SECTIONS],
+    ids=_rel,
+)
+def test_slang_is_never_invoked_with_lint_only_or_wall(path):
+    """Issue #107: `slang --lint-only` skips elaboration and silently drops
+    inferred-latch and multiple-driver diagnostics, both ERROR level in lint_check,
+    so a latch reports as clean. `-Wall` is not a slang option at all. Neither may
+    appear in a slang command an agent could copy."""
+    offenders = [
+        f"{_rel(path)}:{n}: {cmd}"
+        for n, line in enumerate(_read(path).splitlines(), 1)
+        for cmd in SLANG_COMMAND.findall(line)
+        if any(flag in cmd.split() for flag in SLANG_BAD_FLAGS)
+    ]
+    assert not offenders, f"slang command uses a flag that hides errors: {offenders}"
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_rtl_lint_gate_present_in_rtl_authoring_agents(path):
+    """Issue #107: only rtl-design loads the rtl-design skill, so the other
+    orchestrators that touch RTL had no lint rules of their own. Each must carry the
+    shared gate's load-bearing clauses, not just its heading; orchestrators that
+    author no RTL must not carry it."""
+    text = _read(path)
+    domain = path.parent.parent.name
+    if domain not in RTL_AUTHORING_AGENTS:
+        assert "## RTL Lint Gate" not in text, (
+            f"{_rel(path)}: carries the RTL Lint Gate but authors no RTL"
+        )
+        return
+    assert "## RTL Lint Gate" in text, f"{_rel(path)}: missing the RTL Lint Gate section"
+    for clause in (
+        "slang -Weverything --ignore-unknown-modules",
+        "Never pass `--lint-only`",
+        "`UNVERIFIED`",
+        "intent drift",
+    ):
+        assert clause in text, (
+            f"{_rel(path)}: RTL Lint Gate section is missing clause {clause!r}"
+        )
+
+
+def test_rtl_design_rules_do_not_contradict_safe_fsm_recovery():
+    """Issue #107: Synthesis Safety told agents to use `unique case` in place of
+    casez/casex, which cannot coexist with the `default` recovery arm an FSM needs
+    (slang -Wcase-redundant-default), and forbade every `initial` block, including
+    the guarded parameter assertion that stops an illegal configuration from
+    elaborating. The amended rules must not regress to either."""
+    text = _read(RTL_SKILL)
+    assert "Use `unique case` with explicit don't-cares" not in text, (
+        "rtl-design mandates `unique case` again"
+    )
+    assert "2. No initial blocks in ASIC RTL" not in text, (
+        "rtl-design forbids every `initial` block again, including guarded "
+        "parameter assertions"
+    )
+    for clause in ("-Wcase-redundant-default", "synthesis translate_off", "$fatal"):
+        assert clause in text, f"rtl-design Synthesis Safety is missing {clause!r}"
+
+
 # A `.json` artifact a stage promises to produce.
 JSON_ARTIFACT = re.compile(r"`([A-Za-z0-9_.-]+\.json)`")
 # Per-tool fields that live in tool-status.json; a second artifact restating them
