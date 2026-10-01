@@ -3,8 +3,8 @@
   "version": "1.2.0",
   "description": "Logic synthesis — SDC constraints, compile optimization, netlist QC and LEC",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
-  "homepage": "https://github.com/chuanseng-ng/digital-chip-design-agents",
-  "repository": "https://github.com/chuanseng-ng/digital-chip-design-agents",
+  "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",
+  "repository": "https://github.com/hdl-tools/digital-chip-design-agents",
   "license": "MIT",
   "skills": ["./skills/logic-synthesis"],
   "agents": ["./agents/synthesis-orchestrator.md"]

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/chuanseng-ng/digital-chip-design-agents/blob/main/docs/design_state.schema.json",
+  "$id": "https://github.com/hdl-tools/digital-chip-design-agents/blob/main/docs/design_state.schema.json",
   "title": "design_state.json",
   "description": "Shared cross-orchestrator state for the digital RTL-to-GDSII + verification pipeline. Machine-readable companion to the prose schema in memory/README.md and plugins/meta/skills/pipeline-orchestration/SKILL.md. Validates both the fix_request and checkpoint variants of design_state.json.",
   "type": "object",

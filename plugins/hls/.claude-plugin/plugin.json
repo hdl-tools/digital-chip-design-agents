@@ -3,8 +3,8 @@
   "version": "1.2.0",
   "description": "High-level synthesis — C/C++ to RTL, directive optimization, co-simulation",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
-  "homepage": "https://github.com/chuanseng-ng/digital-chip-design-agents",
-  "repository": "https://github.com/chuanseng-ng/digital-chip-design-agents",
+  "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",
+  "repository": "https://github.com/hdl-tools/digital-chip-design-agents",
   "license": "MIT",
   "skills": ["./skills/hls"],
   "agents": ["./agents/hls-orchestrator.md"]
