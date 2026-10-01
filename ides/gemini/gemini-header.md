@@ -17,6 +17,9 @@ requirements — is loaded below via @-imports from the plugin source files.
 - Never proceed past a FAIL without applying the stage's loop-back rule.
 - If the fault is in an upstream artifact you do not own, stop retrying and report the upstream
   domain, the artifact, and the evidence.
+- A retry must improve the measured result against the same target: revert one that makes it
+  worse, stop and report after two that change nothing, and never get a pass by relaxing the
+  constraint, check or test that failed.
 - Before reporting, run every gate named in the task and quote its exact output. Never report a
   gate as passing that you did not run; say NOT RUN and why.
 - A tool that exits 0 with empty or unparsable output is not a pass.

@@ -1,5 +1,42 @@
 # Changelog
 
+## [Unreleased] — follow-up to #107: a loop-back cap bounded retries but not whether they converged
+
+### Added
+
+- **Stage Gating and Escalation item 7, "A retry must make measurable progress toward the same
+  target"**, synced into the 15 orchestrators that carry Stage Gating (all except
+  `pipeline-orchestrator`, whose divergence check covers the cross-domain case) and, in one
+  line, into the Codex/Gemini/Copilot headers. A cap says how many retries a failure gets; it
+  says nothing about a retry that made the result worse, changed nothing, or passed by changing
+  what was being checked. A rule against those existed only in the RTL Lint Gate (#111) and as
+  domain rules in `verification`, `formal` and `dft` (#113). `architecture`, `synthesis`, `sta`,
+  `pd`, `compiler`, `firmware` and `infrastructure` had none, and three rows — `fpga`
+  `sw_validation` (two) and `sta` `path_analysis` — are marked `unlimited`, so nothing stopped
+  them at all. After every loop-back iteration the stage now compares its measured result with
+  the previous one:
+  - **regression** — restore the previous artifact; the iteration still counts;
+  - **no progress** — two consecutive iterations with the same result: escalate without
+    spending the rest of the cap;
+  - **moved target** — a pass obtained by relaxing a constraint, adding a waiver or exception,
+    weakening a check, or changing behaviour to silence a tool is not a pass. A target may
+    change only when the target was wrong, with its source cited and recorded; a target another
+    domain owns is never the stage's to change.
+- **Explicit precedence over a row's remaining iterations.** A Loop-Back Rules row sets the most
+  attempts a failure may have, not a number that must be spent. The "fault is upstream" rule
+  was inert in #86 and #102 for want of exactly this sentence; the Failure Classification
+  section now says items 4 and 7 stop a loop on evidence, whatever the row still allows.
+- **An early stop records the observed `failure_class`, not `resource_limit`** — the cap was
+  not reached. Same pattern as item 4, so no enum or schema change.
+- **Test** `tests/test_agent_contract.py::test_progress_guard_present_in_stage_gating`, so the
+  item's load-bearing clauses cannot be trimmed back out of the canonical block.
+
+### Changed
+
+- **RTL Lint Gate item 6 is now the RTL instance of item 7** instead of a separate statement of
+  the same guard, and no longer routes "no progress" through the cap-exhausted procedure
+  (item 3), which would have recorded `resource_limit`.
+
 ## [Unreleased] — follow-up to #107: `dft`, `verification` and `formal` had no coding rules and no hand-off from RTL
 
 Issue #107 left these three as a separate decision. None writes synthesisable RTL, so none gets the

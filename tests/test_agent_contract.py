@@ -202,6 +202,34 @@ def test_long_running_jobs_guidance_present(path):
             f"{_rel(path)}: Long-Running Jobs section is missing clause {clause!r}"
         )
 
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_progress_guard_present_in_stage_gating(path):
+    """A loop-back cap bounds how many retries a failure gets, not whether they
+    converge: a retry that made things worse, changed nothing, or passed by relaxing
+    the constraint or check that failed was stopped only when the cap ran out, and
+    three rows are marked `unlimited`. Every orchestrator that carries Stage Gating
+    must carry item 7's load-bearing clauses; the pipeline-orchestrator has its own
+    divergence check and carries neither."""
+    text = _read(path)
+    if "## Stage Gating and Escalation" not in text:
+        assert path.parent.parent.name == "meta", (
+            f"{_rel(path)}: missing the Stage Gating and Escalation section"
+        )
+        return
+    # The block is hard-wrapped; compare with whitespace collapsed so re-wrapping the
+    # canonical text does not read as a missing clause.
+    flat = " ".join(text.split())
+    for clause in (
+        "not a number that must be spent",
+        "two consecutive iterations",
+        "A pass obtained by changing the target is not a pass",
+        "`resource_limit` — the cap was not reached",
+    ):
+        assert clause in flat, (
+            f"{_rel(path)}: Stage Gating item 7 is missing clause {clause!r}"
+        )
+
+
 INFRA_SKILL = REPO_ROOT / "plugins" / "infrastructure" / "skills" / "infrastructure" / "SKILL.md"
 
 # The Proprietary table rows: | Tool | Command (alt) | role | dialect | probe |
