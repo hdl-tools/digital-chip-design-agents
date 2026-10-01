@@ -274,6 +274,42 @@ INFRA_AGENT = (
     REPO_ROOT / "plugins" / "infrastructure" / "agents" / "infrastructure-orchestrator.md"
 )
 
+WRAPPER_COUNT = re.compile(
+    r"all (\d+) wrappers?\b|(\d+) executable wrapper scripts|"
+    r"wrapper scripts with executable bit set \(target: (\d+)\)",
+    re.I,
+)
+
+
+def test_stated_wrapper_count_matches_the_tools_directory():
+    """The wrapper count is written out in six places across the infrastructure
+    skill and agent, and `environment_validation` checks against it. Adding
+    `wrap-verilator-lint.sh` (issue #112) without them would have every install
+    report one wrapper more than the stage expects."""
+    on_disk = len(list((REPO_ROOT / "plugins" / "infrastructure" / "tools").glob("wrap-*.sh")))
+    stated = []
+    for path in (INFRA_SKILL, INFRA_AGENT):
+        for match in WRAPPER_COUNT.finditer(_read(path)):
+            stated.append((_rel(path), int(next(g for g in match.groups() if g))))
+    assert len(stated) >= 6, f"expected the count in at least 6 places, found {stated}"
+    wrong = [s for s in stated if s[1] != on_disk]
+    assert not wrong, f"{on_disk} wrap-*.sh on disk, but these say otherwise: {wrong}"
+
+
+def test_smoke_test_rule_covers_the_wrapper_that_takes_a_binary():
+    """Issue #95: `wrapper_deployment` rule 4 assumes `--version` reaches a tool.
+    `wrap-verilator-sim.sh` takes a simulation binary instead, so the rule has to
+    say what that wrapper returns - a rule that is silent lets the same FAIL mean
+    either "broken" or "mis-invoked"."""
+    stage = (
+        _read(INFRA_SKILL)
+        .split("## Stage: wrapper_deployment", 1)[1]
+        .split("\n## Stage: ", 1)[0]
+    )
+    flat = " ".join(stage.split())
+    assert "`wrap-verilator-sim.sh` takes a simulation binary" in flat
+    assert "never a mis-invocation" in flat
+
 MODULE_SYSTEM_ENUM = frozenset({"tclmod", "custom", "none"})
 # Only the enum form matches: `"module_system": null` in the run-state object has no quotes,
 # and `module_system: "none"` in prose does not quote the key.

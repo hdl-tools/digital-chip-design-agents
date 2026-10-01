@@ -50,34 +50,51 @@ WRAPPERS = {
 }
 
 
-def run_wrapper(tmp_path: Path, name: str, log: str, rc: int = 0):
-    tool, _, args = WRAPPERS[name]
+# The fake tool records the arguments it was called with (one per line), prints
+# the chosen log, and exits with the chosen code.
+FAKE_TOOL = (
+    b'#!/usr/bin/env bash\n'
+    b'printf "%s\\n" "$@" > "$FAKE_TOOL_ARGV"\n'
+    b'cat "$FAKE_TOOL_LOG" 2>/dev/null\n'
+    b'exit "${FAKE_TOOL_RC:-0}"\n'
+)
+
+
+def fake_tool_env(tmp_path: Path, tool: str, log: str, rc: int = 0):
+    """Put a fake ``tool`` on PATH; return its path and the environment to run in."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     log_file = tmp_path / "fake.log"
     log_file.write_bytes(log.encode("utf-8"))
 
-    fake = bin_dir / (tool or "sim_binary")
-    fake.write_bytes(
-        b'#!/usr/bin/env bash\ncat "$FAKE_TOOL_LOG" 2>/dev/null\nexit "${FAKE_TOOL_RC:-0}"\n'
-    )
+    fake = bin_dir / tool
+    fake.write_bytes(FAKE_TOOL)
     fake.chmod(0o755)
 
     env = dict(os.environ)
     env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
     env["FAKE_TOOL_LOG"] = log_file.as_posix()
     env["FAKE_TOOL_RC"] = str(rc)
+    env["FAKE_TOOL_ARGV"] = (tmp_path / "fake.argv").as_posix()
+    return fake, env
 
-    wrapper = (TOOLS_DIR / f"wrap-{name}.sh").as_posix()
-    # verilator-sim takes the simulation binary as its first argument.
-    call_args = [fake.as_posix()] if tool is None else args
+
+def run_script(tmp_path: Path, script: str, call_args, env=None):
     proc = subprocess.run(
-        [BASH, wrapper, *call_args],
+        [BASH, (TOOLS_DIR / script).as_posix(), *call_args],
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
         stdin=subprocess.DEVNULL,
     )
     assert proc.stdout.strip(), f"wrapper printed nothing; stderr: {proc.stderr}"
     return proc.returncode, json.loads(proc.stdout)
+
+
+def run_wrapper(tmp_path: Path, name: str, log: str, rc: int = 0):
+    tool, _, args = WRAPPERS[name]
+    fake, env = fake_tool_env(tmp_path, tool or "sim_binary", log, rc)
+    # verilator-sim takes the simulation binary as its first argument.
+    call_args = [fake.as_posix()] if tool is None else args
+    return run_script(tmp_path, f"wrap-{name}.sh", call_args, env)
 
 
 @pytest.mark.parametrize("name", sorted(WRAPPERS))
@@ -138,6 +155,136 @@ def test_verilator_error_line_with_pass_marker_is_a_warn(tmp_path):
 def test_verilator_fail_marker_fails(tmp_path):
     _, out = run_wrapper(tmp_path, "verilator-sim", "TEST FAILED\n")
     assert out["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("flag", ["--version", "--help", "-h"])
+def test_verilator_sim_answers_version_and_help_itself(tmp_path, flag):
+    """Issue #95: the first argument is the simulation binary, so the deploy-time
+    smoke test's --version was reported as a missing binary - the same FAIL a
+    broken wrapper gives. It now gets the WARN the other wrappers return."""
+    rc, out = run_script(tmp_path, "wrap-verilator-sim.sh", [flag])
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert "usage: wrap-verilator-sim.sh" in out["warnings"][0]
+
+
+def test_verilator_sim_still_fails_on_a_missing_binary(tmp_path):
+    rc, out = run_script(tmp_path, "wrap-verilator-sim.sh", ["./no_such_sim"])
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["verified"] is False
+
+
+# --- wrap-verilator-lint.sh (issue #112) ------------------------------------
+# A clean `verilator --lint-only` run exits 0 and prints nothing, so this wrapper
+# cannot share the tests above that treat empty output as "no result".
+
+LINT_ERROR_LOG = (
+    "%Warning-WIDTH: top.sv:3:12: Operator ASSIGNW expects 8 bits on the Assign RHS\n"
+    "                            : ... note: In instance 'top'\n"
+    "%Error: top.sv:5:1: syntax error, unexpected endmodule\n"
+    "%Error: Exiting due to 1 error(s)\n"
+)
+
+
+def run_lint(tmp_path: Path, log: str, rc: int = 0, args=("-Wall", "top.sv"), design=True):
+    if design:
+        (tmp_path / "top.sv").write_text("module top; endmodule\n", encoding="utf-8")
+    _, env = fake_tool_env(tmp_path, "verilator", log, rc)
+    rc_out, out = run_script(tmp_path, "wrap-verilator-lint.sh", list(args), env)
+    argv = (tmp_path / "fake.argv").read_text(encoding="utf-8").split()
+    return rc_out, out, argv
+
+
+def test_lint_clean_run_passes_on_empty_output(tmp_path):
+    rc, out, argv = run_lint(tmp_path, "")
+    assert rc == 0
+    assert out["tool"] == "verilator-lint"
+    assert out["status"] == "PASS"
+    assert out["verified"] is True
+    assert out["summary"]["error_count"] == 0
+    assert out["summary"]["input_files"] == 1
+    assert argv == ["--lint-only", "-Wall", "top.sv"]
+
+
+def test_lint_only_flag_is_not_duplicated(tmp_path):
+    _, _, argv = run_lint(tmp_path, "", args=("--lint-only", "-Wall", "top.sv"))
+    assert argv.count("--lint-only") == 1
+
+
+def test_lint_warning_is_a_verified_warn_counted_by_code(tmp_path):
+    log = ("%Warning-WIDTH: top.sv:3:12: Operator ASSIGNW expects 8 bits\n"
+           "%Warning-WIDTH: top.sv:4:12: Operator ASSIGNW expects 4 bits\n"
+           "%Warning-UNUSEDSIGNAL: top.sv:2:9: Signal is not used: 'x'\n")
+    rc, out, _ = run_lint(tmp_path, log, args=("-Wall", "-Wno-fatal", "top.sv"))
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+    assert out["summary"]["warning_count"] == 3
+    assert out["summary"]["warnings_by_code"] == {"WIDTH": 2, "UNUSEDSIGNAL": 1}
+    assert not any(UNVERIFIED in w for w in out["warnings"])
+
+
+def test_lint_error_fails_and_the_closing_line_is_not_counted(tmp_path):
+    rc, out, _ = run_lint(tmp_path, LINT_ERROR_LOG, rc=1)
+    assert rc == 1
+    assert out["exit_code"] == 1
+    assert out["status"] == "FAIL"
+    assert out["verified"] is True
+    assert out["summary"]["error_count"] == 1
+    assert out["summary"]["warning_count"] == 1
+    assert out["summary"]["exited_on"] == "errors"
+    assert out["errors"] == ["%Error: top.sv:5:1: syntax error, unexpected endmodule"]
+
+
+def test_lint_exit_on_warnings_fails_with_zero_errors(tmp_path):
+    """Verilator exits non-zero on warnings unless -Wno-fatal is given. The exit
+    code is passed through, but the counts must not call a warning an error."""
+    log = ("%Warning-WIDTH: top.sv:3:12: Operator ASSIGNW expects 8 bits\n"
+           "%Error: Exiting due to 1 warning(s)\n")
+    rc, out, _ = run_lint(tmp_path, log, rc=1)
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["summary"]["error_count"] == 0
+    assert out["summary"]["exited_on"] == "warnings"
+    assert out["errors"] == ["%Error: Exiting due to 1 warning(s)"]
+
+
+def test_lint_version_run_is_not_a_pass(tmp_path):
+    """The deploy-time smoke test: the tool ran, but nothing was linted."""
+    rc, out, _ = run_lint(tmp_path, "Verilator 5.028 2024-08-21 rev v5.028\n",
+                          args=("--version",), design=False)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert UNVERIFIED in out["warnings"][0]
+
+
+def test_lint_without_an_existing_design_file_is_not_a_pass(tmp_path):
+    """Exit 0 with empty output is the clean result only if a design was read."""
+    rc, out, _ = run_lint(tmp_path, "", args=("-Wall", "missing.sv"), design=False)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert out["summary"]["input_files"] == 0
+
+
+def test_lint_missing_tool_fails(tmp_path):
+    if shutil.which("verilator"):
+        pytest.skip("verilator is installed")
+    rc, out = run_script(tmp_path, "wrap-verilator-lint.sh", ["top.sv"])
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["verified"] is False
+    assert out["errors"] == ["tool not found: verilator"]
+
+
+def test_every_wrapper_script_is_exercised_here():
+    """A wrapper added to the tools directory without tests would ship unchecked."""
+    on_disk = {p.name for p in TOOLS_DIR.glob("wrap-*.sh")}
+    tested = {f"wrap-{name}.sh" for name in WRAPPERS} | {"wrap-verilator-lint.sh"}
+    assert on_disk == tested
 
 
 def test_klayout_reports_null_drc_total_when_nothing_was_found(tmp_path):

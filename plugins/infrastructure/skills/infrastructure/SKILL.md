@@ -134,12 +134,15 @@ and returns it.
 | `mcp-openroad.json` | Single OpenROAD stage | minutes |
 | `mcp-opensta.json` | OpenSTA batch report | seconds–minutes |
 | `mcp-klayout.json` | KLayout DRC/LVS | minutes |
-| `mcp-verilator.json` | Verilator lint or sim | seconds–minutes |
+| `mcp-verilator.json` | Verilator lint (`mode: "lint"`) or a compiled sim binary (`mode: "sim"`) | seconds–minutes |
 | `mcp-bambu.json` | Bambu HLS synthesis | minutes |
 | `mcp-gem5.json` | gem5 short benchmark run | minutes (set TOOL_TIMEOUT_S) |
 | `mcp-symbiflow.json` | SymbiYosys bounded proof | minutes–hours (set TOOL_TIMEOUT_S) |
 
-The adapter is `plugins/infrastructure/tools/mcp-adapter.py`.
+The adapter is `plugins/infrastructure/tools/mcp-adapter.py`. Each server runs the one wrapper
+named by `--wrapper`, except `verilator`: `mode: "lint"` runs `wrap-verilator-lint.sh` from the
+same directory as the configured `wrap-verilator-sim.sh`, because the sim wrapper's first
+argument is a compiled simulation binary. The 8 batch servers therefore use 9 wrappers.
 
 ### Tier 2: Interactive session MCP servers (stateful, query-based)
 Use these when an agent iterates many times over an already-loaded design (e.g. ECO timing
@@ -709,14 +712,17 @@ If `module_system == "none"`: emit WARN in stage output that automatic module lo
 ## Stage: wrapper_deployment
 
 ### Domain Rules
-1. Deploy all 8 wrapper scripts to `plugins/infrastructure/tools/`
+1. Deploy all 9 wrapper scripts to `plugins/infrastructure/tools/`
 2. Run `chmod +x` on every wrapper; if permission denied: FAIL and escalate with
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
 4. Test each wrapper with `--version` or `--help` after deploy; tolerate MISSING tools
    (wrappers must handle tool-not-found gracefully with `status: "FAIL"`). A `--version`
    run prints no design result, so it returns `status: "WARN"` with `verified: false` —
-   that is the expected outcome and confirms the wrapper runs and emits valid JSON
+   that is the expected outcome and confirms the wrapper runs and emits valid JSON.
+   `wrap-verilator-sim.sh` takes a simulation binary, not tool arguments, so it answers
+   `--version` / `--help` itself with the same `WARN`. A `FAIL` from this test therefore always
+   means a missing tool or a broken wrapper, never a mis-invocation
 5. Never suppress the tool's original exit code
 6. Never report `PASS` without a result: a wrapper that finds nothing it recognises in the
    tool's output reports `WARN` with `verified: false`, even when the tool exited 0
@@ -758,10 +764,10 @@ wrapper prints nothing, prints something that is not JSON, or prints JSON withou
 wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
-- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 8)
+- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 9)
 
 ### Output Required
-- 8 executable wrapper scripts in `plugins/infrastructure/tools/`
+- 9 executable wrapper scripts in `plugins/infrastructure/tools/`
 
 ---
 
@@ -858,7 +864,7 @@ silent pass.
    against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
-3. Verify all 8 wrapper scripts exist and have executable bit set
+3. Verify all 9 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 snippets) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
@@ -892,7 +898,7 @@ silent pass.
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
-- [ ] All 8 wrappers deployed and executable
+- [ ] All 9 wrappers deployed and executable
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`

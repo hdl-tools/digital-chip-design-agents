@@ -87,7 +87,7 @@ _EXTRA_PROPERTIES: dict[str, dict] = {
         "mode": {
             "type": "string",
             "enum": ["lint", "sim"],
-            "description": "lint: verilator --lint-only; sim: run a pre-compiled sim binary"
+            "description": "lint: run `verilator --lint-only <args>` via wrap-verilator-lint.sh; sim (default): run a pre-compiled sim binary"
         },
         "sim_binary": {
             "type": "string",
@@ -168,7 +168,8 @@ def _build_cli_args(tool: str, inputs: dict) -> list[str]:
     elif tool == "verilator":
         mode = inputs.get("mode", "sim")
         if mode == "lint":
-            return ["--lint-only"] + raw
+            # The lint wrapper adds --lint-only itself; see _select_wrapper.
+            return raw
         sim_bin = inputs.get("sim_binary", "")
         if sim_bin:
             return [sim_bin] + raw
@@ -201,6 +202,20 @@ def _build_cli_args(tool: str, inputs: dict) -> list[str]:
     return raw
 
 
+VERILATOR_LINT_WRAPPER = "wrap-verilator-lint.sh"
+
+
+def _select_wrapper(wrapper_path: str, tool: str, inputs: dict) -> str:
+    """
+    Return the wrapper script a call should run.  Every tool has the one wrapper
+    given by --wrapper, except Verilator: its sim wrapper takes a compiled
+    simulation binary, so lint mode runs the lint wrapper installed next to it.
+    """
+    if tool == "verilator" and inputs.get("mode", "sim") == "lint":
+        return os.path.join(os.path.dirname(wrapper_path), VERILATOR_LINT_WRAPPER)
+    return wrapper_path
+
+
 # ---------------------------------------------------------------------------
 # Wrapper execution
 # ---------------------------------------------------------------------------
@@ -213,6 +228,7 @@ def _run_wrapper(wrapper_path: str, tool: str, inputs: dict, timeout: int) -> di
     Always returns a dict conforming to the wrapper JSON schema so the
     caller never has to guard against unexpected shapes.
     """
+    wrapper_path = _select_wrapper(wrapper_path, tool, inputs)
     cli_args = _build_cli_args(tool, inputs)
     cmd = [wrapper_path] + cli_args
     print(f"[mcp-adapter] running: {' '.join(cmd)}", file=sys.stderr)
@@ -281,6 +297,18 @@ def _run_wrapper(wrapper_path: str, tool: str, inputs: dict, timeout: int) -> di
             "verified": False,
             "summary": {},
             "errors": [f"wrapper script not found: {wrapper_path}"],
+            "warnings": [],
+            "raw_log": "",
+        }
+
+    except PermissionError:
+        return {
+            "tool": tool,
+            "exit_code": 1,
+            "status": "FAIL",
+            "verified": False,
+            "summary": {},
+            "errors": [f"wrapper script is not executable: {wrapper_path} - run chmod +x on it"],
             "warnings": [],
             "raw_log": "",
         }
