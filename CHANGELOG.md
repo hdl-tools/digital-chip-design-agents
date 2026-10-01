@@ -1,8 +1,34 @@
 # Changelog
 
-## [Unreleased] — issues #99, #103, #104: infrastructure `tool_installation` and QoR ownership
+## [1.9.0] — 2026-10-01
 
-### Fixed
+Mostly correctness fixes to orchestrator rules, from the issues below. Highlights:
+
+- **New failure class `input_setup`** and an `rtl-design` stage, `design_input_check`. A lint
+  failure caused by the input set now escalates instead of going to the stage that edits
+  RTL (#83).
+- **Loop-backs that could not succeed are gone.** `lec_run` no longer loops back to a stage
+  that cannot fix a netlist (#102). A loop-back FAIL has its own `decision` value (#94). A
+  loop-back cap now bounds whether retries converge, not only how many there are.
+- **Infrastructure:**
+  - proprietary tool versions and a role/dialect model (#82);
+  - module-system detection, listing provenance and version selection (#87, #98);
+  - critical-path tools keyed by command (#92, #86);
+  - a working Verilator MCP lint mode (#112), and a smoke test that tells a working wrapper
+    from a broken one (#95);
+  - corrected MCP configuration text (#117);
+  - a warning for custom module systems, root variables keyed by command, and QoR metrics
+    owned by the stage that computes them (#99, #103, #104).
+- **Shared orchestrator sections:** guidance for jobs that outlive a turn (#76), a reporting
+  contract, and stage-gating guards.
+- **Docs:** the flow docs link to their orchestrator instead of restating its loop-back rules
+  (#118), and `docs/Infrastructure_Setup_Flow.md` is new.
+- **The repository moved to `hdl-tools/digital-chip-design-agents`.** Package and plugin URLs
+  follow it.
+
+### issues #99, #103, #104: infrastructure `tool_installation` and QoR ownership
+
+#### Fixed
 
 - **#99 — a `custom` module system got a TCL-classic modulefile and no warning.**
   `tool_installation` rule 8 and the line under the modulefile block warned only when
@@ -28,16 +54,16 @@
   `install_scripts_generated`, so it lists exactly the metrics the stages declare. Each stage
   now returns only its own keys and omits the rest: never a placeholder `0` or `null`.
 
-### Added
+#### Added
 
 - **Tests** in `tests/test_agent_contract.py`:
   - `test_every_infrastructure_qor_key_is_declared_by_the_stage_that_computes_it`
   - `test_modulefile_root_vars_are_keyed_by_command`
   - `test_custom_module_system_is_warned_about_tcl_modulefiles`
 
-## [Unreleased] — the repository moved to `hdl-tools`
+### the repository moved to `hdl-tools`
 
-### Changed
+#### Changed
 
 - **Repository URLs now name `hdl-tools/digital-chip-design-agents`** in `package.json`,
   every `plugin.json`, `README.md`, `docs/INSTALL.md`, `CONTRIBUTING.md`, the schema `$id` and
@@ -48,12 +74,12 @@
   old name.
 - **Release notes list the Codex CLI** among the other IDEs (`bash install.sh --ide codex`).
 
-### Added
+#### Added
 
 - **`tests/test_repo_identity.py`** — `package.json` points at the current repository, and no
   file except this CHANGELOG names the old one.
 
-## [Unreleased] — issue #118: flow docs restated loop-back rules that had drifted from the orchestrators
+### issue #118: flow docs restated loop-back rules that had drifted from the orchestrators
 
 Each `docs/*Flow*.md` restated its orchestrator's loop-back rules up to three times: in a stage
 diagram with loop arrows, in a Loop-Back Rules table, and in an "Orchestrator System Prompt"
@@ -63,7 +89,7 @@ instead: `lec_run` unmatched → netlist fix → `lec_run`, FPV counterexample �
 directed-test DUT bug → RTL fix, and an unconditional scan-DRC retry. Others had the wrong
 targets, caps or thresholds, or rows only one side had.
 
-### Changed
+#### Changed
 
 - **The flow docs no longer restate the rules.** In all 14 flow docs, Memory IP and PD
   included, the stage section now holds the agent's stage sequence line and a link to the
@@ -84,7 +110,7 @@ targets, caps or thresholds, or rows only one side had.
 
   It is registered in `FLOW_DOCS`, so the new tests cover it.
 
-### Fixed
+#### Fixed
 
 - **The `tool-manifest.json` schema said `"wrappers": { "expected": 8 }`; there are 9.** The
   number was not raised when `wrap-verilator-lint.sh` was added (#112). The wrapper-count test
@@ -92,7 +118,7 @@ targets, caps or thresholds, or rows only one side had.
   field form, and the MCP count test likewise matches `"snippets_expected"` and `"mcp_target"`. `docs/PIPELINE.md` marks its PD example as an
   illustration and points at the agents.
 
-### Added
+#### Added
 
 - **Tests** in `tests/test_agent_contract.py`:
   - `test_every_flow_doc_is_mapped_to_its_agent`
@@ -103,9 +129,9 @@ targets, caps or thresholds, or rows only one side had.
   The RTL-only stage-sequence check in `test_rtl_flow_doc_and_knowledge_follow_the_agent` is now
   covered by the parametrised test.
 
-## [Unreleased] — issue #117: the MCP configuration text contradicted itself and the files on disk
+### issue #117: the MCP configuration text contradicted itself and the files on disk
 
-### Fixed
+#### Fixed
 
 - **The `mcp_configuration` template ran a wrapper as the MCP server.** It set `command` to
   `wrap-<tool>.sh`, which rule 2 directly above it forbids. A wrapper prints one JSON object
@@ -126,7 +152,7 @@ targets, caps or thresholds, or rows only one side had.
   tool-server" snippets, a count that can't be read as all 11 files. `memory/README.md` points
   at the stage.
 
-### Added
+#### Added
 
 - **Tests** in `tests/test_agent_contract.py`:
   - `test_mcp_configs_run_a_server_script_not_a_wrapper`: every `mcpServers` block in the
@@ -135,7 +161,7 @@ targets, caps or thresholds, or rows only one side had.
   - `test_stated_mcp_count_matches_the_mcp_directory`: every config on disk is named in the
     stage, and every stated count equals the tool-server files on disk.
 
-## [Unreleased] — issue #83: a lint failure caused by the input set was sent to the stage that edits RTL
+### issue #83: a lint failure caused by the input set was sent to the stage that edits RTL
 
 `rtl-design` had one row for lint, `lint_check FAIL (errors > 0) → rtl_coding (max 5×)`, and no
 stage that checked what the lint tool was given. In the originating case a stale generated
@@ -143,7 +169,7 @@ register-map header tree was listed first on the include path and shadowed the c
 19 duplicate-declaration and undeclared-identifier fatals, rule checking aborted, and a fix of
 one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port that is real.
 
-### Added
+#### Added
 
 - **`failure_class: input_setup` → `retry_strategy: escalate`** — the tool ran correctly on the
   wrong inputs (filelist, include path, project or config file, generated headers, library
@@ -195,7 +221,7 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
   `test_rtl_lint_gate_covers_an_aborted_run` and
   `test_rtl_flow_doc_and_knowledge_follow_the_agent`.
 
-### Changed
+#### Changed
 
 - **The lint row is split in four.** `design_input_check FAIL` and an aborted lint whose cause
   is in the input set, or is not attributed, escalate. An aborted lint goes to `rtl_coding`
@@ -208,9 +234,9 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
   `fix_request` or re-dispatching.
 - **`docs/RTL_Design_Flow.md`** stage list, diagram, loop-back table and system prompt.
 
-## [Unreleased] — issue #112: the Verilator MCP server's lint mode could never run
+### issue #112: the Verilator MCP server's lint mode could never run
 
-### Fixed
+#### Fixed
 
 - **`mode: "lint"` handed `--lint-only` to a wrapper that expects a simulation binary.**
   `mcp-adapter.py` built `["--lint-only", …]` and passed it to the server's one `--wrapper`,
@@ -225,7 +251,7 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
 - **`rtl-design` and `soc-integration` named the sim wrapper as their lint wrapper**, and the
   `mcp-verilator.json` description promised lint counts the wrapper could not produce.
 
-### Added
+#### Added
 
 - **`plugins/infrastructure/tools/wrap-verilator-lint.sh`.** Runs `verilator --lint-only`
   (added unless already given) and counts `%Error` and `%Warning-<CODE>` lines into
@@ -244,7 +270,7 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
   `tests/test_wrappers.py::test_every_wrapper_script_is_exercised_here` fails if a wrapper is
   added without tests.
 
-### Changed
+#### Changed
 
 - **Wrapper count 8 → 9** in the infrastructure skill (`wrapper_deployment`,
   `environment_validation`, sign-off checklist) and agent. MCP target stays 10: the lint wrapper
@@ -252,9 +278,9 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
   **Test** `tests/test_agent_contract.py::test_stated_wrapper_count_matches_the_tools_directory`
   compares every stated count with the `wrap-*.sh` files on disk.
 
-## [Unreleased] — issue #95: the wrapper smoke test could not tell a working `wrap-verilator-sim.sh` from a mis-invoked one
+### issue #95: the wrapper smoke test could not tell a working `wrap-verilator-sim.sh` from a mis-invoked one
 
-### Fixed
+#### Fixed
 
 - **`wrap-verilator-sim.sh --version` reported a missing simulation binary.** `wrapper_deployment`
   rule 4 smoke-tests every wrapper with `--version` or `--help`, but this wrapper's first
@@ -266,9 +292,9 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
   `::test_verilator_sim_still_fails_on_a_missing_binary` and
   `tests/test_agent_contract.py::test_smoke_test_rule_covers_the_wrapper_that_takes_a_binary`.
 
-## [Unreleased] — follow-up to #107: a loop-back cap bounded retries but not whether they converged
+### follow-up to #107: a loop-back cap bounded retries but not whether they converged
 
-### Added
+#### Added
 
 - **Stage Gating and Escalation item 7, "A retry must make measurable progress toward the same
   target"**, synced into the 15 orchestrators that carry Stage Gating (all except
@@ -297,18 +323,18 @@ one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port t
 - **Test** `tests/test_agent_contract.py::test_progress_guard_present_in_stage_gating`, so the
   item's load-bearing clauses cannot be trimmed back out of the canonical block.
 
-### Changed
+#### Changed
 
 - **RTL Lint Gate item 6 is now the RTL instance of item 7** instead of a separate statement of
   the same guard, and no longer routes "no progress" through the cap-exhausted procedure
   (item 3), which would have recorded `resource_limit`.
 
-## [Unreleased] — follow-up to #107: `dft`, `verification` and `formal` had no coding rules and no hand-off from RTL
+### follow-up to #107: `dft`, `verification` and `formal` had no coding rules and no hand-off from RTL
 
 Issue #107 left these three as a separate decision. None writes synthesisable RTL, so none gets the
 RTL Lint Gate, but each writes or audits code and each consumes what RTL leaves unproven.
 
-### Fixed
+#### Fixed
 
 - **The `formal` skill told the reader to "fix RTL → re-run FPV"** while its agent says to
   write a `fix_request` and never retry locally. An IDE that loads skills without agents got
@@ -324,7 +350,7 @@ RTL Lint Gate, but each writes or audits code and each consumes what RTL leaves 
 - **A formal property documented as "assumed correct" counted as a result.** It is now
   recorded as `UNVERIFIED`, does not count toward PROVEN, and blocks sign-off at P0.
 
-### Added
+#### Added
 
 - **RTL → verification/formal hand-off, `design_state.rtl.unverified[]`.** `rtl-design` already
   labelled conclusions no tool proved `UNVERIFIED`, but the label was where the claim stopped.
@@ -362,9 +388,9 @@ Most of the transferred content comes from `hdl-rtl-skill`'s review checklists, 
 and debug workflow. Two rules are additions of this change, not transfers: comparing with
 `!==`, and restoring `` `default_nettype wire `` at the end of a testbench file.
 
-## [Unreleased] — issue #107: `rtl-design` rules contradicted safe FSM recovery, and slang lint could not see latches
+### issue #107: `rtl-design` rules contradicted safe FSM recovery, and slang lint could not see latches
 
-### Fixed
+#### Fixed
 
 - **Synthesis Safety rule 3 mandated `unique case`** in place of `casez`/`casex`, which cannot
   coexist with the `default` recovery arm an FSM needs: `unique` asserts the illegal state
@@ -392,7 +418,7 @@ and debug workflow. Two rules are additions of this change, not transfers: compa
   `rtl_response.diff_summary`; `pipeline-orchestrator` `await_completion` says how to treat a
   fix that arrives without one.
 
-### Added
+#### Added
 
 - **New shared section `## RTL Lint Gate`**, synced into the five orchestrators that write,
   modify or generate RTL (`rtl-design`, `fpga`, `soc`, `memory-ip`, `hls`). Only `rtl-design`
@@ -420,9 +446,9 @@ and debug workflow. Two rules are additions of this change, not transfers: compa
   `::test_rtl_design_rules_do_not_contradict_safe_fsm_recovery`, so the slang flags, the gate's
   load-bearing clauses and the two amended rules cannot regress.
 
-## [Unreleased] — issue #76: no orchestrator had guidance for jobs that outlive a turn
+### issue #76: no orchestrator had guidance for jobs that outlive a turn
 
-### Added
+#### Added
 
 - **New shared section `## Long-Running Jobs`**, synced into all 16 orchestrators and the
   Codex/Gemini/Copilot headers by `tools/sync_agent_sections.py`. Before this, only
@@ -443,9 +469,9 @@ and debug workflow. Two rules are additions of this change, not transfers: compa
 - **Test** `tests/test_agent_contract.py::test_long_running_jobs_guidance_present`, so the
   section's load-bearing clauses cannot be trimmed back out of the canonical block.
 
-## [Unreleased] — issue #102: `lec_run` looped back to a stage that cannot fix a netlist
+### issue #102: `lec_run` looped back to a stage that cannot fix a netlist
 
-### Fixed
+#### Fixed
 
 - **`formal-orchestrator`'s `lec_run: unmatched points` row retried `lec_run` itself** on a
   netlist mismatch, but `lec_run` only compares the RTL/golden model against a netlist produced
@@ -458,14 +484,14 @@ and debug workflow. Two rules are additions of this change, not transfers: compa
   wins over that rule where the two disagree. The row now escalates immediately, naming the
   netlist mismatch and that synthesis — not `lec_run` — must produce the fix.
 
-### Added
+#### Added
 
 - **Test** `tests/test_agent_contract.py::test_lec_mismatch_escalates_instead_of_looping_back_to_lec_run`,
   so the row cannot regress back into looping to `lec_run`.
 
-## [Unreleased] — issue #94: a loop-back FAIL had no `decision` value of its own
+### issue #94: a loop-back FAIL had no `decision` value of its own
 
-### Fixed
+#### Fixed
 
 - **A stage that FAILed and looped back was recorded as `decision: "proceed"`.** The
   `history[]` schema's `decision` enum (`proceed | escalate | abandoned | await_approval`)
@@ -486,76 +512,76 @@ and debug workflow. Two rules are additions of this change, not transfers: compa
   write `decision: "loop_back"` instead of `"proceed"`, synced into all 15 agents via
   `tools/sync_agent_sections.py`.
 
-### Added
+#### Added
 
 - **Test** `tests/test_agent_contract.py::test_decision_enum_lists_loop_back_for_agents_with_loop_back_rules`,
   parametrized over every agent with a `## Loop-Back Rules` section, so a new loop-back row
   cannot be added to an orchestrator whose `decision` enum omits the value it needs to record.
 
-## [Unreleased] — issue #98: module version selection
+### issue #98: module version selection
 
-### Fixed
+#### Fixed
 
 - **"Latest version" was selected by sorting version strings as text**, in two rules — `tool_discovery` rule 2 Step A c and `module_discovery` rule 9 — both saying "highest semver/lexicographic" as though the two orderings agree. Measured on the reference host, a 13-version Python tree spanning 3.6.x–3.14.x has newest `3.14.6` and lexicographic maximum `3.9.7`, the **fourth-oldest**, because `"9" > "1"` at the second segment. Step A runs *before* the PATH check and wins over it, so the stage replaced the host's `3.12.2` interpreter with an older module one and kept it loaded for all five remaining stages; `load-modules.sh` recorded the same wrong choice per tool with the newest version commented out as an "alternative". Selection is now specified once, in a new `#### Module version selection` rule that both call sites defer to.
 - **The module system's own default was being discarded.** `module avail` annotates it — `klayout/adi/0.27.11 (adi default)` — and the entry-format rule added by #87 said to take the version "after stripping any trailing `(...)` annotation", so the site's answer to "which version" was present in the parsed data and thrown away as noise. Measured: **372 of 3813** listing entries carry that annotation. It is now captured, and the annotated default outranks anything this stage computes.
 - **Non-release builds could be selected as "latest".** The trees carry `3.12.2_test`, `3.6.2-debug`, `5.24-dev` and similar alongside releases. A version with any segment equal to `dev`, `test`, `debug`, `rc`, `alpha`, `beta`, `snapshot` or `nightly` is now excluded from an automatic choice while a release exists — it stays in `versions_available`, since a user may want one. The marker list is deliberately short: a site revision tag like `3.12.2.R10`, or a patch letter like `3.9.7n`, is a release and is ordered by the comparator.
 
-### Changed
+#### Changed
 
 - **The result is "the version this host should use", not "the newest".** Where the module system marks a default, that default wins, and a site default is commonly an older qualified build — measured on the reference host, the annotated default differs from the newest available for every tool checked, and is several versions behind for some. That is deliberate and the rule says so, so the wording no longer promises newest.
 - **`module-status.json` records `selected`, `selected_basis` (`site_default | highest_release | highest_prerelease`) and `candidates`** per tool, so a wrong pick is visible in the artifact rather than only in the loaded environment. `highest_prerelease` should be rare and is the value worth noticing.
 - **`load-modules.sh`'s selected line states the basis** — `# selected: <basis>; alternatives: <versions>`, replacing `# latest; alternatives: …` — and the Stage Output Summary prints the basis and candidate count per tool.
 - **`memory/infrastructure/knowledge.md`**'s quirk entry described the behaviour as lexicographic with "pin the intended module explicitly" as the mitigation. Rewritten: pinning is now only for where the site default is wrong for a particular flow, not the routine workaround it was when selection was a plain sort.
 
-### Added
+#### Added
 
 - **Test** `tests/test_agent_contract.py::test_module_version_selection_is_specified`, four assertions, each mutation-checked: no call site may sort lexicographically (the word survives only inside the rule, which cites it as the defect); the rule exists once and both call sites defer to it; the site default is first in the selection order and every non-release marker is named; and the three selection fields are in the schema.
 
 The comparator's specification was corrected during implementation by executing it against the measured set. A clause ranking an extra *non-numeric* segment lower — justified by `5.24` > `5.24-dev` — gave `3.12.2.R10` < `3.12.2`, which is wrong. Its motivating case is already handled by the non-release exclusion, so inside the release pool the only remaining extras are post-release revision tags, for which longer genuinely is newer. The tie-break is now simply "more segments ranks higher", which also reduces the comparator to a plain tuple comparison.
 
-## [Unreleased] — issues #91, #90: one sentence, two defects in `environment_validation` rule 2
+### issues #91, #90: one sentence, two defects in `environment_validation` rule 2
 
-### Fixed
+#### Fixed
 
 - **`tool-manifest.json` had five references, no schema and no creator** (#91). This is a regression, not an omission: `git log -S 'tool-manifest'` returns two commits, and the second (`f1124c5`, "Added modulefile support for infrastructure orchestrator") deleted both the rule that wrote the file and the Output Required line that described it — `6. Write tool-manifest.json reflecting confirmed tool state after user runs the script` and `tool-manifest.json — final confirmed tool list after installation` — while rewriting the reader into today's rule 2 and keeping the comparison. The surviving references all treated the file as pre-existing ("compare against", "written", "**Updated**"), so two independent runs invented two incompatible shapes to satisfy the sign-off checklist and nothing downstream could rely on it. The file now has a schema and a named creator.
 - **Rule 2 compared against that same stage's own output** (#91), so on any run there was nothing to compare against. The baseline is now `tool-status.json` — written by `tool_discovery`, updated in place by `module_discovery`, and the only tool record that exists when the rule runs. The rule also states that it never compares against its own output, and that a disagreement is a WARN rather than a status downgrade: the stage stays read-only on `tool-status.json`, which six of its nine rules already were.
 - **Rule 2 claimed to use "the same Python-aware detection as `tool_discovery` rules 2–3" and specified detection that was not the same** (#90). Rule 3 gives `cocotb` and `uv` a fallback chain — try `$PYTHON_BIN_DIR/<tool>`, then fall back to PATH — and for `python_env.type == "system"` uses PATH only, never constructing a `$PYTHON_BIN_DIR` probe. Rule 2 dropped the fallback and forbade it, diverging two ways per tool: it dropped a fallback rule 3 grants, and on a system-Python host it probed a path rule 3 never builds. `openlane` never diverged — rule 3 has no fallback for it — and is unchanged. Rule 2 now performs rule 3's detection exactly, so the claim is true rather than aspirational.
 
-### Changed
+#### Changed
 
 - **`tool-manifest.json` is a validation receipt, not a tool list.** A tool-keyed manifest would restate every per-tool field `tool-status.json` already carries (`tool`, `command`, `status`, `version`, `path`, `role`, `dialect`, `module_names`, `versions_available`) plus `python_env` — and `module_discovery` already sets the precedent that a later stage updates that file in place rather than forking a parallel copy. Restating them is how the two invented shapes happened. Walking all nine rules, what this stage establishes that `tool-status.json` cannot express is exactly five things, and they are the schema: `python_env` **liveness** (the recorded module may no longer be loaded, the recorded `exec` may no longer match), wrapper executable bits, MCP artifact presence, the computed dialect-conflict set with its members rather than just rule 7's count, and the sign-off verdict. `tool_status_source` names the file it references instead of copying.
 - **The deleted `tool_installation` rule 6 is deliberately not restored.** Its semantics were a post-install re-survey, which depended on that stage running the install and emitting one combined `install-missing-tools.sh`. It now never executes anything and emits one script per tool, so restoring the rule would recreate a contract the flow no longer has.
 - **`docs/MASTER_INDEX.md`**'s infrastructure row listed `tool-manifest.json` as the flow's only artifact; it now also names `tool-status.json` and `module-status.json`, which are the files anything downstream actually reads.
 
-### Added
+#### Added
 
 - **A WARN for the hazard the strict check was reaching for.** Where a package resolves via the PATH fallback while `python_env.type` is `custom` or `module`, the stage warns that the tool resolved outside the active Python environment's bin dir and may target a different interpreter than `python_env.exec` — never for `system`, where PATH *is* the active environment. It is recorded as `python_packages[].resolved_via` in the manifest, so it is auditable after the run rather than print-only. The issue proposed this *or* mirroring the chain; they are complementary, and the repo shows why the WARN cannot carry the issue's original justification: there is **no** wrapper or MCP config referencing `PYTHON_BIN_DIR`, `uv`, `cocotb-config` or `openlane` anywhere — all 8 wrappers resolve via bare `command -v` on PATH, and the downstream domains invoke bare commands — so "a wrapper invoking it via `PYTHON_BIN_DIR` will not find it" describes a consumer that does not exist. The real hazard is interpreter mismatch, and it is common: `tool_installation` prefers the standalone astral.sh installer for `uv`, which installs outside `$PYTHON_BIN_DIR`. Measured on the reference host, `python_env.type` is `custom`, `$PYTHON_BIN_DIR` holds no `uv`, and `uv` is on PATH under a different prefix — so the old rule reported absent what `tool_discovery` had recorded `FOUND`, and the new rule reports `FOUND` with `resolved_via: "path"` plus this WARN.
 - **Test** `tests/test_agent_contract.py::test_environment_validation_artifacts_are_defined`, four assertions, each mutation-checked: every `.json` artifact a stage promises on its Output Required bullet list must be defined and carry a schema (this is the assertion that would have caught `f1124c5`); no rule may compare against an artifact its own stage produces, matched on collapsed text with a negation window so a sentence *forbidding* the comparison is not itself a violation; rule 2 may not forbid a PATH fallback that rule 3 performs; and the manifest may not restate per-tool `tool-status.json` fields.
 
 Not included, deferred: #104 (`environment_validation` and `tool_installation` have no QoR section, and `dialect_conflicts` is declared by a stage that cannot compute it) stays separate — it would only couple to this change if the manifest had been deleted and its facts moved into the QoR object. One finding filed separately rather than fixed here: `docs/MASTER_INDEX.md` points at `docs/Infrastructure_Setup_Flow.md`, which does not exist.
 
-## [Unreleased] — issues #92, #86: critical-path tools keyed by command, and an unwinnable loop-back removed
+### issues #92, #86: critical-path tools keyed by command, and an unwinnable loop-back removed
 
-### Fixed
+#### Fixed
 
 - **`environment_validation`'s FAIL gate could not see the tool it gates on** (#92). Three rules named the critical-path set by product — `(Yosys, Verilator, OpenROAD, OpenSTA)` — while `tool-status.json` keys entries by command, and OpenSTA's command is `sta`. A run matching `"OpenSTA"` finds no entry and concludes *the tool is absent from the table*, not *the tool is missing*: a silent pass on a sign-off gate. The set is now defined once, by command, at the top of `environment_validation`'s Domain Rules, and the three rules carry `` (`yosys`, `verilator`, `openroad`, `sta`) ``. Defining it once rather than correcting three copies is the point — the third copy was added two commits ago by the #87 fix, which is how a two-site defect became a three-site one.
 - **`tool` was never defined.** The root cause under #92: `tool-status.json`'s schema is `{ "tool": "", "command": "", … }` and no prose anywhere in the repo said what `tool` holds. The convention was inferable only from the sibling artifact, whose schema says `"tool": "<command>"`, and from the module-mapping table's "Tool command" column heading. Both fields are now stated to hold the command, with the explicit warning that a rule naming a product cannot find its entry wherever the two differ, and that "no entry found" is not the same answer as "tool missing". Scoped to the two status artifacts, because the Wrapper JSON Output Schema deliberately uses a wrapper *label* (`"tool": "<tool-name>"` — `opensta`, `verilator-sim`) to say which wrapper produced a record rather than to name an entry to match; the note says so, so the wrappers are not "corrected" to emit commands.
 - **Formality's module-mapping row was keyed on its legacy command** (#92, same defect class, worse consequence). #82 established `fm_shell` as the primary command and `formality` as the legacy GUI alternate, but the mapping row stayed keyed `formality` and the orchestrator's Proprietary table still named `formality` as the command. On a host where Formality is installed as `fm_shell`, `module_discovery` rules 7–8 look for an entry keyed `formality`, find none, and silently skip the module upgrade — losing a tool rather than merely requiring an inference. The row is now keyed `fm_shell` and still *matches* `formality` and `synopsys/formality`, since sites name modules after the product. All seven proprietary primaries were cross-checked against the mapping table; Formality was the only mismatch.
 - **`environment_validation FAIL (critical tool MISSING) → tool_installation (max 2×)` could never succeed** (#86). `tool_installation` only generates `install-<toolname>.sh` and never executes it, and it regenerates scripts only for tools already `MISSING` — so nothing on the loop-back path can change a status. The cap was spent on two identical checks against unchanged inputs before escalating anyway, on every fresh workstation missing a critical tool, which is the case this orchestrator exists for. Worse than the issue argued: the shared precedence rule says the Loop-Back row wins over a mapped `escalate` while an iteration remains, so the orchestrator was not merely permitted to burn both iterations but *instructed* to. The row now escalates, naming the generated scripts, the re-run, and **why** retrying cannot help — the last clause being what stops the row from being "fixed" back into a loop later. This matches the two rows that already got it right, `python3 missing` and `critical tool MISSING_LOAD_MODULE`; `pending_approval` stays unset, since Stage Gating reserves it for gates.
 
-### Changed
+#### Changed
 
 - **`environment_validation` rule 5 now states the action, not only the verdict.** It said "FAIL" and nothing else; the recovery lived solely in the agent's Loop-Back table, so skill and agent each carried half the contract. It now carries the same escalation and the same reason.
 
-### Added
+#### Added
 
 - **Test** `tests/test_agent_contract.py::test_critical_path_tools_are_keyed_by_command`, four assertions, each mutation-checked: no enumerated critical-path set may name a product (this is what would have caught the site #87 added); the four commands must appear as commands in the authoritative Open-Source list, so the set cannot drift from the table it keys against; no loop-back row may *target* `tool_installation` for a missing critical tool — matched on the row's target rather than its prose, since an escalation row may legitimately name the stage while explaining why looping to it cannot work; and every proprietary primary command must key a module-mapping row, which is the Formality guard and the one assertion that generalises past these two issues.
 
 Not included, deferred. `failure_class` on loop-back rows stays with #93: strictly zero rows carry a `history[]` class today — the two apparent exceptions carry `fix_request` classes from a separate enum — so annotating one row would make infrastructure a third format before #93 chooses one for all 83. Three same-class findings are filed separately rather than widening this change: the identical unwinnable loop in `formal-orchestrator`'s `lec_run` row, the modulefile tool-var table keyed by product name (`LLVM` cannot match command `llvm-config`), and `environment_validation` having no QoR subsection at all. The product-name list in this file's own #87 entry is left as written — a changelog records what was written at the time, so the new test is scoped to `plugins/`.
 
-## [Unreleased] — issue #87: module-system detection and listing provenance
+### issue #87: module-system detection and listing provenance
 
-### Fixed
+#### Fixed
 
 - **Every site whose `module` is not Environment Modules was recorded as `tclmod`.** Detection tested "`$MODULESHOME` is set **or** `modulecmd` exists in PATH" and the `module-status.json` enum offered only `tclmod | none`, so a host with `$MODULESHOME` set and no `modulecmd` — whose `module` is a site shell wrapper carrying its own path variable — had to be written as classic Environment Modules and hope a caveat was read. Detection now requires `modulecmd` for `tclmod`, records `custom` for `$MODULESHOME` without it, and carries the evidence in `module_system_detail`.
 - **An empty `tools_via_modules` could not be told apart from a listing that never ran.** `module` is frequently a shell function, so it is absent from the non-interactive shell the orchestrator uses: measured, `bash -c 'module avail'` returns 127 on a host where the module system is plainly installed. Both verification runs for #82 and #85 wrote `module_system: "tclmod"` with `tools_via_modules: []`, and on that host `verilator`, `iverilog`, `klayout`, `vsim`, `innovus`, `pt_shell` and `formality` are available **only** via modules — so the mis-detection did not merely mislabel a field, it silently lost seven tools and the run then FAILed on critical tools that were installed. `module_listing` now records whether the listing was obtained at all, and the stage states that an empty list is evidence of nothing unless it reads `LISTED`.
@@ -564,7 +590,7 @@ Not included, deferred. `failure_class` on loop-back rows stays with #93: strict
 - **Mapping-table patterns were matched as arbitrary substrings.** Latent while detection was broken — with no listing, nothing could be mis-matched — and reachable the moment the listing works. Measured against a real 3812-entry listing, substring matching produced two classes of false positive: a module whose name merely *ends* with a mapped command (an optimisation tool named `...slang` matching `slang`), and one whose name or version string merely *contains* one (a verification tool whose version ends `_python2`, and a GUI tool bundle whose name contains `python3`, both matching `python3`). The second class is damaging, because `tool_discovery` Step A loads the *latest* matched Python module and keeps it loaded for the whole run, and the highest-sorting substring match was that GUI bundle rather than an interpreter. A pattern now matches only whole `/`-delimited tokens — one token, or a contiguous run for a pattern containing `/` — which drops both false positives and leaves the 12 genuine tools. One rule in the shared matching step rather than a patch per pattern.
 - **Module entries were parsed as `<name>/<version>`.** Measured entries are `klayout/adi/0.29.0`, `verilator/adi/3.922` and `klayout/adi/0.27.11 (adi default)` — two or more segments plus an optional annotation — so the old rule recorded `adi` as the version. The version is now the last `/`-separated segment after stripping a trailing `(...)`, and the full entry string is kept in `module_names`.
 
-### Added
+#### Added
 
 - **A module invocation ladder**, five rungs tried in order with the winning one recorded verbatim in `module_invocation`: the orchestrator's own shell; `modulecmd bash avail`; `$MODULESHOME/init/bash`; a site wrapper's `$MODULESHOME/module.sh`; the wrapper invoked directly. Rung 4 is the one that works on the reference host — `module` becomes a shell function and `module avail` exits 0 with 3813 entries in 159.5 s — which is what recovers the seven lost tools rather than only labelling the loss.
 - **A rung succeeds only where it exits 0 *and* its output holds at least one entry-shaped line** — neither test alone, and a failed rung never means the host has no modules. Both halves are measured: rung 5 on the reference host exits 1 printing `Usage: [-n] subcommand [arguments ...]`, and that usage text itself contains `modulename/scope`, `modulename/version` and `modulename/scope/version`, so an output-shape test alone reads the failure as a successful listing of three modules named `modulename`. The converse — exit 0 with no listing — is the trap #82 already documented for version probes, where a broken install answers 0 whatever the vendor.
@@ -573,31 +599,31 @@ Not included, deferred. `failure_class` on loop-back rows stays with #93: strict
 - **QoR metric `module_listing_ok`**, and `module_system_detected` redefined as "`module_system` is not `"none"`" so a custom wrapper counts. `tools_found_via_modules: 0` is documented as meaningful only when `module_listing_ok` is true.
 - **Test** `tests/test_agent_contract.py::test_module_system_records_a_custom_wrapper_and_a_listing_status`: the enum must admit `custom`, the orchestrator's memory-record copy of that enum must not drift from the skill's (nothing cross-checked the two before), the schema must carry `module_listing`, and the stage must keep stating that an empty `tools_via_modules` may mean the listing failed.
 
-### Changed
+#### Changed
 
 - **`tool_discovery`'s Python probe (Step A)** restated the env-var heuristic instead of using it, and its fall-through covered only "no module system is available" — leaving "present but not invocable" unhandled. It now defers to `module_discovery`'s detection rules and ladder, and falls through explicitly on `UNAVAILABLE`, noting that recovering a PATH interpreter here does not suppress the WARN `module_discovery` owes.
 - **The stage output summary** hardcoded `Module system : Environment Modules 4.8.0 (TCL)`. It now prints the classification with its evidence plus a `Module listing` line naming the winning invocation, and prints the module-tool count as `not surveyed` rather than `0` when the ladder was exhausted.
 
 Not included, deferred, both found while verifying this fix: lexicographic "latest version" selection, which on the reference host picks the fourth-oldest of thirteen Python modules and silently downgrades the interpreter the remaining five stages depend on, is now #98. `SKILL.md`'s two `module_system == "none"` guards before the "automatic module loading is unavailable" WARN stay as they are — the comparisons remain literally correct with the wider enum, but a TCL-classic modulefile is not consumed by a `custom` wrapper either, and `custom` is now the one value that reaches those lines without a warning — now #99.
 
-## [Unreleased] — issue #85: retry_strategy mapping reachable by every orchestrator
+### issue #85: retry_strategy mapping reachable by every orchestrator
 
-### Fixed
+#### Fixed
 
 - **15 of 16 orchestrators derived `retry_strategy` from a table they could not read.** Behaviour Rule 6 told every domain orchestrator to "derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill", but none of them declared that skill — only the meta orchestrator, which owns it, did. The values written into `design_state.json`'s `history[]` were therefore each agent's own inference, which contradicts the Reporting Contract's rule against reporting from memory what should be read from source. Since `format_version` 1.5 requires every entry to carry a `retry_strategy` and the pipeline-orchestrator reads those values to choose retry, cross-domain loop, or escalation, per-run inference means silent drift in the cross-domain hand-off.
 
-### Changed
+#### Changed
 
 - **New shared section `failure-classification`**, synced into all 15 domain orchestrators by `tools/sync_agent_sections.py`: the 10-row `failure_class` → `retry_strategy` table plus what each of `regenerate`, `refine`, `escalate` and `none` means in practice. Behaviour Rule 6 now points at that table instead of an undeclared skill. Chosen over adding `chip-design-meta:pipeline-orchestration` to each agent's `skills:` list because that would load a 494-line orchestration skill into every domain agent for one table — and that skill carries pipeline-orchestrator-only rules, including the `pending_approval type: "escalation"` the Stage Gating block reserves for it, so handing it to domain agents invites the confusion that guard exists to prevent.
 
-### Added
+#### Added
 
 - **`tests/test_agent_contract.py::test_retry_strategy_mapping_matches_the_authoritative_table`** — the mapping now exists in two places, and `sync_agent_sections.py --check` only compares agents against the shared file, never the shared file against the skill that owns the table. This test closes that gap.
 - **`tests/test_agent_contract.py::test_retry_strategy_mapping_is_reachable_by_the_agent`** — an agent that writes `retry_strategy` must either carry the table or declare the skill holding it, and an agent that does not declare the skill may not refer to it. The second half caught a stale citation in `verification-orchestrator.md`, whose rule 6 named the mapping twice with different wording.
 
-## [Unreleased] — issue #82: proprietary tool versions and dialect model
+### issue #82: proprietary tool versions and dialect model
 
-### Added
+#### Added
 
 - **`role` and `dialect` on every `tool-status.json` entry** (issue #82, sections A and B). `role` groups tools that do the same job (`rtl_simulator`, `synthesis`, `sta`, …); `dialect` names the command-line and source-language vocabulary a tool accepts (`synopsys`, `cadence`, `siemens`, `verilator`, …). Both are recorded for open-source and proprietary tools alike, and are `null` for a tool with no same-role peer — never an invented role, since a `null` cannot produce a false conflict. `module_discovery` preserves both unchanged.
 - **License-free version probes for proprietary tools**, each measured on a real install (exit 0, named line present, 1–26 s, no license queue): `vcs -ID` (parse the `Compiler version` line only — the FLEXlm host ID it also prints is never written to `tool-status.json`), `xrun -version`, `dc_shell -version`, `pt_shell -version` and `fm_shell -version`. Questa and Innovus remain `UNVERIFIED` rather than given a guessed flag that could open an interactive shell or check out a license; in both cases the reference host's obstacle was the install, not the flag (`innovus` reports an expired build authorisation, `vsim` cannot load `libXext.so.6`).
@@ -608,23 +634,23 @@ Not included, deferred, both found while verifying this fix: lexicographic "late
 - **QoR metrics** `proprietary_versioned` and `dialect_conflicts`, in the skill and in the orchestrator's stage-output block.
 - **Test** `tests/test_agent_contract.py::test_proprietary_tools_carry_role_and_dialect`: fails if a proprietary tool is added without a role or dialect, if a probe marked verified loses its command, or if the `tool_discovery` output schema stops carrying both fields.
 
-### Changed
+#### Changed
 
 - **`tool_discovery` rule 6** captured a version for `FOUND` tools only. Proprietary tools are recorded `PROPRIETARY_ONLY`, never `FOUND`, so the rule never applied to them and the schema's `version` field was structurally always empty for that class. It now covers every tool found in PATH, including `PROPRIETARY_ONLY` tools with a verified probe.
 - **Infrastructure memory** `key_metrics.tool_versions` was populated from `FOUND` entries only; it now takes every entry with a non-empty `version` (`FOUND`, `FOUND_PREFER_MODULE`, `PROPRIETARY_ONLY`), so a later session can scope a vendor-option lookup to the exact build in use.
 
 Not included, deferred: the opt-in simulator invocation smoke test (#82 section C, now #88) and the proprietary compile wrappers (section D, now #89). Wrapper count stays 8; MCP target stays 10. Extending the table past the original seven tools — and confirming the probe flags for Questa and Innovus, which this host could not verify — is tracked in #84.
 
-## [Unreleased] — feat/reporting-contract branch
+### feat/reporting-contract branch
 
-### Added
+#### Added
 
 - **All 16 orchestrators**: new `## Reporting Contract` section (issues #75, #78), synced from `tools/agent_shared_sections.md`. Sign-off criteria were declarative properties with no rule that they be observed rather than asserted. The contract requires: run every named gate and quote its exact output; never report a gate as passing that was not run this session (report it NOT RUN, and why); exit 0 with empty or unparsable output is not a pass; re-read the deliverable list before finishing; separate measured values from inference; verify the provenance of any generated artifact a test consumes, in every environment that will run the test; and set `signoff` / `signoff_achieved` true only when every criterion is measured-PASS.
 - **Codex, Gemini and Copilot headers**: five condensed lines of the contract added to `## Verification and Reporting`.
 - **Wrapper JSON `verified` field**: `true` when `status` rests on a result parsed from the output or on a failure; `false` when the tool exited 0 without a recognisable result, or did not run. Documented in the infrastructure skill's wrapper schema.
 - **Tests**: `tests/test_wrappers.py` runs each real wrapper through bash against a fake tool (skipped on Windows unless `RUN_WRAPPER_TESTS=1`); `tests/test_mcp_adapter.py` covers how the adapter interprets wrapper output.
 
-### Changed
+#### Changed
 
 - **Behaviour change — all 8 EDA wrappers no longer report `PASS` without evidence.** Status was computed from the exit code and ERROR/WARNING lines alone, so a tool that exited 0 and printed nothing the wrapper recognised was a `PASS`. A wrapper now needs a result it parsed from the output; otherwise it reports `WARN` with `verified: false` and says so in the first warning. Evidence is the set of fields each wrapper already extracted — no new log markers. A quiet run (`yosys -q`, a `--version` smoke test) that returned `PASS` now returns `WARN`. The exit code is still propagated unchanged.
   - `wrap-verilator-sim.sh`: `PASS` requires `TEST PASSED`. An ERROR line with exit 0 gives `WARN`, not `FAIL`, since simulation logs print lines such as "Error count: 0".
@@ -632,9 +658,9 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **Behaviour change — `mcp-adapter.py`**: with exit 0, empty wrapper output was `PASS` and non-JSON output was `WARN`; JSON without a valid `status` was passed through. All three are now `FAIL` with `verified: false`, because the wrapper contract is to emit JSON on every run. Valid wrapper JSON is passed through unchanged. `isError` stays tied to `status == "FAIL"`.
 - **`mcp-session-adapter.py`**: `query_drc` returns `drc_total: null`, not `0`, when no count could be parsed.
 
-## [Unreleased] — feat/shared-orchestrator-guards branch
+### feat/shared-orchestrator-guards branch
 
-### Added
+#### Added
 
 - **Shared orchestrator sections, synced from one source** (issue #77). `tools/agent_shared_sections.md` holds the text every orchestrator carries word for word; `tools/sync_agent_sections.py` writes it into each target between `BEGIN SHARED` / `END SHARED` marker comments. `--check` reports drift and runs in CI, `--list` prints which block goes where. The script preserves each file's line endings, so a CRLF working tree and LF CI agree. Tests in `tests/test_sync_agent_sections.py`.
 - **15 orchestrators**: new `## Stage Gating and Escalation` section — read the tool's result before assigning a stage status; never proceed past a FAIL without applying the loop-back rule; on an exhausted loop cap, stop and escalate with state and root cause; when the fault is in an upstream artifact, stop looping and hand back. These guards previously existed in one or two orchestrators each (`pd`, `rtl-design`, `memory-ip`, `architecture`, `infrastructure`); ten domain orchestrators had no rule at all for an exhausted loop cap. `pipeline-orchestrator` is excluded: it dispatches rather than runs stages and owns `pending_approval` type `escalation`.
@@ -642,7 +668,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **Codex, Gemini and Copilot headers**: new `## Verification and Reporting` section with the condensed guards. Copilot and Codex installs receive skills only, never agent files.
 - **`.gitattributes`**: `* text=auto`, and `*.sh text eol=lf` so shell scripts are runnable from a Windows checkout.
 
-### Changed
+#### Changed
 
 - **`pending_approval` ownership made consistent.** The pipeline skill allowed domain orchestrators only `type: "checkpoint"` while also requiring them to set `type: "constraint_gap"`, and a sentence in 15 orchestrators implied they set `pending_approval` on any escalation. Domain orchestrators now set it only at their two gates (checkpoint, constraint validation); an escalation for an exhausted loop cap or an upstream fault is recorded in the terminal `history[]` entry, whose `reason` carries the `failure_class` and what the user must supply. `type: "escalation"` stays reserved for `pipeline-orchestrator`. No schema change.
 - **Existing one-off guards** in `pd`, `architecture`, `infrastructure`, `rtl-design` and `memory-ip` keep their rule numbers and now point at the shared section.
@@ -650,15 +676,15 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **`CONTRIBUTING.md`**: documents the sync step, corrects the file paths in the "Adding a New Skill" steps and the local validation snippet (both referred to a root `skills/` directory that does not exist), and corrects the count rule (skills may exceed agents).
 - Stale counts corrected in `CONTRIBUTING.md`, `docs/MASTER_INDEX.md`, `memory/README.md` and `FUTURE_WORK.md`.
 
-## [Unreleased] — fix/signoff-achieved-template branch
+### fix/signoff-achieved-template branch
 
-### Fixed
+#### Fixed
 
 - **13 orchestrators**: the `experiences.jsonl` template showed `"signoff_achieved": true` while the surrounding rules say the record is also written on escalation and abandonment (issue #74). `distill.py` counts sign-off with `is True`, so a template defaulting to `true` records failed runs as successes. The template now defaults to `false`, matching `pd` and `infrastructure`, and each one states the success condition directly beneath it (`soc` had no such sentence). A literal `false` is used rather than a `"<true|false>"` placeholder, because a string value never satisfies `is True`. `memory/README.md` carried the same literal in the canonical schema.
 - **8 orchestrators** (`dft`, `firmware`, `fpga`, `memory-ip`, `rtl-design`, `sta`, `synthesis`, `verification`): said "append one JSON line" and gave a template with no `run_id`, contradicting `memory/README.md` and their own skills. They now upsert by `run_id` like the rest. The `fpga` skill's separate append-only schema (`stage`, `outcomes`, `metrics`, `tools`), which `distill.py` could not read metrics from, now points at the shared record schema. `README.md` no longer calls the file append-only.
 - **6 orchestrators** (`architecture`, `dft`, `firmware`, `formal`, `fpga`, `hls`): the history `decision` enum omitted `await_approval`, which their own checkpoint gate writes.
 
-### Added
+#### Added
 
 - **`tests/test_agent_contract.py`**: static checks on agent and skill markdown — no hardcoded `"signoff_achieved": true`, no append-only wording, every experience template carries `run_id`, and every `decision` enum lists `await_approval` where the agent writes it.
 
@@ -682,7 +708,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - `distill.py`, `tools/qor_trends.py`, `memory/README.md`, and `memory-keeper/SKILL.md` registered the new domain; `projected_repair_yield_pct` added to `HIGHER_IS_BETTER`.
 - Installers updated: `install.sh` and `install.ps1` (plugin list, dir map, `enabledPlugins`, OpenCode mode map, completion message) and `bin/install.mjs` (`OPENCODE_MODE_DISPLAY`).
 
-## [Unreleased] — feat/semantic-experience-search branch
+## [1.7.0] — feat/semantic-experience-search branch
 
 ### Added
 
@@ -698,7 +724,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **`memory/README.md`**: new "Semantic / Keyword Experience Search" section documenting the CLI, the MCP server/config, the threshold/fallback semantics, the sqlite cache + `--reindex`, and the optional orchestrator read-path.
 - **`FUTURE_WORK.md`**: item 2 marked implemented (phased); documented why the sqlite-vec/Chroma/hosted options were rejected in favor of a stdlib-only keyword default with a pluggable embedding hook.
 
-## [Unreleased] — feat/agent-auto-detect branch
+## [1.5.11] — feat/agent-auto-detect branch
 
 ### Added
 
@@ -711,7 +737,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **`install.sh` / `install.ps1`** gained the same detection mode (default when no `--ide`/`-IDE`). They still require `python3` (their Claude block reads plugin versions and merges `settings.json` via Python); the fully Python-free path is now the npm installer.
 - **`README.md`**: documented auto-detection, the `--yes` flag, and that the npm path now installs every supported target.
 
-## [Unreleased] — feat/structured-failure-handling branch
+## [1.5.3] — feat/structured-failure-handling branch
 
 ### Added
 
@@ -730,7 +756,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **CI** (`validate.yml`): added `"1.5"` to `VALID_FORMAT_VERSIONS`, a `VALID_RETRY_STRATEGY` set and `RETRY_STRATEGY_MAP`, and a `check_retry_strategy` helper that validates each 1.5 history entry's `retry_strategy` against the value **and** its `failure_class` mapping, applied to both example fixtures.
 - **`memory/README.md`**: documented `retry_strategy` in the `history[]` field list and added the `"1.4"` and `"1.5"` format_version tiers.
 
-## [Unreleased] — feat/infrastructure-memory branch
+## [1.5.3] — feat/infrastructure-memory branch
 
 ### Added
 
@@ -745,7 +771,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 - **`memory/README.md`**: added `infrastructure/` to the Directory Layout, an `infrastructure` row to the Domain key_metrics Fields table, and a new "Infrastructure memory (opt-in, environment-keyed)" subsection documenting the activation flag and env-keyed records.
 - **`infrastructure-orchestrator.md`**: added Behaviour Rule 8 and an "Infrastructure Memory" section specifying the activation gate, session-start read, post-`environment_validation` upsert, and the environment-keyed record schema.
 
-## [Unreleased] — feat/central-constraint-handling branch
+## [1.5.2] — feat/central-constraint-handling branch
 
 ### Added
 
@@ -766,7 +792,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 
 ---
 
-## [Unreleased] — feat/approval-gates-traceability branch
+## [1.5.1] — feat/approval-gates-traceability branch
 
 ### Added
 
@@ -787,7 +813,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 
 ---
 
-## [Unreleased] — feat/rtl-verify-feedback-loop branch
+## [1.5.0] — feat/rtl-verify-feedback-loop branch
 
 ### Added
 
@@ -813,7 +839,7 @@ Not included, deferred: the opt-in simulator invocation smoke test (#82 section 
 
 ---
 
-## [Unreleased] — agent-scope-review branch
+## [1.4.4] — agent-scope-review branch
 
 ### Added
 - **Pre-run context** (`## Pre-run Context`) section added to all 13 domain SKILL.md files:
