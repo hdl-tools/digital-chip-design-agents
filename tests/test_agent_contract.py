@@ -469,6 +469,91 @@ def test_rtl_design_rules_do_not_contradict_safe_fsm_recovery():
         assert clause in text, f"rtl-design Synthesis Safety is missing {clause!r}"
 
 
+FORMAL_SKILL = (
+    REPO_ROOT / "plugins" / "formal" / "skills" / "formal-verification" / "SKILL.md"
+)
+RTL_AGENT = REPO_ROOT / "plugins" / "rtl-design" / "agents" / "rtl-design-orchestrator.md"
+DFT_AGENT = REPO_ROOT / "plugins" / "dft" / "agents" / "dft-orchestrator.md"
+VERIFICATION_AGENT = (
+    REPO_ROOT / "plugins" / "verification" / "agents" / "verification-orchestrator.md"
+)
+
+
+def test_formal_skill_hands_rtl_bugs_to_the_rtl_flow():
+    """The formal agent writes a fix_request for an RTL bug and never edits RTL, but
+    the skill told the reader to "fix RTL → re-run FPV". An IDE that loads skills
+    without agents (Copilot, Codex) got only the skill, so formal edited RTL itself
+    with none of the RTL lint rules behind it."""
+    text = _read(FORMAL_SKILL)
+    for phrase in ("fix RTL → re-run FPV", "fix RTL or assumption"):
+        assert phrase not in text, (
+            f"formal skill tells the formal flow to edit RTL itself: {phrase!r}"
+        )
+    assert "fix_request" in text, "formal skill does not name the fix_request hand-off"
+
+
+def test_scan_drc_design_fault_escalates_instead_of_retrying_insertion():
+    """A Scan DRC error caused by the incoming design (generated clock, uncontrollable
+    async reset, latch, combinational loop) is not changed by re-running scan
+    insertion. The single `DRC errors > 0 → scan_insertion (max 3×)` row spent three
+    insertion runs on it before escalating — the unwinnable loop-back of #86/#102."""
+    rows = _loop_back_rows(_read(DFT_AGENT))
+    design_rows = [r for r in rows if "caused by the design" in r]
+    assert design_rows, "no Loop-Back Rules row for a Scan DRC error caused by the design"
+    for row in design_rows:
+        target = row.split("→", 1)[1].strip() if "→" in row else ""
+        assert target.startswith("escalate"), (
+            f"design-caused Scan DRC row does not escalate: {row.strip()!r}"
+        )
+    for row in rows:
+        if row.startswith("- scan_insertion FAIL") and "→" in row:
+            target = row.split("→", 1)[1].strip()
+            if target.startswith("scan_insertion"):
+                assert "repairable by insertion" in row, (
+                    "a scan_insertion retry row is not limited to errors insertion "
+                    f"can repair: {row.strip()!r}"
+                )
+
+
+def test_rtl_unverified_handoff_has_a_producer_and_consumers():
+    """rtl-design labels conclusions no tool proved `UNVERIFIED`. Unless the list is
+    written to design_state and read downstream, the label is where the claim stops:
+    formal and verification never learn which claims were left for them."""
+    assert "Unverified-claims list" in _read(RTL_SKILL), (
+        "rtl-design rtl_signoff no longer outputs the unverified-claims list"
+    )
+    assert '"unverified"' in _read(RTL_AGENT), (
+        "rtl-design-orchestrator does not write rtl.unverified to design_state"
+    )
+    for agent in (FORMAL_AGENT, VERIFICATION_AGENT):
+        assert "rtl.unverified[]" in _read(agent), (
+            f"{_rel(agent)}: does not read the RTL unverified-claims hand-off"
+        )
+
+
+@pytest.mark.parametrize("path", AGENT_FILES + SKILL_FILES, ids=_rel)
+def test_suspected_rtl_schema_carries_basis(path):
+    """A fix_request's `suspected_rtl` is routed to directly by the RTL orchestrator.
+    Without `basis`, a location guessed from a symptom is indistinguishable from one
+    traced in a waveform, and a misdiagnosed location is the usual cause of a loop
+    that reaches the iteration cap."""
+    for block in JSON_FENCE.findall(_read(path)):
+        if '"suspected_rtl": {' in block:
+            assert '"basis"' in block, (
+                f"{_rel(path)}: fix_request schema shows suspected_rtl without basis"
+            )
+
+
+def test_rtl_design_scopes_out_testbenches():
+    """The Copilot adapter applies rtl-design to every `**/*.sv`, testbenches
+    included. The exemption lived only in the agents' shared RTL Lint Gate, so an
+    IDE loading the skill alone applied the synthesis rules to testbench code."""
+    text = _read(RTL_SKILL)
+    assert "Testbenches (`*_tb.sv`, `tb_*.sv`" in text, (
+        "rtl-design skill does not scope testbenches out of the RTL rules"
+    )
+
+
 # A `.json` artifact a stage promises to produce.
 JSON_ARTIFACT = re.compile(r"`([A-Za-z0-9_.-]+\.json)`")
 # Per-tool fields that live in tool-status.json; a second artifact restating them

@@ -107,6 +107,20 @@ uvm_test
 6. Back-pressure: tests under flow control conditions
 7. Reset: in-operation resets, reset during active transaction
 8. Define covergroups before writing tests
+9. Plan the corner cases a directed test rarely reaches, one V-plan entry each:
+   - simultaneous events — load and increment, read and write when empty, flush and enable,
+     full and empty together
+   - the first cycle out of reset
+   - sustained back-pressure (`ready` low for many cycles) and maximum-rate input with no gaps
+   - an input deasserting mid-transaction
+   - both extremes of the clock ratio for a multi-clock block
+10. Test at boundary parameter values, not only the default configuration: `WIDTH=1`,
+    `DEPTH=1` and `2`, `N=1`, and a non-power-of-two value. A value the RTL is meant to
+    reject gets a test that it refuses to elaborate
+11. Take the RTL hand-off as an input: each entry in `design_state.rtl.unverified[]` (claims
+    the RTL flow concluded without a tool run) gets a test or is marked as assigned to formal.
+    `cdc` and `reset` entries cannot be closed by functional simulation — record them as
+    needing a CDC/RDC tool run rather than as covered
 
 ### V-Plan Entry Template (per feature)
 ```
@@ -138,9 +152,31 @@ priority:     P0
 3. Sequence library: register all sequences for random selection
 4. Never hardcode values — use randomised fields with constraints
 
+### Domain Rules — Testbench Coding
+Testbench code is exempt from the RTL synthesis rules — `initial`, `#delay` and blocking
+assignments are correct here — but it is still SystemVerilog that has to elaborate the same
+way in every simulator.
+1. `` `default_nettype none `` at the top of every testbench, interface and bind file, restored
+   with `` `default_nettype wire `` at the end so library code compiled after it is unaffected;
+   a typo in a DUT connection must be an error, not an implicit one-bit net
+2. Instantiate the DUT with named port connections and named parameter overrides
+   (`#(.WIDTH(8))`), never positional — a positional connection mis-wires silently when a
+   port list is reordered
+3. Type every parameter and constant (`int unsigned`, `logic [W-1:0]`). An untyped parameter
+   and a size-cast bare literal (`WIDTH'(1)`) are signed; in a scoreboard comparison that
+   yields a false pass or a false mismatch on values with the top bit set
+4. Compare expected and actual at the same width and signedness, and compare with `!==` so
+   an X or Z on the DUT output is a mismatch, not a silent pass
+5. Comment the why: each assumption about the DUT, each waiver, each deliberately illegal
+   stimulus
+
 ### Domain Rules — Drivers
 1. Drive signals cycle-accurate to protocol specification
-2. Handle back-pressure: check ready/valid correctly
+2. Handle back-pressure per the ready/valid contract. As a source: assert `valid` without
+   waiting for `ready`, then hold `valid` and the payload stable until the beat is accepted. As
+   a sink: `ready` may depend on `valid`. A driver that waits for `ready` before asserting
+   `valid` deadlocks against a DUT that waits for `valid`, and hides DUT bugs that only appear
+   under back-pressure
 3. Protocol assertion in driver to catch illegal stimulus early
 
 ### Domain Rules — Scoreboard
@@ -152,6 +188,9 @@ priority:     P0
 1. Protocol assertions: in interface bind, not DUT
 2. Functional assertions: in checker or bind module
 3. All assertions: clearly named with descriptive failure message
+4. Every ready/valid interface carries the contract as assertions: transfer only on
+   `valid && ready`; `valid` not retracted before the beat is accepted; payload stable while
+   `valid && !ready`; `valid` and `ready` deasserted (not X) in reset
 
 ### QoR Metrics to Evaluate
 - TB compile: 0 errors, 0 warnings
@@ -175,6 +214,25 @@ priority:     P0
 5. Reset during active transaction: at least one test per interface
 6. P0 tests must all pass before constrained-random phase begins
 7. DUT bug found during directed test: write a `fix_request` entry to `design_state.fix_requests[]` per the schema in the verification-orchestrator Design State section; terminate with `decision=escalate`. The pipeline-orchestrator (`chip-design-meta`) handles RTL re-invocation — do not loop locally or wait for user confirmation.
+8. Before filing, classify the failure as DUT bug or testbench bug, and name the mechanism,
+   not just the location — the reported symptom is not necessarily the bug. Set
+   `suspected_rtl.basis` to `traced` only when you followed the mismatch back to that signal
+   in the waveform; otherwise `hypothesis`. Start from the symptom:
+
+   | Symptom | Look first at |
+   |---|---|
+   | Intermittent, rate scales with clock ratio | Clock-domain crossing |
+   | Fails at bring-up, fine once running | Reset release and reset values |
+   | Hangs until reset | FSM state with no exit, protocol wait-for cycle |
+   | Wrong only for large values | Width truncation, arithmetic overflow |
+   | Wrong only for negative values | Signed/unsigned mix |
+   | Fails only under sustained load | Arbitration fairness, retracted `valid`, unstable payload |
+   | Passes in RTL sim, fails in gate sim | Blocking assignment in clocked block, incomplete sensitivity list, X-optimism |
+   | Degrades slowly over a long run | Leaked credit or token |
+9. Never make a failing test pass by weakening the check: do not loosen the scoreboard
+   comparison, disable or waive an assertion, or constrain stimulus away from the failing case
+   unless that stimulus was illegal per the spec. A fix to the testbench must leave every
+   other test's checking at least as strict as before
 
 ### QoR Metrics to Evaluate
 - All V-plan features covered by at least one directed test
@@ -196,7 +254,8 @@ priority:     P0
 3. Seeds: use at least 10 distinct seeds before evaluating coverage
 4. Scoreboards active throughout: every transaction checked against reference model
 5. Any UVM FATAL: stop immediately — do not accumulate errors across seeds
-6. Any scoreboard mismatch: classify as DUT bug or testbench bug before continuing
+6. Any scoreboard mismatch: classify as DUT bug or testbench bug before continuing, using the
+   symptom table in `directed_tests` rule 8
 7. Run until coverage targets are met or max seed budget exhausted
 
 ### QoR Metrics to Evaluate

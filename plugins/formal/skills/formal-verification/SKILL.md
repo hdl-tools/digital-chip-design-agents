@@ -80,9 +80,33 @@ compliance, and equivalence checking between RTL and gate-level netlists.
 3. Liveness properties: always bound with ##[1:BOUND]
 4. Use `$past()`, `$rose()`, `$fell()` over manual delay logic
 5. `disable iff`: use for reset gating
+6. Take the RTL hand-off as an input: every entry in `design_state.rtl.unverified[]` (claims
+   the RTL flow concluded without a tool run) gets a property, a cover, or a written reason it
+   is not formally tractable and who checks it instead. If `rtl.unverified` is absent the RTL
+   flow did not report — say so in the property plan and derive the targets below from the RTL
+   yourself; do not read "absent" as "nothing to prove"
+7. Prove at boundary parameter values, not only the default: a proof holds for one
+   parameterisation. Re-run at `WIDTH=1`, `DEPTH=1` and `2`, `N=1`, and any non-power-of-two
+   value the module accepts. A guarded `initial`/`$fatal` parameter assertion in the RTL sits
+   inside `synthesis translate_off` and may be invisible to the formal front-end, so restate
+   the legal parameter range in the environment
+
+### Property Targets Lint Cannot Prove
+A clean lint run says nothing about these. Each applies wherever the structure exists:
+
+| Structure | Properties |
+|-----------|-----------|
+| Ready/valid interface | Transfer only on `valid && ready`; `valid` not retracted before acceptance; payload stable while `valid && !ready`; `valid` and `ready` low in reset |
+| FSM | Every state reachable (cover); every state has an exit (bounded liveness); from any illegal encoding the machine reaches a legal state — mandatory for an FSM using `unique case` without `default`, where this assertion is the only recovery check |
+| Arbiter | Grant is one-hot or zero; a continuously asserting requester is granted within N grants; rotation advances only on a consumed grant |
+| FIFO | No write when full, no read when empty; `empty` is 1 and `full` is 0 out of reset; occupancy never exceeds depth |
+| Arithmetic | Every `+`, `-`, `*` and accumulator stays within its result width, or wraps only where the spec says so |
+| Reset | Every control flop has its specified value in the first cycle out of reset |
+| Deadlock | No wait-for cycle: bounded liveness on every request/acknowledge and every credit return |
 
 ### QoR Metrics to Evaluate
 - All spec features mapped to property or cover
+- Every `rtl.unverified[]` entry mapped to a property, a cover, or a stated reason
 - Cover points: key states are reachable
 
 ### Output Required
@@ -131,7 +155,7 @@ assume property (@(posedge clk)
 | Result | Meaning | Action |
 |--------|---------|--------|
 | PROVEN | Holds for all reachable states | Log and continue |
-| CEX | Counterexample found | Analyse; fix RTL or assumption |
+| CEX | Counterexample found | Analyse in `cex_analysis`; hand an RTL bug to the RTL flow, or fix the assumption |
 | VACUOUS | Antecedent never fires | Fix assumption or property |
 | INCONCLUSIVE | Bound too small or state space too large | Increase bound / abstract |
 | UNREACHABLE | Cover never reachable | Verify or waive |
@@ -140,7 +164,10 @@ assume property (@(posedge clk)
 1. Increase BMC bound (k-induction)
 2. Apply abstractions (data abstraction, counter abstraction)
 3. Decompose: prove sub-properties; compose to main property
-4. Document as "assumed correct" with justification if intractable
+4. If intractable, record the property as `UNVERIFIED` with the bound reached and the
+   justification. A bounded proof is not PROVEN and an assumed-correct property is not a
+   result — neither counts toward the PROVEN total, and a P0 property left `UNVERIFIED`
+   blocks sign-off
 
 ### QoR Metrics to Evaluate
 - Target: 100% PROVEN or UNREACHABLE (no unanalysed CEX)
@@ -156,10 +183,19 @@ assume property (@(posedge clk)
 
 ### Domain Rules
 1. Every CEX: determine if it is a real DUT bug or an assumption/environment bug
-2. Real DUT bug: fix RTL → re-run FPV (counts as RTL bug, not formal bug)
+2. Real DUT bug: do not edit the RTL from this flow. Write a `fix_request` entry to
+   `design_state.fix_requests[]` (`failure_class=formal_cex`, CEX trace path, the property that
+   failed) and stop; the RTL flow applies the fix under its own lint rules and FPV is re-run on
+   the result. Counts as an RTL bug, not a formal bug
 3. Assumption bug: tighten assumption → re-run vacuity check
 4. False CEX from under-constraining: document clearly before adding assumption
 5. Never waive a CEX without root cause
+6. A CEX must not be cleared by narrowing the environment. Before adding or tightening an
+   assumption, confirm the excluded behaviour is illegal per the spec or the upstream block's
+   contract; an assumption that removes legal stimulus hides the bug instead of fixing it.
+   Likewise never weaken or delete the failing property to get a pass
+7. State what located the bug: set `suspected_rtl.basis` to `traced` when the CEX trace shows
+   the faulty signal and cycle, `hypothesis` when the location is inferred
 
 ### Output Required
 - CEX analysis report (bug or false alarm, root cause, fix applied)
@@ -209,7 +245,8 @@ assume property (@(posedge clk)
 - [ ] No unanalysed CEX
 - [ ] No vacuous proofs
 - [ ] LEC: 100% EQUIVALENT
-- [ ] All INCONCLUSIVE: documented with justification
+- [ ] All INCONCLUSIVE: documented with justification and recorded as `UNVERIFIED`, not PROVEN
+- [ ] Every `rtl.unverified[]` entry: proven, covered, or dispositioned with a reason
 - [ ] Additional coverage closed vs simulation baseline
 
 ### Output Required

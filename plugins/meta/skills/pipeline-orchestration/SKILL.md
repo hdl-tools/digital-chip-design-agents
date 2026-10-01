@@ -62,7 +62,8 @@ of the enums, required fields, and the `failure_class → retry_strategy` map be
     "module": "<module name>",
     "signal": "<signal or null>",
     "file": "<rtl/path.sv or null>",
-    "line_range": [0, 0]
+    "line_range": [0, 0],
+    "basis": "traced | hypothesis"
   },
   "summary": "<one-line bug description>",
   "expected_behavior": "<spec excerpt or null>",
@@ -73,6 +74,13 @@ of the enums, required fields, and the `failure_class → retry_strategy` map be
   "history": []
 }
 ```
+
+> **`suspected_rtl.basis` (optional).** `traced` means the producer followed the failure to
+> this signal in a waveform or CEX trace; `hypothesis` means the location is inferred from the
+> symptom. The RTL orchestrator treats `hypothesis`, an absent `basis`, or `line_range: [0, 0]`
+> as a guess and confirms the cause before editing. A misdiagnosed `suspected_rtl` is the usual
+> root cause of a loop that reaches the iteration cap, so producers should not claim `traced`
+> for a location they did not observe.
 
 > **Reserved field — `route_to` (optional).** The schema accepts an optional
 > `route_to` string naming the servicer domain for a fix (default: `rtl-design`).
