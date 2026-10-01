@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased] — issue #102: `lec_run` looped back to a stage that cannot fix a netlist
+
+### Fixed
+
+- **`formal-orchestrator`'s `lec_run: unmatched points` row retried `lec_run` itself** on a
+  netlist mismatch, but `lec_run` only compares the RTL/golden model against a netlist produced
+  by synthesis — it never regenerates either side. Each retry re-ran the same comparison against
+  the same unchanged netlist and reproduced the identical mismatch, spending all 3 permitted
+  iterations before escalating on an input nothing in the retry loop could change. Same defect
+  class, and same shared precedence rule, as #86 (fixed for `infrastructure-orchestrator`): the
+  Stage Gating block already says a stage must stop looping and hand back when the fault is in
+  an upstream artifact it does not own, but the row granted three iterations anyway, and a row
+  wins over that rule where the two disagree. The row now escalates immediately, naming the
+  netlist mismatch and that synthesis — not `lec_run` — must produce the fix.
+
+### Added
+
+- **Test** `tests/test_agent_contract.py::test_lec_mismatch_escalates_instead_of_looping_back_to_lec_run`,
+  so the row cannot regress back into looping to `lec_run`.
+
 ## [Unreleased] — issue #94: a loop-back FAIL had no `decision` value of its own
 
 ### Fixed

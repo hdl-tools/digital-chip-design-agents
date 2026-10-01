@@ -41,7 +41,7 @@ When invoking open-source tools, follow the execution hierarchy:
 - fpv_run: CEX found (RTL bug)           → write fix_request (failure_class=formal_cex, includes CEX trace path) → ESCALATE awaiting pipeline-orchestrator
 - fpv_run: vacuous proof                 → environment_setup                (max 3×)
 - fpv_run: inconclusive                  → fpv_run (increase bound)         (max 3×)
-- lec_run: unmatched points              → (netlist fix required) → lec_run (max 3×)
+- lec_run: unmatched points              → escalate: "Netlist does not match RTL/golden model at the reported points; lec_run compares two already-produced artifacts and regenerates neither. Re-run synthesis to produce a corrected netlist (or confirm the RTL/golden model is current), then re-run lec_run."
 
 ## Sign-off Criteria
 - unproven_p0_properties: 0
