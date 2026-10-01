@@ -79,7 +79,7 @@ jobs:
 
           ### Install
           \`\`\`
-          /plugin marketplace add github:chuanseng-ng/digital-chip-design-agents
+          /plugin marketplace add github:hdl-tools/digital-chip-design-agents
           \`\`\`
           Then install any domain:
           \`\`\`
@@ -102,6 +102,7 @@ jobs:
           - **GitHub Copilot**: \`bash install.sh --ide copilot\`
           - **Gemini Code Assist**: \`bash install.sh --ide gemini\`
           - **OpenCode**: \`bash install.sh --ide opencode\` (use \`/mode chip-<domain>\`)
+          - **OpenAI Codex CLI**: \`bash install.sh --ide codex\` (writes \`AGENTS.md\`)
 
           See CHANGELOG.md for full details.
           EOF

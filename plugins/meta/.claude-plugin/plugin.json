@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Cross-domain pipeline orchestrator — drives closed-loop verification↔RTL feedback via design_state.json fix_requests",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
-  "homepage": "https://github.com/chuanseng-ng/digital-chip-design-agents",
-  "repository": "https://github.com/chuanseng-ng/digital-chip-design-agents",
+  "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",
+  "repository": "https://github.com/hdl-tools/digital-chip-design-agents",
   "license": "MIT",
   "skills": ["./skills/pipeline-orchestration"],
   "agents": ["./agents/pipeline-orchestrator.md"]

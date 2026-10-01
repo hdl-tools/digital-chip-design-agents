@@ -3,7 +3,7 @@
 > Claude Code marketplace plugin — full digital chip design pipeline.  
 > 16 plugins · 17 skill files · 14 chip-design domains + infrastructure + pipeline orchestrator · closed-loop verification↔RTL feedback.
 
-[![Validate](https://github.com/chuanseng-ng/digital-chip-design-agents/actions/workflows/validate.yml/badge.svg)](https://github.com/chuanseng-ng/digital-chip-design-agents/actions/workflows/validate.yml)
+[![Validate](https://github.com/hdl-tools/digital-chip-design-agents/actions/workflows/validate.yml/badge.svg)](https://github.com/hdl-tools/digital-chip-design-agents/actions/workflows/validate.yml)
 
 ---
 

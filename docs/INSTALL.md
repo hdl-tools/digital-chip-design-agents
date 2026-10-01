@@ -43,14 +43,14 @@ use the npm path (Option A).
 
 **macOS / Linux / Git Bash:**
 ```bash
-git clone https://github.com/chuanseng-ng/digital-chip-design-agents.git
+git clone https://github.com/hdl-tools/digital-chip-design-agents.git
 cd digital-chip-design-agents
 bash install.sh
 ```
 
 **Windows (PowerShell):**
 ```powershell
-git clone https://github.com/chuanseng-ng/digital-chip-design-agents.git
+git clone https://github.com/hdl-tools/digital-chip-design-agents.git
 cd digital-chip-design-agents
 .\install.ps1
 ```
@@ -63,7 +63,7 @@ If you only need specific domains, install them individually via the Claude Code
 marketplace. First register the marketplace, then install the domains you need:
 
 ```text
-/plugin marketplace add github:chuanseng-ng/digital-chip-design-agents
+/plugin marketplace add github:hdl-tools/digital-chip-design-agents
 ```
 
 <details>
