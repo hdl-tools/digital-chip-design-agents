@@ -265,8 +265,9 @@ before falling back to the wrapper or direct execution.
 - `tools_missing`: count of MISSING open-source tools
 - `proprietary_found`: count of PROPRIETARY_ONLY tools detected in PATH
 - `proprietary_versioned`: count of PROPRIETARY_ONLY tools with a non-empty `version`
-- `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
-  differing `dialect` values where at least one is `PROPRIETARY_ONLY`
+
+`dialect_conflicts` is not this stage's metric, although it reads the `role` and `dialect`
+recorded here: `environment_validation` rule 7 computes it and declares it.
 
 ### Output Required
 - `tool-status.json` — contains two top-level keys:
@@ -592,17 +593,33 @@ module load cadence/xcelium/20.09
     ```
     Use `"$PYTHON_EXEC" -m pip install <package>` as the install command. Never use bare `pip install` when `python_env.type` is `"custom"` or `"module"`.
 7. Proprietary tools: no script generated — record a note in the sign-off summary only
-8. Modulefile format: always TCL classic (no file extension); always generate modulefiles unconditionally — if `module_system == "none"`, emit WARN that automatic module loading is unavailable but still output the modulefile
-9. Each script must end with guidance for registering `$EDA_MODULEFILES_ROOT` in `$MODULEPATH` if not already present
+8. Modulefile format: always TCL classic (no file extension); always generate modulefiles
+   unconditionally — a modulefile that may need adapting is more useful than none. Which case
+   the user is in decides the WARN, one message per `module_system` value:
+   - `tclmod`: no WARN — Environment Modules reads TCL classic
+   - `module_system == "none"` or `module_system == "custom"` — see the WARN text under the
+     Per-Tool Script Structure below. Both still get the modulefile
+9. Each script ends with registration guidance, conditioned on `module_system`:
+   - `tclmod`: register `$EDA_MODULEFILES_ROOT` in `$MODULEPATH` if not already present
+   - `custom`: say that a site wrapper registers modulefiles its own way — it may not read
+     `$MODULEPATH` at all — so the mechanism must be taken from the site's own documentation.
+     Do not emit the `$MODULEPATH` line as the instruction
+   - `none`: say there is no module system to register with yet; the `$MODULEPATH` line
+     applies once Environment Modules is installed
 10. Write all `install-<toolname>.sh` scripts to the `install-missing-tools/` directory; create the directory if it does not exist; do **not** create the directory or any scripts if no tools are `MISSING`
+
+### QoR Metrics to Evaluate
+- `install_scripts_generated`: count of `install-<toolname>.sh` scripts written to
+  `install-missing-tools/` — one per `MISSING` tool, so it equals `tools_missing`; `0` when
+  nothing is missing
 
 ### Common Issues & Fixes
 
 | Issue | Fix |
 |-------|-----|
 | `python3` not found | Escalate immediately — all wrapper scripts depend on it |
-| OpenROAD build required | Refer to https://github.com/The-OpenROAD-Project/OpenROAD |
-| Bambu HLS Linux only | Wrap with `status: WARN` on macOS/Windows |
+| `openroad` (OpenROAD): build required | Refer to https://github.com/The-OpenROAD-Project/OpenROAD |
+| `bambu-hls` (Bambu HLS): Linux only | Wrap with `status: WARN` on macOS/Windows |
 
 ### Install Directory Layout
 
@@ -661,20 +678,30 @@ EOF
 echo "Modulefile written: ${MODFILE_DIR}/${TOOL_VERSION}"
 
 # --- Register modulefiles root (if not already set) ---
+# tclmod only — see rule 9 for custom and none:
 # export MODULEPATH=${EDA_MODULEFILES_ROOT}:${MODULEPATH}
 # Add the above line to ~/.bashrc or /etc/profile.d/eda-modules.sh
 ```
 
-If `module_system == "none"`: emit WARN in stage output that automatic module loading is unavailable, but still generate the modulefile block in the install script.
+Still generate the modulefile block in every case, and emit a WARN in the stage output when:
+- `module_system == "none"`: `"no module system detected — automatic module loading is
+  unavailable; the generated modulefile is usable once Environment Modules is installed"`
+- `module_system == "custom"`: `"generated modulefiles are TCL classic; the detected module
+  system is a site wrapper, not confirmed Environment Modules, and may not read them — see
+  module_system_detail in module-status.json for what module_discovery found, and adapt the
+  modulefile to the site's format if module load fails"`
 
 **Modulefile content rules:**
 - Minimum env vars in every modulefile: `PATH`, `LD_LIBRARY_PATH`
 - Add where applicable: `MANPATH`, `PKG_CONFIG_PATH`, `PYTHONPATH`
-- Tool-specific root vars (set these when present):
-  - Verilator → `VERILATOR_ROOT`
-  - Yosys → `YOSYS_DATDIR`
-  - LLVM → `LLVM_DIR`
-  - cocotb → `COCOTB_SHARE_DIR`
+- Tool-specific root vars (set these when present). Rows are keyed by the command — the
+  `tool` value in `tool-status.json` — never the product name, which is in parentheses for the
+  reader. For a Python package that value is the package name, so the cocotb row matches
+  `cocotb`, not its detection probe `cocotb-config`:
+  - `verilator` (Verilator) → `VERILATOR_ROOT`
+  - `yosys` (Yosys) → `YOSYS_DATDIR`
+  - `llvm-config` (LLVM) → `LLVM_DIR`
+  - `cocotb` (cocotb, Python package) → `COCOTB_SHARE_DIR`
 
 ### Package Name Mapping Table
 
@@ -949,6 +976,15 @@ silent pass.
    open-source simulators are on nearly every host.
 8. If any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
 9. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
+
+### QoR Metrics to Evaluate
+- `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
+  differing `dialect` values where at least one is `PROPRIETARY_ONLY` — computed by rule 7.
+  WARN only; it never blocks sign-off
+
+The rest of this stage's verdict is in `tool-manifest.json` (Output Required) rather than in
+QoR counts: Python env liveness, wrapper executable bits, MCP file presence and the
+critical-path check.
 
 ### Sign-off Checklist
 - [ ] `tool-status.json` written with all tools surveyed (includes `python_env` object)

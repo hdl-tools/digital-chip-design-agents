@@ -1,5 +1,40 @@
 # Changelog
 
+## [Unreleased] — issues #99, #103, #104: infrastructure `tool_installation` and QoR ownership
+
+### Fixed
+
+- **#99 — a `custom` module system got a TCL-classic modulefile and no warning.**
+  `tool_installation` rule 8 and the line under the modulefile block warned only when
+  `module_system == "none"`. #87 added `"custom"`, and a site wrapper is the case least likely
+  to read TCL classic. Each value now has its own WARN; the `custom` one names the TCL-classic
+  assumption and points at `module_system_detail`. Generation stays unconditional. Rule 9's
+  `$MODULEPATH` registration is now for `tclmod` only: `custom` is told the mechanism is
+  site-specific, and `none` that the line applies once Environment Modules is installed.
+  `tclmod` output is unchanged.
+- **#103 — the modulefile root-var table was keyed by product name.** The `LLVM` row could not
+  match `llvm-config`, so a generated LLVM modulefile omitted `LLVM_DIR`. Rows are now keyed by
+  command, with the product name in parentheses. The text states that the `cocotb` row matches
+  the package name `cocotb`, not its probe `cocotb-config`. The two Common Issues rows are keyed
+  the same way (`openroad`, `bambu-hls`).
+- **#104 — QoR metrics were declared by the wrong stage, or by none.**
+  - `tool_installation` and `environment_validation` had no `### QoR Metrics to Evaluate`
+    section.
+  - `dialect_conflicts` was declared by `tool_discovery`, but `environment_validation` rule 7
+    computes it.
+
+  `tool_installation` now declares `install_scripts_generated`, and `dialect_conflicts`
+  moves to `environment_validation`. The agent's `qor` block gains `proprietary_found` and
+  `install_scripts_generated`, so it lists exactly the metrics the stages declare. Each stage
+  now returns only its own keys and omits the rest: never a placeholder `0` or `null`.
+
+### Added
+
+- **Tests** in `tests/test_agent_contract.py`:
+  - `test_every_infrastructure_qor_key_is_declared_by_the_stage_that_computes_it`
+  - `test_modulefile_root_vars_are_keyed_by_command`
+  - `test_custom_module_system_is_warned_about_tcl_modulefiles`
+
 ## [Unreleased] — the repository moved to `hdl-tools`
 
 ### Changed
