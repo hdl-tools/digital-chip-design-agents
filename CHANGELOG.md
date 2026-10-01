@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased] — issue #117: the MCP configuration text contradicted itself and the files on disk
+
+### Fixed
+
+- **The `mcp_configuration` template ran a wrapper as the MCP server.** It set `command` to
+  `wrap-<tool>.sh`, which rule 2 directly above it forbids. A wrapper prints one JSON object
+  and exits, so it never completes MCP `initialize`, and rule 6 has the agent write the result
+  over a working config in `plugins/infrastructure/mcp/`. The template was older than rule 2
+  and had not been updated. It is now three templates taken from the configs on disk: batch
+  (`python3 mcp-adapter.py --wrapper … --tool …`), session (`mcp-session-adapter.py --tool …`)
+  and memory (`mcp-memory.py`).
+- **`mcp-openroad.json` said `bash install.sh` copies the template and substitutes its paths.**
+  No installer has ever done either. `_setup` now names the infrastructure orchestrator's
+  `mcp_configuration` stage, or replacing the paths by hand. Rule 4 of that stage says the same.
+- **`mcp-memory.json` was outside the stage that resolves MCP config paths.** It is the
+  eleventh file in `plugins/infrastructure/mcp/`, while the stage named only ten, so nothing
+  resolved its `/absolute/path/to/`, and the orchestrators' optional `query_experiences`
+  lookup depends on it. Rule 1 and Output Required now name it as an optional, uncounted
+  config. Its path is resolved along with the others. The skill's metric, `environment_validation`
+  rule 4 and sign-off checklist, and the orchestrator's Behaviour Rule 5 now say "10
+  tool-server" snippets, a count that can't be read as all 11 files. `memory/README.md` points
+  at the stage.
+
+### Added
+
+- **Tests** in `tests/test_agent_contract.py`:
+  - `test_mcp_configs_run_a_server_script_not_a_wrapper`: every `mcpServers` block in the
+    infrastructure skill and in `mcp/` runs `python3` with an MCP server script that exists.
+  - `test_no_mcp_config_credits_an_installer`
+  - `test_stated_mcp_count_matches_the_mcp_directory`: every config on disk is named in the
+    stage, and every stated count equals the tool-server files on disk.
+
 ## [Unreleased] — issue #83: a lint failure caused by the input set was sent to the stage that edits RTL
 
 `rtl-design` had one row for lint, `lint_check FAIL (errors > 0) → rtl_coding (max 5×)`, and no

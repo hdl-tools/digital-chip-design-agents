@@ -5,7 +5,7 @@
     "1. Replace the two '/absolute/path/to' strings in 'args' with the absolute path to this repo root (e.g. /home/user/digital-chip-design-agents).",
     "2. Set PDK_ROOT in 'env' to the directory containing your installed PDKs (e.g. /home/user/pdk or $PDKPATH).",
     "PLATFORM and TOOL_TIMEOUT_S can be left as-is or overridden per design.",
-    "Run 'bash install.sh' first — it copies this template and can apply path substitution automatically."
+    "No installer applies these substitutions. The infrastructure orchestrator's mcp_configuration stage resolves the paths; otherwise replace them by hand."
   ],
   "mcpServers": {
     "openroad": {
