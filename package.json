@@ -31,13 +31,13 @@
     "vlsi",
     "agents"
   ],
-  "homepage": "https://github.com/chuanseng-ng/digital-chip-design-agents#readme",
+  "homepage": "https://github.com/hdl-tools/digital-chip-design-agents#readme",
   "bugs": {
-    "url": "https://github.com/chuanseng-ng/digital-chip-design-agents/issues"
+    "url": "https://github.com/hdl-tools/digital-chip-design-agents/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/chuanseng-ng/digital-chip-design-agents.git"
+    "url": "git+https://github.com/hdl-tools/digital-chip-design-agents.git"
   },
   "author": {
     "name": "chuanseng-ng",

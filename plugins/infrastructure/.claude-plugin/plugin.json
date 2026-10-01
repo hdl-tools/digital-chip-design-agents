@@ -3,8 +3,8 @@
   "version": "1.2.0",
   "description": "EDA tool detection, output-filtering shell wrappers, and MCP server config templates for all chip-design domain agents",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
-  "homepage": "https://github.com/chuanseng-ng/digital-chip-design-agents",
-  "repository": "https://github.com/chuanseng-ng/digital-chip-design-agents",
+  "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",
+  "repository": "https://github.com/hdl-tools/digital-chip-design-agents",
   "license": "MIT",
   "skills": ["./skills/infrastructure", "./skills/memory-keeper"],
   "agents": ["./agents/infrastructure-orchestrator.md"]

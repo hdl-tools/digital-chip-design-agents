@@ -35,6 +35,24 @@
   - `test_modulefile_root_vars_are_keyed_by_command`
   - `test_custom_module_system_is_warned_about_tcl_modulefiles`
 
+## [Unreleased] — the repository moved to `hdl-tools`
+
+### Changed
+
+- **Repository URLs now name `hdl-tools/digital-chip-design-agents`** in `package.json`,
+  every `plugin.json`, `README.md`, `docs/INSTALL.md`, `CONTRIBUTING.md`, the schema `$id` and
+  the release notes. GitHub redirects the old URLs, but npm trusted publishing and provenance
+  are bound to the repository the release workflow runs in: with `package.json` still naming
+  `chuanseng-ng`, the next publish would be rejected. `author` and marketplace `owner` fields
+  name a person, not the repository, and are unchanged. Historical CHANGELOG entries keep the
+  old name.
+- **Release notes list the Codex CLI** among the other IDEs (`bash install.sh --ide codex`).
+
+### Added
+
+- **`tests/test_repo_identity.py`** — `package.json` points at the current repository, and no
+  file except this CHANGELOG names the old one.
+
 ## [Unreleased] — issue #118: flow docs restated loop-back rules that had drifted from the orchestrators
 
 Each `docs/*Flow*.md` restated its orchestrator's loop-back rules up to three times: in a stage

@@ -43,7 +43,7 @@ Bullet list of files/artifacts the stage must produce.
 ```json
 {
   "name": "chip-design-<new-domain>",
-  "source": { "source": "github", "repo": "chuanseng-ng/digital-chip-design-agents" },
+  "source": { "source": "github", "repo": "hdl-tools/digital-chip-design-agents" },
   "description": "One-line description",
   "category": "engineering",
   "keywords": ["keyword1", "keyword2"]
@@ -136,8 +136,8 @@ be present. The canonical values are:
 
 ```json
 "author":     { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
-"homepage":   "https://github.com/chuanseng-ng/digital-chip-design-agents",
-"repository": "https://github.com/chuanseng-ng/digital-chip-design-agents",
+"homepage":   "https://github.com/hdl-tools/digital-chip-design-agents",
+"repository": "https://github.com/hdl-tools/digital-chip-design-agents",
 "license":    "MIT"
 ```
 
