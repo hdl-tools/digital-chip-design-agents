@@ -418,3 +418,57 @@ def test_environment_validation_artifacts_are_defined():
             f"tool-manifest.json restates the tool-status.json field {field} -- it should "
             "reference that file, not copy it"
         )
+
+
+VERSION_SELECTION_HEADING = "#### Module version selection"
+NON_RELEASE_MARKERS = ("dev", "test", "debug", "rc", "alpha", "beta", "snapshot", "nightly")
+
+
+def test_module_version_selection_is_specified():
+    """Two rules picked a module version by sorting version strings as text (issue
+    #98). On a 13-version Python tree the lexicographic maximum is the fourth-oldest,
+    and `tool_discovery` Step A loads its pick for the whole run -- so the stage
+    replaced a newer PATH interpreter with an older module one."""
+    skill = _read(INFRA_SKILL)
+
+    # 1. Neither call site may sort text. The phrase may survive only inside the rule
+    #    itself, which cites it to say it is wrong.
+    rule_start = skill.index(VERSION_SELECTION_HEADING)
+    rule = skill[rule_start:].split("\n#### ", 1)[0]
+    outside = skill[:rule_start] + skill[rule_start + len(rule):]
+    assert "lexicographic" not in outside, (
+        "a call site still selects a version lexicographically; the only permitted "
+        "mention is inside the selection rule, which cites it as the defect"
+    )
+
+    # 2. The rule exists once and both call sites defer to it, so it cannot be
+    #    restated per site and drift -- which is how two copies came to exist.
+    assert skill.count(VERSION_SELECTION_HEADING) == 1, "selection rule is duplicated"
+    stages = _stage_sections(skill)
+    for stage in ("tool_discovery", "module_discovery"):
+        assert "Module version selection" in stages[stage], (
+            f"{stage} chooses a version without deferring to the selection rule"
+        )
+
+    # 3. The site default outranks any computed maximum, and non-release builds are
+    #    excluded -- both measured hazards: the trees carry _test/-debug/-dev builds,
+    #    and the annotated default differs from the newest build.
+    # Scope to the numbered list: the surrounding prose also says "default", so
+    # searching the whole rule cannot see the list itself being reordered.
+    assert "**Selection order.**" in rule, "the rule states no selection order"
+    order = rule.split("**Selection order.**", 1)[1].split("\n\n**", 1)[0]
+    ranked = [line for line in order.splitlines() if re.match(r"^\d+\. ", line)]
+    assert len(ranked) >= 2, f"selection order has {len(ranked)} ranked entries"
+    assert "default" in ranked[0].lower(), (
+        f"the site default is not first in the selection order: {ranked[0].strip()!r}"
+    )
+    assert any("release" in line for line in ranked[1:]), (
+        "the selection order never falls back to a release maximum"
+    )
+    for marker in NON_RELEASE_MARKERS:
+        assert f"`{marker}`" in rule, f"non-release marker {marker!r} is not excluded"
+
+    # 4. The choice must be recorded, or a wrong pick is invisible in the artifact.
+    stage = stages["module_discovery"]
+    for field in ('"selected"', '"selected_basis"', '"candidates"'):
+        assert field in stage, f"module-status.json does not record {field}"
