@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased] — issue #98: module version selection
+
+### Fixed
+
+- **"Latest version" was selected by sorting version strings as text**, in two rules — `tool_discovery` rule 2 Step A c and `module_discovery` rule 9 — both saying "highest semver/lexicographic" as though the two orderings agree. Measured on the reference host, a 13-version Python tree spanning 3.6.x–3.14.x has newest `3.14.6` and lexicographic maximum `3.9.7`, the **fourth-oldest**, because `"9" > "1"` at the second segment. Step A runs *before* the PATH check and wins over it, so the stage replaced the host's `3.12.2` interpreter with an older module one and kept it loaded for all five remaining stages; `load-modules.sh` recorded the same wrong choice per tool with the newest version commented out as an "alternative". Selection is now specified once, in a new `#### Module version selection` rule that both call sites defer to.
+- **The module system's own default was being discarded.** `module avail` annotates it — `klayout/adi/0.27.11 (adi default)` — and the entry-format rule added by #87 said to take the version "after stripping any trailing `(...)` annotation", so the site's answer to "which version" was present in the parsed data and thrown away as noise. Measured: **372 of 3813** listing entries carry that annotation. It is now captured, and the annotated default outranks anything this stage computes.
+- **Non-release builds could be selected as "latest".** The trees carry `3.12.2_test`, `3.6.2-debug`, `5.24-dev` and similar alongside releases. A version with any segment equal to `dev`, `test`, `debug`, `rc`, `alpha`, `beta`, `snapshot` or `nightly` is now excluded from an automatic choice while a release exists — it stays in `versions_available`, since a user may want one. The marker list is deliberately short: a site revision tag like `3.12.2.R10`, or a patch letter like `3.9.7n`, is a release and is ordered by the comparator.
+
+### Changed
+
+- **The result is "the version this host should use", not "the newest".** Where the module system marks a default, that default wins, and a site default is commonly an older qualified build — measured on the reference host, the annotated default differs from the newest available for every tool checked, and is several versions behind for some. That is deliberate and the rule says so, so the wording no longer promises newest.
+- **`module-status.json` records `selected`, `selected_basis` (`site_default | highest_release | highest_prerelease`) and `candidates`** per tool, so a wrong pick is visible in the artifact rather than only in the loaded environment. `highest_prerelease` should be rare and is the value worth noticing.
+- **`load-modules.sh`'s selected line states the basis** — `# selected: <basis>; alternatives: <versions>`, replacing `# latest; alternatives: …` — and the Stage Output Summary prints the basis and candidate count per tool.
+- **`memory/infrastructure/knowledge.md`**'s quirk entry described the behaviour as lexicographic with "pin the intended module explicitly" as the mitigation. Rewritten: pinning is now only for where the site default is wrong for a particular flow, not the routine workaround it was when selection was a plain sort.
+
+### Added
+
+- **Test** `tests/test_agent_contract.py::test_module_version_selection_is_specified`, four assertions, each mutation-checked: no call site may sort lexicographically (the word survives only inside the rule, which cites it as the defect); the rule exists once and both call sites defer to it; the site default is first in the selection order and every non-release marker is named; and the three selection fields are in the schema.
+
+The comparator's specification was corrected during implementation by executing it against the measured set. A clause ranking an extra *non-numeric* segment lower — justified by `5.24` > `5.24-dev` — gave `3.12.2.R10` < `3.12.2`, which is wrong. Its motivating case is already handled by the non-release exclusion, so inside the release pool the only remaining extras are post-release revision tags, for which longer genuinely is newer. The tie-break is now simply "more segments ranks higher", which also reduces the comparator to a plain tuple comparison.
+
 ## [Unreleased] — issues #91, #90: one sentence, two defects in `environment_validation` rule 2
 
 ### Fixed

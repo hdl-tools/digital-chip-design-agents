@@ -185,7 +185,12 @@ before falling back to the wrapper or direct execution.
       `$MODULESHOME` alone as proof that `module` can be run.
    b. If a listing was obtained (`module_listing` is `"LISTED"`), search it for entries matching
       `python` or `python3` (case-insensitive).
-   c. If one or more Python module entries are found: select the latest version (highest semver/lexicographic), load it via `module load <python-module>`, then run `which python3` to resolve `PYTHON_EXEC`. Set `python_env.type = "module"` and record `python_env.module_name` with the loaded module name. **Keep the module loaded for the entire orchestrator run** — do not unload it; subsequent stages (tool_installation, wrapper_deployment, environment_validation) all depend on `PYTHON_EXEC` being resolvable. The generated `load-modules.sh` handles persistent loading for future shell sessions.
+   c. If one or more Python module entries are found: select one per **Module version selection** in
+      `module_discovery` below — never by a plain sort — then load it via
+      `module load <python-module>` and run `which python3` to resolve `PYTHON_EXEC`. The non-release
+      exclusion matters more here than anywhere else: an interpreter chosen here stays loaded for the
+      whole run, so a `_test` or `-debug` build selected at this step becomes the Python every later
+      stage resolves against. Set `python_env.type = "module"` and record `python_env.module_name` with the loaded module name. **Keep the module loaded for the entire orchestrator run** — do not unload it; subsequent stages (tool_installation, wrapper_deployment, environment_validation) all depend on `PYTHON_EXEC` being resolvable. The generated `load-modules.sh` handles persistent loading for future shell sessions.
    d. Proceed to Step B where `module_system` is `"none"`, where the ladder was exhausted
       (`module_listing` is `"UNAVAILABLE"`), or where the listing holds no Python module entries.
       A detected-but-unlistable module system is **not** the same as no module system: it still
@@ -343,8 +348,14 @@ invocation; never infer it from an env var. Try these in order, stop at the firs
 Entries hold **two or more** `/`-separated segments and may carry a trailing parenthesised
 annotation. Measured on the reference host: `klayout/adi/0.29.0`, `verilator/adi/3.922`,
 `klayout/adi/0.27.11 (adi default)`. Take the version as the **last** `/`-separated segment after
-stripping any trailing `(...)` annotation, and keep the full entry string in `module_names`. Never
-assume `<name>/<version>` — that records `adi` as the version of `klayout/adi/0.29.0`.
+removing any trailing `(...)` annotation, and keep the entry string without that annotation in
+`module_names`. Never assume `<name>/<version>` — that records `adi` as the version of
+`klayout/adi/0.29.0`.
+
+**The annotation is data, not noise.** An entry whose annotation contains `default`
+(case-insensitive) is the module system's own default for that tool — on the reference host
+`klayout/adi/0.27.11 (adi default)` marks it. Record which entry carried it; the selection rule below
+prefers it over any version this stage computes.
 
 Match the mapping table against the entry read as a list of `/`-delimited tokens, case-insensitively:
 a pattern matches only where it covers **whole tokens** — one token, or a contiguous run of them for
@@ -353,10 +364,61 @@ real 3812-entry listing, substring matching produced two classes of false positi
 name merely *ends* with a mapped command (an optimisation tool named `...slang` matched `slang`),
 and a module whose name or version string merely *contains* one (a verification tool whose version
 ends `_python2`, and a GUI tool bundle whose name contains `python3`, both matched `python3`). The
-second class is the damaging one: `tool_discovery` Step A loads the *latest* matched Python module
-and keeps it loaded for the whole orchestrator run, and the highest-sorting substring match was
+second class is the damaging one: `tool_discovery` Step A loads the selected matched Python module
+and keeps it loaded for the whole orchestrator run, and the top-ranking substring match was
 that GUI bundle rather than an interpreter. Whole-token matching drops both classes and leaves the
 12 genuine tools.
+
+#### Module version selection
+Wherever this skill chooses a version for a tool — `tool_discovery` rule 2 Step A c and rule 9 below
+— it uses this rule. Do not restate it at the call sites and do not substitute a plain sort:
+**"highest lexicographic" and "newest" are different answers**, and on a real tree the lexicographic
+one is wrong: measured on the reference host, a 13-version Python tree spanning 3.6.x–3.14.x has
+newest `3.14.6` and lexicographic maximum `3.9.7` — the fourth-oldest — because `"9" > "1"` at the
+second segment.
+
+The result is *the version this host should use*, which is **not** always the newest one: where the
+module system marks a default, that default wins, and a site default is commonly an older, qualified
+build. On the same host the annotated default differed from the newest available for every tool
+checked, by several versions for some. That is intended, not a bug to work around.
+
+**Selection order.** Take the first that applies:
+
+1. the entry the listing annotates as the system's `default`, where it marks one — that is the site's
+   own answer and outranks anything computed here;
+2. otherwise the highest **release** version by the comparator below;
+3. otherwise the highest version at all — only where every candidate is non-release.
+
+**Non-release versions** are those with any segment equal to `dev`, `test`, `debug`, `rc`, `alpha`,
+`beta`, `snapshot` or `nightly`, case-insensitively. They stay in `versions_available` — they exist
+and a user may want one — but they are never selected automatically while a release exists. This
+matters because such builds sit in the same trees as releases: the reference host carries
+`3.12.2_test`, `3.6.2-debug` and `5.24-dev` alongside normal versions. Note the list is deliberately
+short: a site revision tag such as `3.12.2.R10`, or a patch letter such as `3.9.7n`, is a **release**
+and is ordered by the comparator like any other.
+
+**Comparator.** Split each version on `.`, `-` and `_`, then compare segment by segment:
+
+- both segments numeric — compare as integers, so `3.14.6` > `3.9.7`;
+- a segment of digits followed by letters (`7n`, `03b`) — compare its numeric prefix first, then its
+  letter suffix as text, so `3.9.7n` > `3.9.7`;
+- one numeric and one not — the numeric ranks higher;
+- neither numeric — compare as text.
+
+Where every shared segment is equal, the version with **more** segments ranks higher — both
+`3.12.2.1` > `3.12.2` and `3.12.2.R10` > `3.12.2`, since an extra segment denotes a revision *of* the
+shorter version. Do not special-case a non-numeric extra segment to rank lower: the case that
+motivates it, `5.24` over `5.24-dev`, is already handled by the non-release exclusion above, and
+inside the release pool the only remaining extras are post-release revision tags, for which longer
+genuinely is newer.
+
+This set is the one that breaks every naive form, and is worth checking any implementation against —
+`3.9.7`, `3.9.7n`, `3.12.2`, `3.12.2.1`, `3.12.2.R10`, `3.14.6`, `5.048`, `5.24-dev`: text comparison
+picks `3.9.7`, splitting on `.` and comparing as integers raises on `R10`, and comparing by segment
+count alone picks `5.24-dev` unless the non-release exclusion has already removed it.
+
+Record the outcome per tool in `module-status.json` as `selected`, `selected_basis` and `candidates`,
+so a wrong pick is visible in the artifact rather than only in the loaded environment.
 
 #### WARN taxonomy
 | Condition | Severity | `description` / `fix` |
@@ -417,7 +479,7 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 6. Write `module-status.json` before advancing
 7. For each tool marked `FOUND` in `tool-status.json` that also has a module available: change status to `FOUND_PREFER_MODULE`, add `module_names` and `versions_available` fields, include in `load-modules.sh` — module takes precedence over PATH version
 8. For each tool marked `MISSING` in `tool-status.json` that has modules available: change status to `MISSING_LOAD_MODULE`, add `module_names` and `versions_available` fields
-9. Generate `load-modules.sh` for all `FOUND_PREFER_MODULE` and `MISSING_LOAD_MODULE` tools; default to the latest version (highest semver/lexicographic); comment out alternative versions inline
+9. Generate `load-modules.sh` for all `FOUND_PREFER_MODULE` and `MISSING_LOAD_MODULE` tools; choose each tool's version per **Module version selection** above; comment out alternative versions inline, and state the basis in the selected line's trailing comment
 10. Never auto-run `load-modules.sh` — print: "Review and source `load-modules.sh` to load EDA modules, then re-run the flow"
 
 #### Extended `tool-status.json` schema
@@ -452,12 +514,15 @@ Module system     : custom - $MODULESHOME=<site path>, no modulecmd in PATH, no 
 Module listing    : LISTED via `. "$MODULESHOME/module.sh"; module avail` (3813 entries, 160s)
 Tools in PATH     : 12
 Tools via modules : 5
-  vcs        — synopsys/vcs/2020.03, synopsys/vcs/2021.01
-  xrun       — cadence/xcelium/20.09
-  dc_shell   — synopsys/dc/2022.03
-  innovus    — cadence/innovus/21.1
-  pt_shell   — synopsys/primetime/2022.06
+  vcs        — selected synopsys/vcs/2021.01 (highest_release, 2 candidates); also 2020.03
+  xrun       — selected cadence/xcelium/20.09 (site_default, 1 candidate)
+  dc_shell   — selected synopsys/dc/2022.03 (site_default, 3 candidates); also 2021.06, 2020.09
+  innovus    — selected cadence/innovus/21.1 (highest_release, 2 candidates); also 20.12
+  pt_shell   — selected synopsys/primetime/2022.06 (site_default, 2 candidates); also 2021.06
 ```
+
+Always print the basis and the candidate count. A `site_default` that is several versions behind the
+newest available is normal and intended; `highest_prerelease` is not, and is the one to notice.
 
 Where the invocation ladder was exhausted, the second line reads
 `Module listing    : UNAVAILABLE (<module_listing_error>)` and the `Tools via modules` count is
@@ -481,7 +546,10 @@ printed as `not surveyed` — never as `0`, which reads as a surveyed host that 
     {
       "tool": "<command>",
       "module_names": ["synopsys/vcs/2020.03", "synopsys/vcs/2021.01"],
-      "versions_available": ["2020.03", "2021.01"]
+      "versions_available": ["2020.03", "2021.01"],
+      "selected": "synopsys/vcs/2021.01",
+      "selected_basis": "site_default | highest_release | highest_prerelease",
+      "candidates": 2
     }
   ]
 }
@@ -499,7 +567,7 @@ case.
 # Generated by module_discovery — source this file to load EDA tool modules
 # Usage: source load-modules.sh
 
-module load synopsys/vcs/2021.01       # latest; alternatives: 2020.03
+module load synopsys/vcs/2021.01       # selected: highest_release; alternatives: 2020.03
 module load cadence/xcelium/20.09
 # module load cadence/innovus/21.1     # uncomment if needed
 ```

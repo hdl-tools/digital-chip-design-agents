@@ -38,9 +38,14 @@ memory captures the *debugging cost* of mismatches, not the canonical version pi
 - **Bambu HLS is Linux-only**: detection on macOS/Windows should land as WARN, not FAIL — record
   `os` in the environment fingerprint so a "missing on macOS" record is not mistaken for a broken
   Linux install.
-- **Module version selection is lexicographic**: `module_discovery` defaults to the
-  highest-sorting version string. When two tagged builds sort unexpectedly (e.g. `2021.01` vs
-  `2020.03-patch`), pin the intended module explicitly in `load-modules.sh`.
+- **Module version selection follows the site default first, then a release comparator** (was
+  lexicographic until issue #98): `module_discovery` prefers the entry `module avail` annotates as
+  the system default, falls back to the highest release version, and only picks a non-release build
+  (`-dev`, `_test`, `-debug`) when nothing else exists. A site default is frequently *older* than the
+  newest build on the shelf — that is deliberate, and `module-status.json` records `selected_basis`
+  so the choice is auditable. Pin a module explicitly in `load-modules.sh` only where the site
+  default is wrong for a particular flow; it is no longer the routine mitigation it was when
+  selection was a plain sort.
 
 ## Notes
 
