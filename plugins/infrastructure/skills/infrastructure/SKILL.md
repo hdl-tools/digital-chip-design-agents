@@ -269,6 +269,19 @@ before falling back to the wrapper or direct execution.
 or `null`. `version` is non-empty for every `FOUND` tool and for every `PROPRIETARY_ONLY`
 tool whose probe succeeded.
 
+`tool` and `command` both hold the **command** — the executable name `which` is run against,
+as listed in backticks in the Open-Source and Proprietary tables above. `module-status.json`
+records the same value (`"tool": "<command>"`), which is what lets `module_discovery` match its
+entries back into this file. Product names belong in prose and in the first column of the
+Proprietary table; **never in a field a rule matches on**. A rule that names a product cannot
+find its entry wherever the two differ — OpenSTA's command is `sta`, Formality's is `fm_shell` —
+and "no entry found" is not the same answer as "tool missing".
+
+This applies to `tool-status.json` and `module-status.json` only. The Wrapper JSON Output Schema
+below deliberately uses a different convention — `"tool": "<tool-name>"`, a wrapper label such as
+`opensta` or `verilator-sim` — because that field identifies which wrapper produced the record, not
+an entry to match. Do not "correct" the wrappers to emit commands.
+
 Note: module-based availability (`FOUND_PREFER_MODULE`, `MISSING_LOAD_MODULE`) and the `module_names`/`versions_available` fields are added in the next stage (`module_discovery`).
 
 ---
@@ -350,7 +363,7 @@ that GUI bundle rather than an interpreter. Whole-token matching drops both clas
 |---|---|---|
 | `module_system: "none"` | WARN, proceed | `"no module system found - $MODULESHOME unset and modulecmd not in PATH; no tools surveyed via modules"` / `"no action needed if every required tool is in PATH"` |
 | `module_system` is not `"none"` and `module_listing: "UNAVAILABLE"` | WARN, proceed | `"<module_system> module system detected (<module_system_detail>) but no invocation produced a listing (<module_listing_error>) - tools_via_modules is empty because the listing failed, not because no modules exist"` / `"re-run from a shell where module resolves, or source $MODULESHOME/module.sh (bash) or $MODULESHOME/module.csh (tcsh) first, then re-run module_discovery"` |
-| the row above **and** a critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) is `MISSING` in `tool-status.json` | WARN **and escalate** | that description with `" - critical tool(s) <list> are MISSING and could not be checked against the module listing"` appended; `failure_class: "tool_error"`, `suggested_next_step: "escalate"` |
+| the row above **and** a critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is `MISSING` in `tool-status.json` | WARN **and escalate** | that description with `" - critical tool(s) <list> are MISSING and could not be checked against the module listing"` appended; `failure_class: "tool_error"`, `suggested_next_step: "escalate"` |
 
 An empty `tools_via_modules` is evidence that the host offers no modules **only** when
 `module_listing` is `"LISTED"`. Never report an exhausted ladder as "no modules found": the two
@@ -369,7 +382,7 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 | `innovus` | `innovus`, `cadence/innovus`, `cadence-innovus` |
 | `vsim` | `questa`, `questasim`, `mentor/questa` |
 | `pt_shell` | `primetime`, `synopsys/pt`, `pt_shell` |
-| `formality` | `formality`, `synopsys/formality` |
+| `fm_shell` | `formality`, `synopsys/formality`, `fm_shell` |
 | `verilator` | `verilator` |
 | `yosys` | `yosys` |
 | `openroad` | `openroad` |
@@ -740,13 +753,24 @@ Printed MCP config snippets for each tool with resolved absolute paths
 ## Stage: environment_validation
 
 ### Domain Rules
+
+**Critical-path tools** are the `tool-status.json` entries whose `tool` is `yosys`, `verilator`,
+`openroad` or `sta` — Yosys, Verilator, OpenROAD and OpenSTA. Every rule below that tests them
+matches **on that key, never on the product name**: OpenSTA's command is `sta`, so a rule looking
+for `"OpenSTA"` matches no entry and cannot conclude the tool is missing. On a FAIL gate that is a
+silent pass.
+
 1. **Python environment check** — before any other check: read `python_env` from `tool-status.json`:
    - If `python_env.type == "module"`: run `which python3` to verify the module is still loaded. If it fails, FAIL immediately with: `"Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation."`
    - If `python_env.type == "custom"` or `"system"`: run `which python3` and verify the path matches `python_env.exec`; emit WARN if it differs.
 2. Re-run tool presence checks using the same Python-aware detection as `tool_discovery` rules 2–3: use `"$PYTHON_EXEC" -m pip show` for `openlane`, `"$PYTHON_BIN_DIR/cocotb-config"` for `cocotb`, `"$PYTHON_BIN_DIR/uv"` for `uv` — do not fall back to bare `which` for Python packages. Compare results against `tool-manifest.json`.
 3. Verify all 8 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 snippets) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
-5. FAIL if any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) is still `MISSING`
+5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
+   Escalate — do not loop back to `tool_installation`: that stage only *generates*
+   `install-<toolname>.sh` and never executes it (`tool_installation` rule 1), so no retry can
+   change a tool's status. Report the missing commands and tell the user to review and run the
+   generated scripts in `install-missing-tools/`, then re-run `environment_validation`.
 6. For each tool with status `MISSING_LOAD_MODULE` in `tool-status.json`: emit a WARN issue with description `"<tool> not in PATH — available via module"` and fix `"source load-modules.sh, then re-run environment_validation"`
 7. **Dialect-conflict check** — group by `role` every tool whose status is `FOUND`,
    `FOUND_PREFER_MODULE`, `PROPRIETARY_ONLY` or `MISSING_LOAD_MODULE`, ignoring entries whose
@@ -765,7 +789,7 @@ Printed MCP config snippets for each tool with resolved absolute paths
    Coexistence is normal — what is not normal is assuming substitutability. Requiring at
    least one proprietary tool in the group keeps the WARN rare enough to be read; two
    open-source simulators are on nearly every host.
-8. If any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
+8. If any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
 9. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
 
 ### Sign-off Checklist
