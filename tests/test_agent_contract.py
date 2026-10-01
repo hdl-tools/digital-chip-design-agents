@@ -350,6 +350,31 @@ def test_critical_path_tools_are_keyed_by_command():
         )
 
 
+FORMAL_AGENT = REPO_ROOT / "plugins" / "formal" / "agents" / "formal-orchestrator.md"
+
+
+def test_lec_mismatch_escalates_instead_of_looping_back_to_lec_run():
+    """lec_run compares an RTL/golden model against a netlist produced by synthesis,
+    a stage it never invokes. Looping an unmatched-points mismatch back to lec_run
+    (issue #102, the same unwinnable-loop-back defect as #86) re-runs the same
+    comparison against the same unchanged netlist and reproduces the mismatch
+    deterministically, burning the cap before escalating. The row must escalate
+    immediately instead."""
+    agent = _read(FORMAL_AGENT)
+    for row in _loop_back_rows(agent):
+        if "lec_run: unmatched points" in row:
+            assert "escalate" in row, (
+                f"lec_run unmatched-points row does not escalate: {row.strip()!r}"
+            )
+            target = row.split("→", 1)[1].strip() if "→" in row else ""
+            assert not target.startswith("lec_run"), (
+                "lec_run unmatched-points row loops back to lec_run, which cannot "
+                f"regenerate the netlist: {row.strip()!r}"
+            )
+            return
+    pytest.fail("lec_run: unmatched points row not found in Loop-Back Rules")
+
+
 # A `.json` artifact a stage promises to produce.
 JSON_ARTIFACT = re.compile(r"`([A-Za-z0-9_.-]+\.json)`")
 # Per-tool fields that live in tool-status.json; a second artifact restating them
