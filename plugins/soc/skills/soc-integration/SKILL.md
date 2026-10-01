@@ -156,6 +156,13 @@ integration, and chip-level simulation sign-off.
 6. Tie cells: VDD/VSS tie-offs for all floating inputs
 7. Scan chain: SI/SO routed through scan backbone
 8. JTAG: TDI/TDO routed through JTAG chain
+9. Instantiate every IP with named port connections — a positional connection silently
+   mis-wires when an IP revision reorders its ports
+10. Lint `soc_top.sv` in the context of the full SoC filelist, compiled as one unit. Linted
+    alone, every IP is an unknown module and port-width mismatches go unchecked
+11. An IP that is deliberately black-boxed (hard macro, analog block, encrypted IP) is a stub:
+    undriven-net findings on its outputs are not connectivity errors. Record them as
+    informational and name the stub, so a real unconnected port is not lost among them
 
 ### Integration Checklist (per IP)
 - [ ] Correct module name and parameters

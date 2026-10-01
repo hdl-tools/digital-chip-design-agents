@@ -21,7 +21,7 @@ module_planning → rtl_coding → lint_check → cdc_rdc_analysis → synth_che
 
 ### Open-Source
 - Verilator lint (`verilator --lint-only`)
-- Slang SV parser (`slang`)
+- Slang SV parser (`slang -Weverything --ignore-unknown-modules`)
 - Surelog SV front-end (`surelog`)
 - sv2v converter (`sv2v`)
 - Icarus Verilog (`iverilog`)
@@ -76,6 +76,7 @@ Each stage must return:
 7. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the Failure Classification & Retry Strategy table below; `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 8. Checkpoint gate (at `rtl_signoff` only, **unless** a `fix_request.id` was passed in the prompt — skip the gate in fix-request-servicing mode): before setting `rtl.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"rtl_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "rtl_signoff", "agent": "rtl-design-orchestrator", "reason": "checkpoint rtl_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: lint/CDC status, module count>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `rtl.signoff=true`. On re-invocation: if `"rtl_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 9. Constraint validation (at `module_planning`, skip in fix-request-servicing mode): read `design_state.constraints`. Required: `clock.clk_mhz`. If missing or `null`, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "module_planning", "agent": "rtl-design-orchestrator", "reason": "required constraint clock.clk_mhz missing from design_state.constraints", "fix_request_id": null, "last_summary": "clock.clk_mhz", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "clock.clk_mhz"`, and halt. For optional absent constraints (timing targets, area/power budgets), use schema defaults and include a fallback note in the stage `reason`. Tag `constraint_ref` in history entries when evaluating QoR against a constraint (e.g. `"timing.wns_ns_target"` at `synth_check`).
+10. Fix-request lint gate: in fix-request-servicing mode, run `lint_check` on the fix before closing the `fix_request` — the RTL Lint Gate below applies to fix output exactly as it does to first authoring. Set `status=fixed` only when `lint_check` passes with 0 errors, and state the post-fix lint result (tool, command, error and warning counts) in `rtl_response.diff_summary`. If the fix cannot be made lint-clean within the `lint_check` loop-back cap, or the gate's regression, no-progress or intent-drift guard fires, leave the entry `claimed` and escalate; the pipeline-orchestrator marks a still-`claimed` entry abandoned. Never close a `fix_request` on a fix that silences the reported failure by changing behaviour the `fix_request` did not ask to change.
 
 <!-- BEGIN SHARED:failure-classification (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Failure Classification & Retry Strategy
@@ -215,6 +216,41 @@ Applies to every report you make: a stage result, an escalation, and the final s
    only when every Sign-off Criteria item is measured-PASS. A criterion that is NOT RUN or
    unverified means signoff is false; name it in the `history[]` `reason` and in `notes`.
 <!-- END SHARED:reporting-contract -->
+
+<!-- BEGIN SHARED:rtl-lint-gate (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## RTL Lint Gate
+Applies to every synthesisable RTL file this orchestrator writes, modifies or generates —
+including edits made on a loop-back or while servicing a `fix_request`. Testbenches
+(`*_tb.sv`, `tb_*.sv`) and simulation-only behavioural models are exempt: `initial`, `#delay`
+and blocking assignments are correct there.
+
+1. **Lint before the file leaves the stage.** RTL that has not been linted since its last edit
+   is NOT RUN under the Reporting Contract, however small the edit.
+2. **Slang needs full elaboration.** Run `slang -Weverything --ignore-unknown-modules <files>`.
+   Never pass `--lint-only`: it skips elaboration and silently drops inferred-latch and
+   multiple-driver diagnostics, so a latch reports as clean. `-Wall` is not a slang option.
+   Verilator is unaffected — `verilator --lint-only -Wall` is correct.
+3. **Lint in filelist context.** Compile the block's filelist as one unit and report findings
+   for the files you touched. A file linted alone reports its submodules as unknown.
+4. **A stubbed module is not a bug in the file that instantiates it.** A library cell, hard
+   macro, vendor primitive or black-boxed IP missing from the filelist leaves the nets it drives
+   looking undriven. Record those findings as informational and name the stub.
+5. **Say what proved each finding.** Quote the tool's message and rule name for a tool-proven
+   finding; label anything you reasoned without a tool run `UNVERIFIED`. A clean lint run proves
+   nothing about CDC, reset sequencing, FSM reachability, protocol deadlock or arithmetic
+   overflow.
+6. **A fix must not change what the module does.** After each fix compare the set of findings,
+   not the count. A new error is a regression — revert it. The same findings twice running is
+   no progress — escalate now (Stage Gating and Escalation, item 3) rather than spend the
+   remaining iterations. A fix that changes behaviour to silence a warning — narrowing a signal
+   to stop a truncation warning implements the truncation — is intent drift: revert and
+   escalate.
+7. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
+   runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM` as
+   warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
+   escalation. If it is unavailable, the items above stand on their own — it augments, never
+   replaces, this gate.
+<!-- END SHARED:rtl-lint-gate -->
 
 ## Memory
 

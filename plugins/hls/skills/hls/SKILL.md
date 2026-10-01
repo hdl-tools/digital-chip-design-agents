@@ -164,8 +164,13 @@ and co-simulation to verify RTL matches the golden C model.
 ## Stage: rtl_qc
 
 ### Domain Rules
-1. Run lint on HLS-generated RTL (same rules as rtl-design skill)
-2. Verify no latches in generated RTL
+1. Run lint on HLS-generated RTL using the rtl-design skill's `lint_check` ERROR and WARNING
+   levels. Generated RTL is linted for correctness — latches, multiple drivers, undriven
+   outputs, width truncation — not for the rtl-design naming and style rules, which a
+   generator will not follow; do not hand-edit generated RTL to satisfy them
+2. Verify no latches in generated RTL. With slang this requires full elaboration
+   (`slang -Weverything --ignore-unknown-modules <files>`); `--lint-only` skips elaboration and
+   reports zero latches on any input, so it can never fail this check
 3. Verify interface signal names match integration requirements
 4. Check all registers reset correctly
 

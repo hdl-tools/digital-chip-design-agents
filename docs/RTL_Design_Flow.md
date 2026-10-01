@@ -170,8 +170,11 @@ Enforce synthesizable, readable, and maintainable RTL coding practices.
 
 ## Domain Rules — Synthesis Constraints
 1. No delays (#) in RTL — simulation only
-2. No initial blocks (FPGA exception)
-3. Avoid casez/casex — use unique case with explicit don't-cares
+2. No initial blocks for logic (FPGA exception); elaboration-time parameter
+   assertions are allowed inside `// synthesis translate_off` / `translate_on`
+3. No casex; casez only with a written justification. FSMs: plain case with a
+   default recovery arm, or unique case without default plus a recovery assertion
+   — never unique case together with default
 4. Limit fan-out per net: flag if > 32 without buffering intent
 5. Pipeline registers: clearly marked with _q suffix at each stage
 6. No combinational loops (will cause synthesis tool errors)

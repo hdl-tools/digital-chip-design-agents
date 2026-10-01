@@ -186,6 +186,45 @@ Applies to every report you make: a stage result, an escalation, and the final s
    unverified means signoff is false; name it in the `history[]` `reason` and in `notes`.
 <!-- END BLOCK reporting-contract -->
 
+<!-- BLOCK rtl-lint-gate
+targets: agents
+only: rtl-design, fpga, soc, memory-ip, hls
+after: ^## Behaviour Rules$
+-->
+## RTL Lint Gate
+Applies to every synthesisable RTL file this orchestrator writes, modifies or generates —
+including edits made on a loop-back or while servicing a `fix_request`. Testbenches
+(`*_tb.sv`, `tb_*.sv`) and simulation-only behavioural models are exempt: `initial`, `#delay`
+and blocking assignments are correct there.
+
+1. **Lint before the file leaves the stage.** RTL that has not been linted since its last edit
+   is NOT RUN under the Reporting Contract, however small the edit.
+2. **Slang needs full elaboration.** Run `slang -Weverything --ignore-unknown-modules <files>`.
+   Never pass `--lint-only`: it skips elaboration and silently drops inferred-latch and
+   multiple-driver diagnostics, so a latch reports as clean. `-Wall` is not a slang option.
+   Verilator is unaffected — `verilator --lint-only -Wall` is correct.
+3. **Lint in filelist context.** Compile the block's filelist as one unit and report findings
+   for the files you touched. A file linted alone reports its submodules as unknown.
+4. **A stubbed module is not a bug in the file that instantiates it.** A library cell, hard
+   macro, vendor primitive or black-boxed IP missing from the filelist leaves the nets it drives
+   looking undriven. Record those findings as informational and name the stub.
+5. **Say what proved each finding.** Quote the tool's message and rule name for a tool-proven
+   finding; label anything you reasoned without a tool run `UNVERIFIED`. A clean lint run proves
+   nothing about CDC, reset sequencing, FSM reachability, protocol deadlock or arithmetic
+   overflow.
+6. **A fix must not change what the module does.** After each fix compare the set of findings,
+   not the count. A new error is a regression — revert it. The same findings twice running is
+   no progress — escalate now (Stage Gating and Escalation, item 3) rather than spend the
+   remaining iterations. A fix that changes behaviour to silence a warning — narrowing a signal
+   to stop a truncation warning implements the truncation — is intent drift: revert and
+   escalate.
+7. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
+   runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM` as
+   warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
+   escalation. If it is unavailable, the items above stand on their own — it augments, never
+   replaces, this gate.
+<!-- END BLOCK rtl-lint-gate -->
+
 <!-- BLOCK ide-guards
 targets: files
 files: ides/codex/AGENTS.md, ides/gemini/gemini-header.md, ides/copilot/.github/copilot-instructions.md

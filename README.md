@@ -52,6 +52,11 @@ For the install script, selective marketplace install, other AI assistants
 | `chip-design-infrastructure` | Infrastructure & Memory | Detect EDA tools, deploy wrappers, configure MCP servers, distil domain memory |
 | `chip-design-meta` | Pipeline Orchestration | Drive closed-loop verification↔RTL feedback, manage fix_requests, enforce iteration cap |
 
+**Optional companion:** [`hdl-rtl-skill`](https://github.com/hdl-tools/hdl-rtl-skill) adds a
+slang-backed per-write lint hook, golden RTL templates and an anti-pattern catalogue (Claude
+Code only). The RTL-authoring plugins here (`rtl`, `fpga`, `soc`, `memory-ip`, `hls`) use it
+when it is installed and carry the same lint rules themselves when it is not.
+
 ---
 
 ## How It Works
