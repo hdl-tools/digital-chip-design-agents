@@ -15,6 +15,26 @@
 - **`tests/test_agent_contract.py::test_retry_strategy_mapping_matches_the_authoritative_table`** — the mapping now exists in two places, and `sync_agent_sections.py --check` only compares agents against the shared file, never the shared file against the skill that owns the table. This test closes that gap.
 - **`tests/test_agent_contract.py::test_retry_strategy_mapping_is_reachable_by_the_agent`** — an agent that writes `retry_strategy` must either carry the table or declare the skill holding it, and an agent that does not declare the skill may not refer to it. The second half caught a stale citation in `verification-orchestrator.md`, whose rule 6 named the mapping twice with different wording.
 
+## [Unreleased] — issue #82: proprietary tool versions and dialect model
+
+### Added
+
+- **`role` and `dialect` on every `tool-status.json` entry** (issue #82, sections A and B). `role` groups tools that do the same job (`rtl_simulator`, `synthesis`, `sta`, …); `dialect` names the command-line and source-language vocabulary a tool accepts (`synopsys`, `cadence`, `siemens`, `verilator`, …). Both are recorded for open-source and proprietary tools alike, and are `null` for a tool with no same-role peer — never an invented role, since a `null` cannot produce a false conflict. `module_discovery` preserves both unchanged.
+- **License-free version probes for proprietary tools**, each measured on a real install (exit 0, named line present, 1–26 s, no license queue): `vcs -ID` (parse the `Compiler version` line only — the FLEXlm host ID it also prints is never written to `tool-status.json`), `xrun -version`, `dc_shell -version`, `pt_shell -version` and `fm_shell -version`. Questa and Innovus remain `UNVERIFIED` rather than given a guessed flag that could open an interactive shell or check out a license; in both cases the reference host's obstacle was the install, not the flag (`innovus` reports an expired build authorisation, `vsim` cannot load `libXext.so.6`).
+- **Probe timeout is 60 s, not a short one**: a Cadence Common UI tool starts a full shell to answer `-version`. `genus -version` measured 26 s cold and 12 s warm, so a 10 s budget would record a working probe as unprobeable.
+- **A probe that exits 0 without printing the documented line leaves `version` empty and WARNs.** Exit status does not reveal this and it is the common failure: `innovus -version` exits 0 on an expired build authorisation, `voltus -version` exits 0 on a broken platform install, and `vsim -version` exits 0 on a missing shared library — none print a version. The version is recorded only when the documented line was actually found.
+- **Formality's primary command is `fm_shell`**; `formality` is the legacy GUI wrapper, absent from recent installs, and is now the alternate rather than the primary.
+- **`environment_validation` dialect-conflict WARN**: where detected tools sharing a `role` hold two or more differing `dialect` values and at least one is `PROPRIETARY_ONLY`, the stage emits **one** WARN for that role listing every member — one per role, never one per pair, since a five-member role would otherwise produce ten warnings saying the same thing. `dialect_conflicts` counts roles. This is the one check that would have caught the reported failure — an Xcelium compile line run by VCS, which silently discarded 8 switches plus `+access+rwc` before hard-failing on Cadence-only source — at setup time rather than six stages downstream. The WARN is restricted to pairs involving a proprietary tool so it stays rare enough to be read; two open-source simulators are on nearly every host.
+- **QoR metrics** `proprietary_versioned` and `dialect_conflicts`, in the skill and in the orchestrator's stage-output block.
+- **Test** `tests/test_agent_contract.py::test_proprietary_tools_carry_role_and_dialect`: fails if a proprietary tool is added without a role or dialect, if a probe marked verified loses its command, or if the `tool_discovery` output schema stops carrying both fields.
+
+### Changed
+
+- **`tool_discovery` rule 6** captured a version for `FOUND` tools only. Proprietary tools are recorded `PROPRIETARY_ONLY`, never `FOUND`, so the rule never applied to them and the schema's `version` field was structurally always empty for that class. It now covers every tool found in PATH, including `PROPRIETARY_ONLY` tools with a verified probe.
+- **Infrastructure memory** `key_metrics.tool_versions` was populated from `FOUND` entries only; it now takes every entry with a non-empty `version` (`FOUND`, `FOUND_PREFER_MODULE`, `PROPRIETARY_ONLY`), so a later session can scope a vendor-option lookup to the exact build in use.
+
+Not included, deferred: the opt-in simulator invocation smoke test (#82 section C, now #88) and the proprietary compile wrappers (section D, now #89). Wrapper count stays 8; MCP target stays 10. Extending the table past the original seven tools — and confirming the probe flags for Questa and Innovus, which this host could not verify — is tracked in #84.
+
 ## [Unreleased] — feat/reporting-contract branch
 
 ### Added
