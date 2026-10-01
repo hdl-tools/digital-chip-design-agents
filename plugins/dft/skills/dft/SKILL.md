@@ -70,6 +70,29 @@ chip meets quality targets (fault coverage and DPPM).
 7. At-speed test: launch-on-capture (LOC) or launch-on-shift (LOS) — agree with test team
 8. Test modes: scan_mode, mbist_mode, jtag_mode must be mutually exclusive
 9. Power domains: scan must respect UPF power domain boundaries
+10. Run the scan-readiness audit below on the incoming design before planning chains. A
+    blocker found here costs an RTL edit; the same blocker found at Scan DRC costs an
+    insertion run first
+11. Any DFT logic delivered as RTL rather than inserted by a tool (TAP controller, BIST
+    controller, test-mode muxes, wrappers) is synthesisable RTL: it follows the rtl-design
+    skill's coding rules and passes lint with 0 errors before it is integrated
+
+### Scan-Readiness Audit (before insertion)
+Check the RTL or pre-DFT netlist for constructs that block scan. Each is owned by the RTL
+flow, not by scan insertion:
+- RTL-generated clocks (`assign gclk = clk & en;`) — gated flops are unreachable in scan mode
+- Clock-gating cells with no test-enable (`test_en` / `scan_en`) OR-ed into the enable
+- Asynchronous set/reset driven by internal logic with no test-mode bypass — it cannot be
+  held inactive during shift
+- Latches other than deliberate lockup latches and clock-gate cell internals
+- Combinational feedback loops — ATPG cannot model them
+- On-chip tri-state buses — contention is untestable
+- Memories with neither a bypass path nor a BIST wrapper (a FIFO's storage array is a memory)
+- Black boxes and analog interfaces with no defined test-mode behaviour
+
+Report each finding with the instance and the rule above. A finding that insertion can
+repair (a test point, a tool-inserted reset or clock mux) is planned into `scan_insertion`;
+one that needs an RTL change is handed back to the RTL flow — do not edit the RTL here.
 
 ### DFT IO Signals Required
 - `scan_en` (SE): primary input, must be controllable from ATE
@@ -79,11 +102,13 @@ chip meets quality targets (fault coverage and DPPM).
 
 ### QoR Metrics to Evaluate
 - DFT spec completeness: all elements defined before insertion
+- Scan-readiness audit: 0 findings that need an RTL change left open
 - Estimated fault coverage: analytical pre-insertion estimate ≥ target
 - Estimated test time: within ATE budget
 
 ### Output Required
 - DFT architecture document
+- Scan-readiness audit report (finding, instance, owner: insertion or RTL)
 - Scan chain plan (count, estimated length, IOs)
 - Test mode definitions
 
@@ -99,6 +124,14 @@ chip meets quality targets (fault coverage and DPPM).
 5. Lockup latches: insert between chains crossing clock domain boundaries
 6. Scan re-ordering: minimise routing wirelength (use placement-aware reorder)
 7. Test points: add controllability/observability points for low-coverage nets
+8. Classify every Scan DRC error by owner before retrying. An error insertion can repair
+   (chain connection, test point, tool-inserted reset or clock mux, lockup latch) is retried
+   here. An error caused by the design itself — a generated clock, an uncontrollable
+   asynchronous reset, an unintended latch, a combinational loop — is not changed by running
+   insertion again: stop and hand it back to the RTL flow with the instance and the rule
+9. A fix must not trade coverage for a clean report: do not clear a Scan DRC error by
+   excluding the offending flops from scan, or raise ATPG coverage by reclassifying faults as
+   untestable, unless the exclusion is justified and recorded
 
 ### Scan DRC Rules (all must pass before ATPG)
 - No clock signals feeding into scan data path

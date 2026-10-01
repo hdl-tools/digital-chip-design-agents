@@ -84,6 +84,11 @@ and synthesis handoff.
 
 ## Stage: rtl_coding
 
+Scope: the rules in this stage govern synthesisable RTL. Testbenches (`*_tb.sv`, `tb_*.sv`,
+anything under `tb/`), bind-only assertion files and simulation-only behavioural models are
+out of scope — `initial`, `#delay` and blocking assignments are correct there, and the
+functional-verification skill carries the coding rules for them.
+
 ### Domain Rules — General
 1. Always use `logic` type (not wire/reg distinction)
 2. All ports: explicitly typed and directioned
@@ -134,6 +139,19 @@ lint finding.
 2. Async FIFO for multi-bit CDC data paths
 3. Gray-coded pointers for async FIFO crossing
 4. Never sample asynchronous data directly in synchronous logic
+
+### Domain Rules — Scan Readiness
+RTL that blocks scan is cheapest to fix here; the DFT flow can only report it after insertion.
+1. No RTL-generated clocks (`assign gclk = clk & en;`): flops behind one are unreachable in
+   scan mode. Use a flop enable, or a library clock-gate cell with a test-enable input (Power
+   Intent rule 5)
+2. Every asynchronous set/reset must be controllable from a primary input in test mode. A
+   reset derived from internal logic cannot be held inactive during scan shift — give it a
+   `scan_mode` bypass to the top-level reset
+3. No asynchronous set/reset generated from combinational logic
+4. No on-chip tri-state buses — contention is untestable; use a mux
+5. A deliberate latch (lockup latch, clock-gate cell internals) is instantiated as a library
+   cell and waived by instance name in `lint_waivers.csv`, never inferred from RTL
 
 ### Domain Rules — Power Intent (Clock Gating)
 Apply these rules for every clock domain. Read `clock_power_budget` from the architecture
@@ -288,6 +306,12 @@ a fallback.
 - Compile order document
 - Assertion library (.sva files)
 - RTL sign-off record
+- Unverified-claims list: every `UNVERIFIED` conclusion from lint and code review, one entry
+  per claim as `{module, category, claim}` with `category` one of `cdc`, `reset`, `fsm`,
+  `protocol`, `arithmetic`, `parameter`. Include one `fsm` entry for every FSM that uses
+  `unique case` without `default`, naming its recovery assertion. This list is the hand-off to
+  verification and formal — a claim left off it is a claim nobody downstream will check. An
+  empty list must be stated as empty, not omitted
 
 ---
 

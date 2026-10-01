@@ -310,7 +310,7 @@ After reading `<MEM>/rtl-design/knowledge.md`, read `design_state.json` if it ex
 Extract: `spec`, `interfaces`, `constraints`, `architecture`, `fix_requests`, `pipeline_config`, `approved_checkpoints`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
-If `fix_requests[]` contains any entry with `status=open` AND `created_by ∈ {verification-orchestrator, formal-orchestrator}`: first look up the incoming `fix_request.id` (if dispatched explicitly) and if that entry exists, has `status=open` and `created_by ∈ {verification-orchestrator, formal-orchestrator}`, set that entry's `status=claimed` and `updated_at` and proceed to `rtl_coding` using its scope (`suspected_rtl.module/file/line_range`) and context (`summary + expected_behavior + observed_behavior`). Only if no valid dispatched `fix_request.id` is present, apply the earliest-by-`created_at` fallback (tie-breaker by array order) to pick and claim an entry. Do not modify entries not owned by you.
+If `fix_requests[]` contains any entry with `status=open` AND `created_by ∈ {verification-orchestrator, formal-orchestrator}`: first look up the incoming `fix_request.id` (if dispatched explicitly) and if that entry exists, has `status=open` and `created_by ∈ {verification-orchestrator, formal-orchestrator}`, set that entry's `status=claimed` and `updated_at` and proceed to `rtl_coding` using its scope (`suspected_rtl.module/file/line_range`) and context (`summary + expected_behavior + observed_behavior`). If `suspected_rtl.basis` is `hypothesis` or absent, or `line_range` is `[0, 0]`, the location is a guess: reproduce the failure and confirm the cause (lint, then replay the failing test or CEX trace) before editing, and fix where the evidence points even if that is not the suspected location. Only if no valid dispatched `fix_request.id` is present, apply the earliest-by-`created_at` fallback (tie-breaker by array order) to pick and claim an entry. Do not modify entries not owned by you.
 
 ### Write (session end)
 On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
@@ -333,10 +333,17 @@ Domain fields to merge:
     "files": ["<path/to/file.sv>"],
     "lint_clean": false,
     "cdc_clean": false,
+    "unverified": [
+      { "module": "<module name>", "category": "cdc | reset | fsm | protocol | arithmetic | parameter", "claim": "<what was concluded without a tool run>" }
+    ],
     "signoff": false
   }
 }
 ```
+
+`rtl.unverified[]` is the skill's unverified-claims list (`rtl_signoff` Output Required). Write
+`[]` when there are none — downstream orchestrators treat an absent key as "not reported", not
+as "nothing to check".
 
 History entry to append:
 ```json

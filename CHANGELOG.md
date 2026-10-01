@@ -1,5 +1,64 @@
 # Changelog
 
+## [Unreleased] — follow-up to #107: `dft`, `verification` and `formal` had no coding rules and no hand-off from RTL
+
+Issue #107 left these three as a separate decision. None writes synthesisable RTL, so none gets the
+RTL Lint Gate, but each writes or audits code and each consumes what RTL leaves unproven.
+
+### Fixed
+
+- **The `formal` skill told the reader to "fix RTL → re-run FPV"** while its agent says to
+  write a `fix_request` and never retry locally. An IDE that loads skills without agents got
+  only the skill, so formal edited RTL itself with no lint rules behind it. `cex_analysis` and
+  the `fpv_run` result table now hand an RTL bug to the RTL flow.
+- **`dft` retried scan insertion on errors insertion cannot repair.** The single
+  `scan_insertion FAIL (DRC errors > 0) → scan_insertion (max 3×)` row covered a generated
+  clock or an uncontrollable async reset in the incoming design, which three more insertion
+  runs do not change — the unwinnable loop-back of #86 and #102. The row is split: errors
+  insertion can repair are retried, errors caused by the design escalate to the RTL flow.
+- **`rtl-design` never said testbenches are out of scope.** The exemption lived only in the
+  agents' RTL Lint Gate, and the Copilot adapter applies the skill to every `**/*.sv`.
+- **A formal property documented as "assumed correct" counted as a result.** It is now
+  recorded as `UNVERIFIED`, does not count toward PROVEN, and blocks sign-off at P0.
+
+### Added
+
+- **RTL → verification/formal hand-off, `design_state.rtl.unverified[]`.** `rtl-design` already
+  labelled conclusions no tool proved `UNVERIFIED`, but the label was where the claim stopped.
+  `rtl_signoff` now outputs the list (`{module, category, claim}`, including one entry per FSM
+  that relies on a recovery assertion), the orchestrator writes it to `design_state`, and
+  `formal` `property_planning` and `verification` `test_planning` must map every entry to a
+  property, a test, or a stated reason. An absent key means "not reported", not "nothing to
+  check".
+- **`suspected_rtl.basis` (`traced | hypothesis`)** on `fix_request`, optional and
+  schema-compatible. The RTL orchestrator routes straight to `suspected_rtl`; a location
+  guessed from a symptom was indistinguishable from one followed in a waveform. A `hypothesis`
+  or absent `basis` is now confirmed before any edit.
+- **`verification`: testbench coding rules** (`default_nettype none`, named DUT connections,
+  typed parameters and the signed-literal trap in scoreboard comparisons, `!==` so an X is a
+  mismatch), the ready/valid contract for drivers and protocol assertions, the corner cases a
+  directed test rarely reaches, boundary parameter values, and a symptom table for DUT-versus-
+  testbench triage.
+- **`formal`: a table of property targets lint cannot prove** (ready/valid, FSM reachability,
+  exit and illegal-state recovery, arbiter, FIFO, arithmetic range, reset values, deadlock),
+  and a rule to prove at boundary parameter values.
+- **`dft`: a scan-readiness audit at `dft_architecture`**, so a scan blocker is found before
+  insertion instead of at Scan DRC, and a rule that DFT logic delivered as RTL follows the
+  `rtl-design` coding rules. `rtl-design` gains the matching **Scan Readiness** rules for the
+  constructs only the RTL flow can fix.
+- **A "do not pass by weakening the check" rule in each domain**: no loosened scoreboard or
+  waived assertion (`verification`), no assumption that excludes legal stimulus (`formal`), no
+  flops excluded from scan to clear a DRC error (`dft`).
+- **Tests** in `tests/test_agent_contract.py`:
+  `::test_formal_skill_hands_rtl_bugs_to_the_rtl_flow`,
+  `::test_scan_drc_design_fault_escalates_instead_of_retrying_insertion`,
+  `::test_rtl_unverified_handoff_has_a_producer_and_consumers`,
+  `::test_suspected_rtl_schema_carries_basis` and `::test_rtl_design_scopes_out_testbenches`.
+
+Most of the transferred content comes from `hdl-rtl-skill`'s review checklists, self-critique
+and debug workflow. Two rules are additions of this change, not transfers: comparing with
+`!==`, and restoring `` `default_nettype wire `` at the end of a testbench file.
+
 ## [Unreleased] — issue #107: `rtl-design` rules contradicted safe FSM recovery, and slang lint could not see latches
 
 ### Fixed
