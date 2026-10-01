@@ -39,25 +39,13 @@
 
 ## 2. Stage Sequence
 
-```
-[Constraint Setup] ──► [Compile Explore] ──► [Compile Final]
-                              ▲                     │ timing fail
-                              └─────────────────────┘
-                                                    │ pass
-                              ▼
-                       [Netlist QC] ──► [Synthesis Sign-off]
-                                              │ fail → Compile Final
-                                              ▼ pass → Gate Netlist
+```text
+constraint_setup → compile_explore → compile_final → netlist_qc → synthesis_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure                          | Loop Back To      | Max |
-|----------------------------------|-------------------|-----|
-| WNS < 0 after compile_final      | compile_final     | 3   |
-| Area > budget                    | compile_explore   | 2   |
-| Netlist QC: unmapped cells       | compile_final     | 2   |
-| Power > budget                   | compile_explore   | 2   |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`synthesis-orchestrator.md`](../plugins/synthesis/agents/synthesis-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -194,21 +182,6 @@ Verify the gate-level netlist is correct and ready for PD handoff.
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the Logic Synthesis Orchestrator.
-
-You take RTL and constraints and produce a timing-clean, verified
-gate-level netlist ready for physical design.
-
-STAGE SEQUENCE:
-  constraint_setup → compile_explore → compile_final →
-  netlist_qc → synthesis_signoff
-
-LOOP-BACK RULES:
-  - compile_final: WNS < 0          → compile_final (max 3x)
-  - compile_final: area over budget  → compile_explore (max 2x)
-  - netlist_qc: LEC fail             → compile_final (max 2x)
-  - netlist_qc: unmapped cells       → compile_final (max 2x)
-
-On completion: produce PD handoff package (netlist, SDC, constraints doc).
-```
+The orchestrator's system prompt is its agent definition, [`synthesis-orchestrator.md`](../plugins/synthesis/agents/synthesis-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

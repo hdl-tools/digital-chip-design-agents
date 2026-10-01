@@ -95,6 +95,11 @@
 | 13 | `Embedded_Firmware_Flow.md` | BSP, drivers, RTOS, validation | Chip datasheet | Validated firmware |
 | 14 | `FPGA_Emulation_Flow.md` | FPGA port, bring-up, SW validation | ASIC RTL | FPGA prototype + SW |
 
+The orchestrator agent files, `plugins/<domain>/agents/*-orchestrator.md`, are authoritative
+for each flow's stage sequence, loop-back rules, stage gating and escalation. The flow documents
+above cover architecture, shared state and skill content. They link to the agent for the rules
+and do not restate them; `tests/test_agent_contract.py` fails if one does.
+
 ---
 
 ## Inter-Orchestrator Handoff Contracts

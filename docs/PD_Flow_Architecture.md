@@ -85,40 +85,15 @@ All agents communicate through a single shared JSON state object. Every stage ag
 
 ---
 
-## 3. Stage Sequence & Loop-Back Logic
+## 3. Stage Sequence
 
-```
-[Floorplan] ──► [Placement] ──► [CTS] ──► [Routing]
-                    ▲                          │
-                    │   timing fail loop       │
-                    └──────────────────────────┘
-                                               │
-                              ▼ pass
-                    [Timing Optimization] ──► [Power Optimization]
-                              ▲                        │
-                              │   power/timing loop    │
-                              └────────────────────────┘
-                                               │
-                              ▼ pass
-                    [Area Optimization] ──► [Sign-off]
-                                               │
-                              ┌────────────────┘
-                              │ DRC/LVS fail → back to Routing
-                              │ Timing fail  → back to Timing Opt
-                              ▼ all pass
-                           [DONE — GDS]
+```text
+floorplan → placement → cts → routing → timing_optimization → power_optimization → area_optimization → signoff
 ```
 
-### Loop-Back Rules (Orchestrator enforces these)
-
-| Failure Condition              | Loop Back To          | Max Iterations |
-|--------------------------------|-----------------------|----------------|
-| Post-placement timing WNS < -0.5ns | Floorplan          | 2              |
-| Post-routing timing WNS < 0    | Timing Optimization   | 3              |
-| Power exceeds budget           | Power Optimization    | 2              |
-| DRC violations > 0             | Routing               | 3              |
-| LVS mismatch                   | Routing               | 2              |
-| Area utilization > 85%         | Area Optimization     | 2              |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`physical-design-orchestrator.md`](../plugins/pd/agents/physical-design-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -439,10 +414,9 @@ and power sign-off to confirm the design is tape-out ready.
 - Antenna violations: 0
 - Density check: PASS
 
-## Failure Escalation
-- Timing fail → loop back to Timing Optimization
-- DRC/LVS fail → loop back to Routing
-- Power/EM fail → loop back to Power Optimization
+## On Failure
+Where a sign-off failure goes is set by the orchestrator's `## Loop-Back Rules` in
+[`physical-design-orchestrator.md`](../plugins/pd/agents/physical-design-orchestrator.md).
 
 ## Output Required
 - Sign-off STA report (all corners)
@@ -513,47 +487,9 @@ Do not proceed to the next stage. Return results only.
 
 ### 6.1 Orchestrator System Prompt
 
-```
-SYSTEM PROMPT — PD ORCHESTRATOR AGENT:
-────────────────────────────────────────
-You are the Physical Design Orchestrator. You manage a multi-stage
-chip implementation flow from floorplan through tape-out sign-off.
-
-You maintain a shared state object that tracks all stages, QoR metrics,
-and loop-back counts. You dispatch tasks to stage agents one at a time,
-evaluate their results, and decide what to do next.
-
-Your responsibilities:
-1. Initialize the state object from user-provided inputs
-2. Execute stages in order, dispatching to the correct stage agent
-3. After each stage agent returns, evaluate the result
-4. Apply loop-back logic if a stage fails (see rules below)
-5. Enforce maximum loop iteration limits
-6. Escalate to the user if max iterations are exceeded
-7. Declare flow complete when sign-off passes all checks
-8. Generate a final PD summary report
-
-STAGE SEQUENCE:
-  floorplan → placement → cts → routing →
-  timing_optimization → power_optimization →
-  area_optimization → signoff
-
-LOOP-BACK RULES:
-  - placement FAIL (WNS < -0.5ns)      → retry floorplan (max 2x)
-  - routing FAIL (timing)              → retry timing_optimization (max 3x)
-  - routing FAIL (DRC/LVS)             → retry routing (max 3x)
-  - timing_optimization FAIL           → retry from routing if ECO > 2% cells (max 1x)
-  - power_optimization FAIL            → retry power_optimization (max 2x)
-  - area_optimization FAIL             → WARN user, proceed to signoff
-  - signoff FAIL (timing)              → retry timing_optimization (max 2x)
-  - signoff FAIL (DRC/LVS)             → retry routing (max 2x)
-  - signoff FAIL (power)               → retry power_optimization (max 1x)
-
-MAX LOOP EXCEEDED: escalate to user with full state + recommendations.
-
-At each step, update state_object.current_stage and state_object.loop_count.
-Always return the full updated state_object along with your decision.
-```
+The orchestrator's system prompt is its agent definition, [`physical-design-orchestrator.md`](../plugins/pd/agents/physical-design-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.
 
 ### 6.2 Orchestrator Decision Logic (Pseudocode)
 
@@ -672,7 +608,7 @@ For each of the 8 stages, create a stage agent using the interface defined in Se
 - Has the stage-specific system prompt injected at call time
 
 ### Step 3 — Implement the Orchestrator
-Build the orchestrator using the system prompt in Section 6.1 and decision logic in Section 6.2. The orchestrator:
+Build the orchestrator from its agent definition, [`physical-design-orchestrator.md`](../plugins/pd/agents/physical-design-orchestrator.md) (Section 6.1), and the decision logic in Section 6.2. The orchestrator:
 - Is the only agent the user interacts with directly
 - Manages all state
 - Dispatches to stage agents programmatically

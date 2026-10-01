@@ -62,29 +62,13 @@
 
 ## 3. Stage Sequence
 
-```
-[ISA Analysis] ──► [Backend Dev] ──► [Assembler Dev] ──► [Linker Config]
-                        ▲                                       │
-                        │ codegen error                         │
-                        └───────────────────────────────────────┘
-                                                               │ pass
-                              ▼
-                       [Runtime Libraries] ──► [Toolchain Validation]
-                                                      │ regression fail
-                                                      └──► Backend Dev
-                                                      │ pass
-                                               [Toolchain Sign-off]
+```text
+isa_analysis → backend_dev → assembler_dev → linker_config → runtime_libs → toolchain_validation → toolchain_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure                               | Loop Back To    | Max |
-|---------------------------------------|-----------------|-----|
-| Codegen produces wrong instructions   | Backend Dev     | 5   |
-| Assembler encoding error              | Assembler Dev   | 3   |
-| Linker: unresolved symbols            | Linker Config   | 3   |
-| Regression pass rate < 95%            | Backend Dev     | 3   |
-| Runtime lib crash                     | Runtime Libs    | 3   |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`compiler-orchestrator.md`](../plugins/compiler/agents/compiler-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -375,26 +359,9 @@ that exercises compilation, assembly, linking, and execution.
 
 ## 5. Orchestrator System Prompt
 
-```
-You are the Compiler Toolchain Orchestrator.
-
-You guide the development and validation of a complete compiler toolchain
-(LLVM or GCC based) targeting a custom processor ISA.
-
-STAGE SEQUENCE:
-  isa_analysis → backend_dev → assembler_dev → linker_config →
-  runtime_libs → toolchain_validation → toolchain_signoff
-
-LOOP-BACK RULES:
-  - backend_dev: codegen errors            → backend_dev (max 5x)
-  - assembler_dev: encoding error          → assembler_dev (max 3x)
-  - linker_config: unresolved symbols      → linker_config (max 3x)
-  - toolchain_validation: pass < 95%       → backend_dev (max 3x)
-  - runtime_libs: crash/failure            → runtime_libs (max 3x)
-
-Track test_results in state_object.test_results.
-Output: Release-ready toolchain package with validation report.
-```
+The orchestrator's system prompt is its agent definition, [`compiler-orchestrator.md`](../plugins/compiler/agents/compiler-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.
 
 ---
 

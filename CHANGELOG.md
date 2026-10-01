@@ -1,5 +1,38 @@
 # Changelog
 
+## [Unreleased] — issue #118: flow docs restated loop-back rules that had drifted from the orchestrators
+
+Each `docs/*Flow*.md` restated its orchestrator's loop-back rules up to three times: in a stage
+diagram with loop arrows, in a Loop-Back Rules table, and in an "Orchestrator System Prompt"
+block. The agents were corrected in #86, #102, #113 and #83, and the docs were not, so 8 of 13
+disagreed with their agent. Three still described loop-backs that the agent now escalates
+instead: `lec_run` unmatched → netlist fix → `lec_run`, FPV counterexample → RTL fix, a
+directed-test DUT bug → RTL fix, and an unconditional scan-DRC retry. Others had the wrong
+targets, caps or thresholds, or rows only one side had.
+
+### Changed
+
+- **The flow docs no longer restate the rules.** In all 14 flow docs, Memory IP and PD
+  included, the stage section now holds the agent's stage sequence line and a link to the
+  agent's `## Loop-Back Rules`. The Loop-Back Rules table and the diagram's loop arrows are
+  gone. The "Orchestrator System Prompt" section now links to the agent file, which *is* the
+  system prompt. PD's `## Failure Escalation` list in the Sign-off skill spec and the §7 build
+  step now point at the agent too. Overview, shared-state and skill-spec content is unchanged.
+- **`docs/MASTER_INDEX.md`** states that the agent files are authoritative for stage sequence,
+  loop-back rules, stage gating and escalation. `docs/PIPELINE.md` marks its PD example as an
+  illustration and points at the agents.
+
+### Added
+
+- **Tests** in `tests/test_agent_contract.py`:
+  - `test_every_flow_doc_is_mapped_to_its_agent`
+  - `test_flow_docs_do_not_restate_loop_back_rules`, parametrised over the 14 docs: no
+    restated rules in any of the old forms, and a link to an agent that has `## Loop-Back Rules`.
+  - `test_flow_doc_stage_sequence_matches_the_agent`, parametrised.
+  
+  The RTL-only stage-sequence check in `test_rtl_flow_doc_and_knowledge_follow_the_agent` is now
+  covered by the parametrised test.
+
 ## [Unreleased] — issue #117: the MCP configuration text contradicted itself and the files on disk
 
 ### Fixed

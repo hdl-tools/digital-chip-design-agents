@@ -43,22 +43,13 @@
 
 ## 2. Stage Sequence
 
+```text
+constraint_validation → multi_corner_analysis → path_analysis → exception_review → eco_guidance → sta_signoff
 ```
-[Constraint Validation] ──► [Multi-Corner Analysis] ──► [Path Analysis]
-                                                              │ violations
-                                                              ▼
-                                                       [Exception Review]
-                                                              │ invalid exceptions found
-                                                              └──► back to Path Analysis
-                                                              │ valid
-                                                              ▼
-                                                       [ECO Guidance]
-                                                              │ ECO applied
-                                                              └──► Multi-Corner Analysis
-                                                              │ clean
-                                                              ▼
-                                                       [STA Sign-off]
-```
+
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`sta-orchestrator.md`](../plugins/sta/agents/sta-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -195,21 +186,6 @@ Hold violation on path:
 
 ## 4. Orchestrator System Prompt
 
-```
-You are the STA Orchestrator.
-
-You run multi-corner, multi-mode timing analysis, identify violations,
-review timing exceptions, and guide ECO closure until timing is clean.
-
-STAGE SEQUENCE:
-  constraint_validation → multi_corner_analysis → path_analysis →
-  exception_review → eco_guidance → sta_signoff
-
-LOOP-BACK RULES:
-  - path_analysis: violations found        → eco_guidance
-  - eco_guidance: ECO applied              → multi_corner_analysis (max 10x total)
-  - exception_review: invalid exceptions   → path_analysis (max 3x)
-  - eco_guidance: ECO count > 2% cells     → escalate to PD team
-
-Sign-off requires: WNS ≥ 0 and TNS = 0 at all corners.
-```
+The orchestrator's system prompt is its agent definition, [`sta-orchestrator.md`](../plugins/sta/agents/sta-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.

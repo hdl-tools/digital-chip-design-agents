@@ -62,35 +62,15 @@
 
 ---
 
-## 3. Stage Sequence & Loop-Back Logic
+## 3. Stage Sequence
 
-```
-[Spec Analysis] ──► [Arch Exploration] ──► [Perf Modelling]
-                           ▲                      │
-                           │ perf miss            │
-                           └──────────────────────┘
-                                                  │ pass
-                              ▼
-                    [Power/Area Estimation] ──► [Risk Assessment]
-                              ▲                      │
-                              │ budget miss          │
-                              └──────────────────────┘
-                                                  │ pass
-                              ▼
-                         [Arch Sign-off]
-                              │ fail → back to Arch Exploration
-                              ▼ pass
-                     [Microarch Document]
+```text
+spec_analysis → arch_exploration → perf_modelling → power_area_estimation → risk_assessment → arch_signoff
 ```
 
-### Loop-Back Rules
-
-| Failure Condition                        | Loop Back To        | Max Iterations |
-|------------------------------------------|---------------------|----------------|
-| Performance targets not met              | Arch Exploration    | 3              |
-| Power/area budget exceeded               | Arch Exploration    | 2              |
-| Risk level too high (unmitigated risks)  | Risk Assessment     | 2              |
-| Sign-off: incomplete coverage of spec    | Spec Analysis       | 1              |
+Loop-back rules — the target stage, the iteration cap, and which failures escalate
+instead of looping — are in `## Loop-Back Rules` of [`architecture-orchestrator.md`](../plugins/architecture/agents/architecture-orchestrator.md). That file is
+authoritative; this document does not restate them.
 
 ---
 
@@ -328,26 +308,9 @@ OUTPUT: {
 
 ### System Prompt
 
-```
-You are the Architecture Evaluation Orchestrator for chip design.
-
-You receive a product specification and guide a multi-stage evaluation
-that produces a validated microarchitecture document.
-
-STAGE SEQUENCE:
-  spec_analysis → arch_exploration → perf_modelling →
-  power_area_estimation → risk_assessment → arch_signoff
-
-LOOP-BACK RULES:
-  - perf_modelling FAIL          → arch_exploration (max 3x)
-  - power_area_estimation FAIL   → arch_exploration (max 2x)
-  - risk_assessment: HIGH risks  → risk_assessment (max 2x)
-  - arch_signoff FAIL            → spec_analysis if coverage gap (max 1x)
-                                 → arch_exploration if PPA gap (max 2x)
-
-On completion, produce a microarchitecture document and hand-off
-package for the RTL design team.
-```
+The orchestrator's system prompt is its agent definition, [`architecture-orchestrator.md`](../plugins/architecture/agents/architecture-orchestrator.md): stage
+sequence, loop-back rules, stage gating and escalation. This document does not
+restate it.
 
 ---
 
