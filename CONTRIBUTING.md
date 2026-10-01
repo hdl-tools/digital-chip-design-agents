@@ -76,9 +76,8 @@ stage_1 → stage_2 → stage_3
 1. ...
 ```
 
-4. Add the shared sections. Every orchestrator carries a set of guards word for word
-   (stage gating and escalation, and an execution note where the domain has no MCP server).
-   They are not written by hand:
+4. Add the shared sections. Every orchestrator carries a set of guards word for word — run
+   `--list` below to see which block goes where. They are not written by hand:
 ```bash
 python3 tools/sync_agent_sections.py          # writes the shared blocks into each agent
 python3 tools/sync_agent_sections.py --list   # shows which block goes where

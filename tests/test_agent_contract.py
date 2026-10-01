@@ -183,6 +183,25 @@ def test_retry_strategy_mapping_is_reachable_by_the_agent(path):
             f"{_rel(path)}: refers to the pipeline-orchestration skill without declaring it"
         )
 
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_long_running_jobs_guidance_present(path):
+    """Issue #76: an agent with no guidance for jobs outliving a turn busy-waited on
+    its own background build for ~250k tokens and never finished. Every orchestrator
+    must carry the shared block's load-bearing clauses, not just its heading."""
+    text = _read(path)
+    assert "## Long-Running Jobs" in text, (
+        f"{_rel(path)}: missing the Long-Running Jobs section"
+    )
+    for clause in (
+        "never busy-poll it",
+        "A quiet log is not a hung job",
+        "stop and hand it over",
+    ):
+        assert clause in text, (
+            f"{_rel(path)}: Long-Running Jobs section is missing clause {clause!r}"
+        )
+
 INFRA_SKILL = REPO_ROOT / "plugins" / "infrastructure" / "skills" / "infrastructure" / "SKILL.md"
 
 # The Proprietary table rows: | Tool | Command (alt) | role | dialect | probe |
