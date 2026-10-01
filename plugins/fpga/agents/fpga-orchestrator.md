@@ -58,7 +58,7 @@ Each stage must return:
   "stage": "<stage_name>",
   "status": "PASS | FAIL | WARN",
   "confidence": "high | medium | low",
-  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | input_setup | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",
   "qor": {},
   "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
@@ -93,6 +93,7 @@ Every `history[]` entry carries both fields. `failure_class` says *what* went wr
 | `connectivity` | `refine` |
 | `drc_lvs` | `regenerate` |
 | `tool_error` | `regenerate` |
+| `input_setup` | `escalate` |
 | `spec_gap` | `escalate` |
 | `resource_limit` | `escalate` |
 
@@ -106,6 +107,14 @@ Every `history[]` entry carries both fields. `failure_class` says *what* went wr
 - **escalate** — halt and request human input: the result cannot be improved automatically
   (ambiguous spec), or a budget or cap was hit. Action is `escalate` or `abandon`.
 - **none** — no failure. Pairs only with `failure_class: "none"` (PASS, `await_approval`).
+
+`input_setup` means the tool ran correctly on the wrong inputs: a filelist, include path,
+project or config file, generated header or library view that resolves to the wrong tree. It
+is not `tool_error` — a retry reproduces it verbatim — and it is not evidence about the
+artifact under check, which was never evaluated. Record it whenever the evidence points at
+the input set (two paths named for one file, a file this run did not write, a check that
+aborted before it ran), change nothing in the artifact, and escalate with the input to
+repoint.
 
 A FAIL or WARN that a Loop-Back Rules row sends to another stage records
 `decision: "loop_back"`, not `"proceed"`. `"proceed"` means the stage's own result
@@ -124,7 +133,10 @@ overridden by a mapped `regenerate`, and a row that still has an iteration left 
 overridden by a mapped `escalate`. Record the mapped `retry_strategy` anyway, so the
 disagreement stays visible in `history[]` instead of being resolved silently. Stage Gating and
 Escalation items 4 and 7 are different in kind: they stop a loop on evidence (the fault is
-upstream, or the retries are not converging), whatever the row still allows.
+upstream, or the retries are not converging), whatever the row still allows. `input_setup` is
+the one class that does the same: no Loop-Back Rules row overrides it, because every row that
+loops back sends the failure to a stage that edits the artifact, and the artifact is not what
+is wrong.
 
 Where a condition has **no** Loop-Back Rules row at all, there is nothing to defer to and no
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
@@ -271,7 +283,16 @@ and blocking assignments are correct there.
    regression. The same findings two iterations running is no progress. A fix that changes
    behaviour to silence a warning — narrowing a signal to stop a truncation warning implements
    the truncation — is intent drift, the RTL form of a moved target: revert and escalate.
-7. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
+7. **An aborted run is not a lint result.** If the tool stopped before rule checking completed
+   (a parse or elaboration fatal, "aborted", a missing file), zero rules ran: the counts are
+   unknown, not 0, and nothing was learned about the RTL. Before editing any file, attribute
+   each fatal. A duplicate declaration together with an undeclared identifier, a message that
+   names two paths for one file, a missing include, or a fatal in a file this run did not
+   write points at the input set — include search is first-match-wins, so a stale tree listed
+   first shadows the current one. Record `input_setup`, edit no RTL, and escalate with the
+   paths. Only a parse error in a file this run wrote, with the input set checked, is yours to
+   repair.
+8. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
    runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM` as
    warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
    escalation. If it is unavailable, the items above stand on their own — it augments, never
@@ -372,7 +393,7 @@ History entry to append:
   "stage": "<final stage reached>",
   "decision": "proceed | loop_back | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
-  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | input_setup | spec_gap | resource_limit",
   "retry_strategy": "none | regenerate | refine | escalate",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",

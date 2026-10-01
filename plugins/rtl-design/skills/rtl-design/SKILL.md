@@ -190,6 +190,54 @@ a fallback.
 
 ---
 
+## Stage: design_input_check
+
+A lint tool reports on the files it was given. This stage checks that those are the intended
+files **before** any lint message is read as a statement about the RTL. It edits nothing: its
+only outputs are a report and a PASS or FAIL.
+
+### Domain Rules
+1. Resolve and print the **absolute** path of the filelist the tool will read, and of the
+   project or config file that selected it. Where several candidates exist (a managed project
+   file and a user-override directory, two filelists of the same name), state which one the
+   tool uses and why. A stale override directory silently bypasses the managed project file and
+   every variable it would have set
+2. Resolve every include directory to an absolute path, in search order. Include search is
+   first-match-wins: a file name that exists in two include directories with different content
+   is an **ERROR**, not a warning — the tool silently uses the first and ignores the second.
+   Name the file, every directory that holds it, and the one that wins
+3. Flag include directories and sources that resolve outside the declared design root, and
+   sibling trees reachable from the include set: `X` beside `X_v2`, `X_old`, `X_bak`, or
+   parallel version directories that hold the same file names
+4. For generated inputs (register-map headers, IP configuration headers): exactly one
+   generation's output tree is on the include path, and it is newer than its generator source
+5. Every path in the filelist exists. A missing include directory is an ERROR: the tool falls
+   through to the next directory that has the file
+6. Where the input set is a `.f` filelist, run `check_design_inputs.py` (in this skill's
+   directory) and report its JSON:
+   `python3 check_design_inputs.py <filelist.f> --root <design root> [--env NAME=VALUE] [--generated OUT_DIR=SOURCE]`.
+   It applies rules 2, 3 and 5, and rule 4's age check for each `--generated` pair. Rule 1, and
+   any flow driven by a vendor project file instead of a `.f` filelist, is checked by hand
+   against the rules above
+7. On FAIL, change no design file. The fix is in the input set — usually one line of a filelist
+   — and choosing between two trees is the owner's decision: report `failure_class:
+   "input_setup"`, `suggested_next_step: "escalate"`, the file, both absolute paths and the
+   line to change. Never loop back to `rtl_coding`
+
+### QoR Metrics to Evaluate
+- Include file names present in two directories with different content: must be 0
+- Missing filelists, include directories and sources: must be 0
+- Generated output trees on the include path, per generator: exactly 1
+- Sibling trees, paths outside the design root, identical duplicate headers: review each;
+  proceed only with the reason recorded
+
+### Output Required
+- Design-input report: absolute filelist and config paths, ordered absolute include
+  directories, and every finding with the paths it names
+- Stage status: PASS, or FAIL with `failure_class: "input_setup"`
+
+---
+
 ## Stage: lint_check
 
 ### Domain Rules
@@ -220,8 +268,28 @@ a fallback.
     implements the truncation) is intent drift — revert and escalate
 11. Where a tool reports its own severities, map them onto the levels above so waivers still
     apply: `BLOCKER` / `HIGH` → ERROR, `MEDIUM` → WARNING, `LOW` / `INFO` → informational
+12. A run whose rule check did not complete ran **zero** rules. A parse or elaboration fatal,
+    a tool message that rule checking was aborted or skipped, or a missing file means the
+    ERROR and WARNING counts are unknown — record them as `null`, never `0` — and the result is
+    not evidence about the RTL. Such a run is never classified `functional`
+13. Attribute every fatal of an aborted run before editing any file. It is an input-set
+    failure (`input_setup` — escalate, edit no RTL) when: duplicate-declaration **and**
+    undeclared-identifier fatals appear in the same run (two generations of a generated header
+    on the include path); a message names two paths for one file; an include or source file is
+    not found; or the fatal is in a file this run did not write. Deleting the "duplicate" port
+    or declaring the "undeclared" signal silences the message and corrupts correct RTL. Only a
+    parse error in a file this run wrote or changed, with `design_input_check` passing on the
+    current input set, goes back to `rtl_coding` — as malformed output (`tool_error`), to
+    repair the syntax and nothing else
+14. Triage findings by cause before severity: (a) setup or input failures — rule 13; (b)
+    library-model noise — findings inside behavioural macro models, standard-cell `specify`
+    blocks and vendor primitives, an expected floor to waive once with the model named; (c)
+    findings in the RTL itself, which are the ones the levels in rules 1–2 apply to. A flow
+    wrapper's non-zero exit is not "lint failed": a wrapper may gate on log text and fail a run
+    in which the lint tool reported 0 errors. Read the tool's own error count
 
 ### QoR Metrics to Evaluate
+- Rule check completed: must be true — an aborted run has no ERROR count
 - ERROR count: must be 0 before proceeding
 - WARNING count: review all; waive with documented justification
 - All RTL files checked (not just top-level)

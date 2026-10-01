@@ -45,6 +45,7 @@
   "stages": {
     "module_planning":   { "status": "pending", "output": {} },
     "rtl_coding":        { "status": "pending", "output": {} },
+    "design_input_check": { "status": "pending", "output": {} },
     "lint_check":        { "status": "pending", "output": {} },
     "cdc_rdc_analysis":  { "status": "pending", "output": {} },
     "synth_check":       { "status": "pending", "output": {} },
@@ -62,9 +63,12 @@
 ## 3. Stage Sequence & Loop-Back Logic
 
 ```
-[Module Planning] ──► [RTL Coding] ──► [Lint Check]
-                           ▲                 │ fail
-                           └─────────────────┘
+[Module Planning] ──► [RTL Coding] ──► [Design Input Check] ──► [Lint Check]
+                           ▲                 │ fail                    │ fail
+                           │                 ▼                         │
+                           │        [Escalate: input_setup]            │
+                           │        (no RTL is edited)                 │
+                           └───────────────────────────────────────────┘
                                              │ pass
                               ▼
                        [CDC/RDC Analysis]
@@ -87,7 +91,10 @@
 
 | Failure Condition                     | Loop Back To   | Max Iterations |
 |---------------------------------------|----------------|----------------|
-| Lint errors > 0                       | RTL Coding     | 5              |
+| Design input check fails (wrong input set) | Escalate (`input_setup`) | —       |
+| Lint aborted before rule checking; cause in the input set or not attributed | Escalate (`input_setup`) | — |
+| Lint aborted on a parse error in RTL this run wrote, inputs checked | RTL Coding | shares the 5 below |
+| Lint errors > 0 (rule check completed) | RTL Coding     | 5              |
 | CDC violations (unwaived)             | RTL Coding     | 3              |
 | Synth: timing worse than -20% margin  | RTL Coding     | 2              |
 | Synth: area > 120% of estimate        | RTL Coding     | 2              |
@@ -367,10 +374,12 @@ You take a microarchitecture document and guide RTL development through
 module planning, coding, lint, CDC analysis, synthesis check, and sign-off.
 
 STAGE SEQUENCE:
-  module_planning → rtl_coding → lint_check → cdc_rdc_analysis →
-  synth_check → rtl_signoff
+  module_planning → rtl_coding → design_input_check → lint_check →
+  cdc_rdc_analysis → synth_check → rtl_signoff
 
 LOOP-BACK RULES:
+  - design_input_check FAIL       → escalate (input_setup; edit no RTL)
+  - lint_check aborted (inputs)   → escalate (input_setup; edit no RTL)
   - lint_check FAIL               → rtl_coding (max 5x)
   - cdc_rdc_analysis FAIL         → rtl_coding (max 3x)
   - synth_check FAIL (timing)     → rtl_coding (max 2x)

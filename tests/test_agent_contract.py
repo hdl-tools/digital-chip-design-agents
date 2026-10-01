@@ -131,7 +131,7 @@ PIPELINE_SKILL = (
 
 FAILURE_CLASSES = frozenset({
     "none", "functional", "timing", "power_area", "coverage_gap",
-    "connectivity", "drc_lvs", "tool_error", "spec_gap", "resource_limit",
+    "connectivity", "drc_lvs", "tool_error", "input_setup", "spec_gap", "resource_limit",
 })
 MAPPING_ROW = re.compile(r"^\|\s*`(\w+)`\s*\|\s*`(\w+)`\s*\|", re.M)
 MAPPING_HEADING = "Failure Classification & Retry Strategy"
@@ -616,6 +616,181 @@ def test_rtl_design_scopes_out_testbenches():
     assert "Testbenches (`*_tb.sv`, `tb_*.sv`" in text, (
         "rtl-design skill does not scope testbenches out of the RTL rules"
     )
+
+
+# --- issue #83: a lint failure caused by the input set is not an RTL defect ----
+# A stale generated header tree listed first on the include path produced
+# duplicate-declaration and undeclared-identifier fatals. The single
+# `lint_check FAIL -> rtl_coding` row sent that to the stage that edits RTL, where
+# the plausible "fix" deletes a real port.
+
+SCHEMA = REPO_ROOT / "docs" / "design_state.schema.json"
+RTL_FLOW_DOC = REPO_ROOT / "docs" / "RTL_Design_Flow.md"
+RTL_KNOWLEDGE = REPO_ROOT / "memory" / "rtl-design" / "knowledge.md"
+ENUM_LINE = re.compile(r'"failure_class": "(none \|[^"]*)"')
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _stage_sequence(text: str) -> list[str]:
+    line = text.split("## Stage Sequence", 1)[1].strip().splitlines()[0]
+    return [stage.strip() for stage in line.split("→")]
+
+
+def test_input_setup_always_escalates():
+    """A wrong input set reproduces verbatim on a retry, and the artifact was never
+    evaluated: the class must map to escalate everywhere the mapping is written,
+    and the schema must reject any other pairing."""
+    import json
+
+    assert _retry_mapping(PIPELINE_SKILL)["input_setup"] == "escalate"
+    assert _retry_mapping(SHARED_SECTIONS)["input_setup"] == "escalate"
+
+    schema = json.loads(_read(SCHEMA))
+    assert "input_setup" in schema["$defs"]["historyFailureClass"]["enum"]
+    rows = {
+        rule["if"]["properties"]["failure_class"]["const"]:
+            rule["then"]["properties"]["retry_strategy"]["const"]
+        for rule in schema["$defs"]["historyEntry"]["allOf"]
+    }
+    assert rows["input_setup"] == "escalate"
+    assert set(rows) == set(FAILURE_CLASSES), "schema map and FAILURE_CLASSES differ"
+
+    decision_table = _read(PIPELINE_SKILL).split(
+        "### Programmatic branching on standardized history[] fields", 1
+    )[1]
+    row = next(
+        (line for line in decision_table.splitlines() if "`input_setup`" in line), ""
+    )
+    assert "never re-dispatch" in row and "never open a `fix_request`" in row, (
+        "pipeline decision table has no input_setup row that forbids a retry"
+    )
+
+
+def test_no_loop_back_row_overrides_input_setup():
+    """The shared section says a Loop-Back Rules row with iterations left is not
+    overridden by a mapped `escalate`. Left unqualified, that sentence sends
+    `input_setup` straight back down the row it was created to bypass."""
+    flat = _flat(_read(SHARED_SECTIONS))
+    assert "no Loop-Back Rules row overrides it" in flat
+    assert "the tool ran correctly on the wrong inputs" in flat
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_failure_class_enum_lists_input_setup(path):
+    """The enum strings are hand-written in every agent, outside the synced blocks.
+    An agent copies its `failure_class` from them, so a value missing here is a value
+    that agent cannot record."""
+    enums = ENUM_LINE.findall(_read(path))
+    assert enums, f"{_rel(path)}: no failure_class enum found"
+    for enum in enums:
+        values = {v.strip() for v in enum.split("|")}
+        assert values == set(FAILURE_CLASSES), (
+            f"{_rel(path)}: failure_class enum differs from the mapping table: "
+            f"{sorted(values ^ set(FAILURE_CLASSES))}"
+        )
+
+
+def test_rtl_design_checks_its_inputs_before_linting_them():
+    text = _read(RTL_AGENT)
+    stages = _stage_sequence(text)
+    assert stages.index("rtl_coding") + 1 == stages.index("design_input_check")
+    assert stages.index("design_input_check") + 1 == stages.index("lint_check")
+
+    rows = _loop_back_rows(text)
+    input_rows = [r for r in rows if r.startswith("- design_input_check FAIL")]
+    assert input_rows, "no Loop-Back Rules row for design_input_check FAIL"
+    for row in input_rows:
+        target = row.split("→", 1)[1].strip()
+        assert target.startswith("escalate") and "input_setup" in target, (
+            f"design_input_check FAIL does not escalate as input_setup: {row.strip()!r}"
+        )
+
+    # A lint run whose rule check did not complete is not evidence about the RTL. It
+    # reaches rtl_coding only as a parse error in RTL this run wrote, with the input
+    # set already checked, and never as `functional`.
+    aborted = [r for r in rows if r.startswith("- lint_check FAIL") and "did not complete" in r]
+    assert len(aborted) == 2, f"expected two aborted-lint rows, found {aborted}"
+    for row in aborted:
+        condition, target = (part.strip() for part in row.split("→", 1))
+        if target.startswith("rtl_coding"):
+            assert "RTL this run wrote" in condition and "design_input_check PASS" in condition
+            assert "never `functional`" in target
+        else:
+            assert target.startswith("escalate") and "input_setup" in target
+
+    completed = [r for r in rows if r.startswith("- lint_check FAIL") and "did not complete" not in r]
+    assert len(completed) == 1 and "rule check completed" in completed[0], (
+        "the plain lint_check row must say it applies to a completed rule check"
+    )
+
+    flat = _flat(text)
+    assert "edit no `.v`/`.sv` file" in flat
+    assert "Never delete a port, signal or declaration" in flat
+
+
+def test_rtl_skill_defines_the_input_check_and_aborted_run_rules():
+    text = _read(RTL_SKILL)
+    stage = text.split("## Stage: design_input_check", 1)[1].split("\n## Stage: ", 1)[0]
+    assert text.index("## Stage: rtl_coding") < text.index("## Stage: design_input_check") \
+        < text.index("## Stage: lint_check")
+    flat = _flat(stage)
+    for clause in (
+        "first-match-wins",
+        "is an **ERROR**, not a warning",
+        "check_design_inputs.py",
+        '"input_setup"',
+        "Never loop back to `rtl_coding`",
+    ):
+        assert clause in flat, f"design_input_check stage is missing clause {clause!r}"
+    for heading in ("### Domain Rules", "### QoR Metrics to Evaluate", "### Output Required"):
+        assert heading in stage, f"design_input_check stage has no {heading!r}"
+
+    lint = _flat(text.split("## Stage: lint_check", 1)[1].split("\n## Stage: ", 1)[0])
+    for clause in (
+        "ran **zero** rules",
+        "never `0`",
+        "not evidence about the RTL",
+        "never classified `functional`",
+        "duplicate-declaration **and** undeclared-identifier",
+        'non-zero exit is not "lint failed"',
+    ):
+        assert clause in lint, f"lint_check is missing clause {clause!r}"
+
+    script = RTL_SKILL.parent / "check_design_inputs.py"
+    assert script.is_file(), "the skill names check_design_inputs.py but does not ship it"
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_rtl_lint_gate_covers_an_aborted_run(path):
+    """soc, fpga, hls and memory-ip lint RTL without loading the rtl-design skill, so
+    the aborted-run rule has to reach them through the shared gate."""
+    if path.parent.parent.name not in RTL_AUTHORING_AGENTS:
+        return
+    flat = _flat(_read(path))
+    for clause in (
+        "An aborted run is not a lint result",
+        "zero rules ran",
+        "first-match-wins",
+        "Record `input_setup`, edit no RTL",
+    ):
+        assert clause in flat, f"{_rel(path)}: RTL Lint Gate is missing clause {clause!r}"
+
+
+def test_rtl_flow_doc_and_knowledge_follow_the_agent():
+    """docs/RTL_Design_Flow.md restates the stage sequence by hand, and the knowledge
+    file is read before the first stage - the cheapest place to stop the misroute."""
+    doc = _read(RTL_FLOW_DOC)
+    block = doc.split("STAGE SEQUENCE:", 1)[1].split("LOOP-BACK RULES:", 1)[0]
+    doc_stages = [stage.strip() for stage in block.replace("\n", " ").split("→")]
+    assert doc_stages == _stage_sequence(_read(RTL_AGENT))
+    assert '"design_input_check"' in doc
+
+    knowledge = _flat(_read(RTL_KNOWLEDGE))
+    for clause in ("first-match-wins", "zero rules ran", "user-override"):
+        assert clause in knowledge, f"rtl-design knowledge.md is missing {clause!r}"
 
 
 # A `.json` artifact a stage promises to produce.

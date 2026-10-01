@@ -13,6 +13,20 @@
   explicit reset-removal timing constraints in the SDC (`set_max_delay -datapath_only` from reset
   deassertion to first flop clock edge). Without these, STA will either flag false violations or
   miss real metastability windows.
+- **Stale generated headers on the include path look like RTL bugs**: Include search is
+  first-match-wins. When two generations of a generated header tree (register map, IP config) are
+  both on the include path and the stale one is listed first, lint reports duplicate-declaration
+  fatals (the stale header still declares what the RTL now declares) **and** undeclared-identifier
+  fatals (fields that exist only in the current generation) in the same run. Check the resolved
+  filelist before touching RTL: the fix is one filelist line, and the "duplicate" port is real.
+- **A lint run that aborted says nothing about the RTL**: If the tool reports that rule checking
+  aborted or did not complete, zero rules ran. Never loop a setup failure back to `rtl_coding`;
+  classify it `input_setup` and escalate. Once the input set is fixed, expect the real findings to
+  appear for the first time — they were masked by the abort, not introduced by the fix.
+- **A user-override config directory can bypass the managed project file**: Several vendor flow
+  wrappers prefer a user-override directory over the managed configuration. A stale override
+  silently replaces the managed project file and every variable it would have set. Print the
+  absolute path of the project file the tool actually read before trusting its result.
 
 ## Successful Tool Flags
 

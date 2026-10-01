@@ -149,7 +149,7 @@ Key top-level fields:
 - `approved_checkpoints[]` — checkpoints cleared by the user. Each entry: `{ "stage": "<name>", "approved_at": "<ISO-8601>", "approved_by": "user" }` (format_version 1.3+).
 - `pending_approval` — non-null when a human decision is required. Field `type` distinguishes: `"checkpoint"` (proactive gate set by a domain orchestrator at its sign-off boundary), `"constraint_gap"` (a required constraint is missing, set by a domain orchestrator at stage-entry validation) and `"escalation"` (failure-driven, set only by pipeline-orchestrator). A domain orchestrator that escalates on an exhausted loop cap or an upstream fault records it in its terminal `history[]` entry and leaves `pending_approval` unset. Additional fields: `stage` (checkpoint stage name or null), `agent` (orchestrator that set it), `reason`, `fix_request_id`, `last_summary`, `requires_user`.
 
-`failure_class` values in `history[]` entries: `none` (PASS), `functional`, `timing`, `power_area`, `drc_lvs`, `coverage_gap`, `connectivity`, `tool_error`, `spec_gap`, `resource_limit`. Distinct from `fix_request.failure_class` which is scoped to verification/formal root causes.
+`failure_class` values in `history[]` entries: `none` (PASS), `functional`, `timing`, `power_area`, `drc_lvs`, `coverage_gap`, `connectivity`, `tool_error`, `input_setup`, `spec_gap`, `resource_limit`. Distinct from `fix_request.failure_class` which is scoped to verification/formal root causes.
 
 `format_version` tiers:
 - `"1.1"` — `fix_requests[]` and `cross_domain_iteration_count` present

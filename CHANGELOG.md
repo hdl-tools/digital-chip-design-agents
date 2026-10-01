@@ -1,5 +1,78 @@
 # Changelog
 
+## [Unreleased] — issue #83: a lint failure caused by the input set was sent to the stage that edits RTL
+
+`rtl-design` had one row for lint, `lint_check FAIL (errors > 0) → rtl_coding (max 5×)`, and no
+stage that checked what the lint tool was given. In the originating case a stale generated
+register-map header tree was listed first on the include path and shadowed the current one:
+19 duplicate-declaration and undeclared-identifier fatals, rule checking aborted, and a fix of
+one filelist line. Routed to `rtl_coding`, the plausible repair deletes a port that is real.
+
+### Added
+
+- **`failure_class: input_setup` → `retry_strategy: escalate`** — the tool ran correctly on the
+  wrong inputs (filelist, include path, project or config file, generated headers, library
+  views). It is not `tool_error`, whose `regenerate` re-runs a failure that reproduces
+  verbatim, and not `functional`, because the artifact was never evaluated. Added to the
+  authoritative table and decision table in the `pipeline-orchestration` skill, the shared
+  `failure-classification` block (15 orchestrators), `docs/design_state.schema.json` (enum and
+  `allOf` map), the hand-written enum strings in all 16 agents, `docs/MASTER_INDEX.md` and
+  `memory/README.md`. `format_version` stays `1.5`: the value is additive, and a reader that
+  does not know it already falls through to "prefer `escalate`".
+- **No Loop-Back Rules row overrides `input_setup`.** The shared section says a row with
+  iterations left is not overridden by a mapped `escalate`; unqualified, that sentence sends
+  the new class straight back down the row it exists to bypass. It now names `input_setup` as
+  the one class that, like Stage Gating items 4 and 7, stops a loop on evidence.
+- **`rtl-design` stage `design_input_check`**, between `rtl_coding` and `lint_check`. It prints
+  the absolute filelist and the config that selected it, resolves the include directories in
+  search order, and treats a file name present in two of them with different content as an
+  ERROR — include search is first-match-wins, so this is a silent wrong answer, not a style
+  nit. It also flags sibling trees (`X` beside `X_v2` / `X_old` / `X_bak`), paths outside the
+  design root, and a generated tree older than its generator source. FAIL escalates as
+  `input_setup` and edits nothing. Behaviour Rule 11 runs it before the first `lint_check`,
+  again whenever the input set changes, and in fix-request-servicing mode.
+- **`plugins/rtl-design/skills/rtl-design/check_design_inputs.py`** — stdlib-only, read-only
+  checker for `.f` filelists (`-f`, `-F`, `+incdir+`, `-I`, `-y`, `$VAR` forms) that applies the
+  stage's path rules and prints JSON; exit 1 on FAIL. A flow driven by a vendor project file is
+  checked by hand against the same rules.
+- **`lint_check` rules 12–14.** A run whose rule check did not complete ran zero rules: its
+  counts are `null`, never `0`, and it is never `functional`. Every fatal is attributed before
+  any file is edited — duplicate-declaration and undeclared-identifier in one run, two paths
+  named for one file, a missing include, or a fatal in a file the run did not write is
+  `input_setup`. Findings are triaged by cause (input set, library-model noise, the RTL) before
+  severity, and a flow wrapper's non-zero exit is not "lint failed".
+- **RTL Lint Gate item 7, "An aborted run is not a lint result"**, synced into `rtl-design`,
+  `fpga`, `soc`, `memory-ip` and `hls`, which lint RTL without loading the `rtl-design` skill;
+  one line in the Codex/Gemini/Copilot headers. The optional `hdl-rtl-skill` item is now 8.
+- **Three Known Failure Patterns in `memory/rtl-design/knowledge.md`**: stale generated headers
+  look like RTL bugs; an aborted lint says nothing about the RTL; a user-override config
+  directory can bypass the managed project file. The file is copied into a memory root only if
+  absent, so an existing root does not receive them.
+- **Fixtures** `examples/design_state.input_setup.json` (valid) and
+  `examples/invalid/design_state.input_setup_regenerate.json` (must be rejected).
+- **Tests** `tests/test_design_inputs.py` (19 cases: the issue's filelist fails naming the
+  header and both absolute paths; no file is modified; a clean design passes; nested
+  filelists, variable forms, sibling trees, numbered instances that are not versions) and, in
+  `tests/test_agent_contract.py`, `test_input_setup_always_escalates`,
+  `test_no_loop_back_row_overrides_input_setup`, `test_failure_class_enum_lists_input_setup`,
+  `test_rtl_design_checks_its_inputs_before_linting_them`,
+  `test_rtl_skill_defines_the_input_check_and_aborted_run_rules`,
+  `test_rtl_lint_gate_covers_an_aborted_run` and
+  `test_rtl_flow_doc_and_knowledge_follow_the_agent`.
+
+### Changed
+
+- **The lint row is split in four.** `design_input_check FAIL` and an aborted lint whose cause
+  is in the input set, or is not attributed, escalate. An aborted lint goes to `rtl_coding`
+  only for a parse error in RTL the run itself wrote, with `design_input_check` passing — as
+  `tool_error`, never `functional`. The original row now says it applies to a completed rule
+  check. **This departs from the letter of the issue's third acceptance criterion** ("never
+  loops back to `rtl_coding`"): Verilator aborts on any syntax error, so the literal rule
+  would turn every typo in freshly written RTL into a human escalation.
+- **`pipeline-orchestrator`** escalates on a child's `input_setup` without opening a
+  `fix_request` or re-dispatching.
+- **`docs/RTL_Design_Flow.md`** stage list, diagram, loop-back table and system prompt.
+
 ## [Unreleased] — issue #112: the Verilator MCP server's lint mode could never run
 
 ### Fixed

@@ -294,7 +294,8 @@ is the strategy label read by the pipeline-orchestrator alongside `confidence` a
 Every failure is categorised so recovery is determined programmatically rather than by
 prose. Two fields work together on each `history[]` entry:
 
-- `failure_class` — *what* went wrong (the existing 10-value enum, unchanged).
+- `failure_class` — *what* went wrong (an 11-value enum; `input_setup` was added to the
+  original ten).
 - `retry_strategy` — *how* to recover, derived deterministically from `failure_class`.
 
 `retry_strategy` ∈ `none | regenerate | refine | escalate`:
@@ -333,6 +334,7 @@ fails if the two drift.
 | `connectivity` | `refine` | re-run targeting the violated interface/connection | interface_mismatch |
 | `drc_lvs` | `regenerate` | re-run place/route from a clean state | — |
 | `tool_error` | `regenerate` | re-run the same stage from scratch (≡ `retry_stage`) | invalid_rtl |
+| `input_setup` | `escalate` | the tool ran correctly on the wrong inputs (filelist, include path, config, generated headers, library views) — a retry reproduces it and the artifact was never evaluated | — |
 | `spec_gap` | `escalate` | ambiguous/missing spec — needs user clarification | incomplete_spec |
 | `resource_limit` | `escalate` | iteration cap / memory exceeded — human decision | — |
 
@@ -340,6 +342,15 @@ The "legacy alias" column reconciles the four classes proposed in an earlier dra
 (`invalid_rtl | verification_failure | interface_mismatch | incomplete_spec`) onto the live
 enum — no separate taxonomy is introduced. Producers that emit a `fix_request`
 (verification, formal) set its `retry_strategy` to `refine` (all their classes map to refine).
+
+`input_setup` is separate from `tool_error` because the two need opposite handling. A crashed
+tool may succeed on a second run; a filelist or include path that resolves to the wrong tree
+fails identically every time, so `regenerate` is waste. It is also separate from `functional`:
+a tool that aborted on its inputs, or checked the wrong files, says nothing about the artifact,
+so looping back to the stage that produced the artifact edits something that was never shown
+to be wrong. `input_setup` therefore always escalates, and no Loop-Back Rules row overrides it.
+Adding the value does not change `format_version`: a reader that does not know it falls
+through to the decision table's "prefer `escalate`" rule, which is the intended action.
 
 #### Actionable escalation guidance
 
@@ -351,6 +362,7 @@ what the user must supply to unblock the flow. For a domain orchestrator that is
 
 - `spec_gap` → "spec_gap: clarify <ambiguous requirement> — provide the intended <behaviour/value>."
 - `resource_limit` → "resource_limit: loop cap (N) reached on <stage> — relax the constraint, raise the cap, or accept current QoR."
+- `input_setup` → "input_setup: <header/file> resolves from <path used> ahead of <path intended> — repoint <filelist/include path/config> and re-run; no design file was changed."
 
 ### format_version
 
@@ -455,6 +467,7 @@ table (evaluated in order):
 | any | `resource_limit` | `escalate` | any | Escalate via `pending_approval` — cap exceeded |
 | `low` | any | any | `escalate` | Escalate — result unreliable, human review required |
 | `low` | any | any | any (not escalate) | Escalate — low confidence overrides any retry intent |
+| any | `input_setup` | `escalate` | any | Escalate via `pending_approval` — never re-dispatch and never open a `fix_request`; reason names the input to repoint |
 | any | `tool_error` | `regenerate` | `retry_stage` | Re-dispatch the same orchestrator once; if still `tool_error`, escalate |
 | any | `drc_lvs` \| `connectivity` | `refine` | `loop_back_to:<stage>` | Re-dispatch the generating orchestrator from a clean slate with the error log |
 | any | `functional` \| `coverage_gap` | `refine` | `escalate` | Append new `fix_request` and loop back via RTL orchestrator |

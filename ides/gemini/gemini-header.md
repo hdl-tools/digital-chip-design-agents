@@ -23,6 +23,8 @@ requirements — is loaded below via @-imports from the plugin source files.
 - Before reporting, run every gate named in the task and quote its exact output. Never report a
   gate as passing that you did not run; say NOT RUN and why.
 - A tool that exits 0 with empty or unparsable output is not a pass.
+- If a tool aborted before checking the design, or ran on the wrong inputs (filelist, include
+  path, config, generated headers), change nothing in the design: report the input and stop.
 - Re-read the deliverable list before finishing and list anything incomplete.
 - Separate measured values from inference.
 - If a test consumes a generated artifact, confirm every environment that runs the test can
