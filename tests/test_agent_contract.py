@@ -324,3 +324,97 @@ def test_critical_path_tools_are_keyed_by_command():
             f"proprietary primary command {primary!r} has no module-mapping row keyed "
             "on it, so module_discovery cannot upgrade its tool-status entry"
         )
+
+
+# A `.json` artifact a stage promises to produce.
+JSON_ARTIFACT = re.compile(r"`([A-Za-z0-9_.-]+\.json)`")
+# Per-tool fields that live in tool-status.json; a second artifact restating them
+# becomes a second source of truth for the same facts.
+TOOL_STATUS_FIELDS = ('"status"', '"version"', '"command"', '"module_names"', '"versions_available"')
+
+
+def _stage_sections(text: str) -> dict[str, str]:
+    """Map stage name -> that stage's body."""
+    parts = re.split(r"^## Stage: (\w+)\s*$", text, flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2]))
+
+
+def _subsection(body: str, heading: str) -> str:
+    if heading not in body:
+        return ""
+    return re.split(r"^#{3,4} ", body.split(heading, 1)[1], maxsplit=1, flags=re.M)[0]
+
+
+def _promised_artifacts(body: str) -> set[str]:
+    """.json artifacts on the Output Required bullet list -- not every artifact its
+    explanatory prose happens to name."""
+    bullets = [
+        line for line in _subsection(body, "### Output Required").splitlines()
+        if line.startswith("- ")
+    ]
+    return set(JSON_ARTIFACT.findall("\n".join(bullets)))
+
+
+def test_environment_validation_artifacts_are_defined():
+    """`tool-manifest.json` was specified once and the spec was deleted (issue #91),
+    leaving five references to a file with no schema and no creator -- so independent
+    runs invented incompatible shapes. Rule 2 also compared against it, which is that
+    same stage's output, and re-detected Python packages by a method `tool_discovery`
+    does not use (issue #90)."""
+    skill = _read(INFRA_SKILL)
+    stages = _stage_sections(skill)
+    assert "environment_validation" in stages, "stage headings changed"
+
+    # 1. Every .json artifact a stage promises must have a definition in the skill, and
+    #    that definition must be followed by a schema. This is what f1124c5 broke.
+    for stage, body in stages.items():
+        for artifact in _promised_artifacts(body):
+            markers = [f"`{artifact}` schema", f"`{artifact}` is a"]
+            found = [m for m in markers if m in skill]
+            assert found, (
+                f"{stage} promises {artifact} but the skill never defines it -- a reference "
+                "can outlive its spec, which is how two runs invented two shapes"
+            )
+            after = skill.split(found[0], 1)[1].split("\n## ", 1)[0]
+            assert "```json" in after, f"{artifact} is named as defined but carries no schema"
+
+    # 2. No rule may compare against an artifact its own stage produces: on any run there
+    #    is nothing to compare against. A line that forbids it is not a violation.
+    for stage, body in stages.items():
+        produced = _promised_artifacts(body)
+        # Collapse newlines: the rules wrap, so a negation can sit on the line above
+        # the match. A sentence forbidding the comparison is not a violation of it.
+        rules = " ".join(_subsection(body, "### Domain Rules").split())
+        for artifact in produced:
+            needle = f"against `{artifact}`"
+            for match in re.finditer(re.escape(needle), rules):
+                preceding = rules[max(0, match.start() - 40):match.start()].lower()
+                if "never" in preceding or "not " in preceding:
+                    continue
+                raise AssertionError(
+                    f"{stage} rule compares against its own output {artifact}: "
+                    f"...{rules[max(0, match.start() - 60):match.end() + 40]}..."
+                )
+
+    # 3. environment_validation rule 2 may not forbid a fallback that tool_discovery
+    #    rule 3 performs -- two stages detecting one tool by different methods disagree
+    #    on real installs, silently.
+    rule_2 = re.split(
+        r"^3\. ", _subsection(stages["environment_validation"], "### Domain Rules")
+        .split("2. Re-run tool presence checks", 1)[1], maxsplit=1, flags=re.M
+    )[0]
+    assert "fall back to" in stages["tool_discovery"], "tool_discovery lost its fallback chain"
+    assert "do not fall back" not in rule_2.lower(), (
+        "rule 2 forbids a PATH fallback that tool_discovery rule 3 performs"
+    )
+
+    # 4. The manifest must not restate per-tool state. Duplicating tool-status.json is
+    #    what produced two incompatible invented shapes.
+    receipt = skill.split("`tool-manifest.json` is a", 1)[1].split("\n## ", 1)[0]
+    schema = JSON_FENCE.search(receipt)
+    assert schema, "tool-manifest.json has no JSON schema block"
+    for field in TOOL_STATUS_FIELDS:
+        assert field not in schema.group(1), (
+            f"tool-manifest.json restates the tool-status.json field {field} -- it should "
+            "reference that file, not copy it"
+        )

@@ -79,7 +79,7 @@
 
 | # | Document | Description | Input | Output |
 |---|----------|-------------|-------|--------|
-| 0 | `Infrastructure_Setup_Flow.md` | EDA tool detection, wrapper deployment, MCP config | Host environment | tool-manifest.json, wrappers, MCP snippets |
+| 0 | `Infrastructure_Setup_Flow.md` | EDA tool detection, wrapper deployment, MCP config | Host environment | tool-status.json, module-status.json, tool-manifest.json, wrappers, MCP snippets |
 | 1 | `Architecture_Evaluation_Flow.md` | Microarch exploration, PPA estimate, risk | Product spec | Microarch doc |
 | 2 | `RTL_Design_Flow.md` | SV RTL coding, lint, CDC, synth check | Microarch doc | Synthesis-ready RTL |
 | 3 | `HLS_Flow.md` | C/C++ to RTL for algorithm blocks | C source + TB | Verified RTL |
