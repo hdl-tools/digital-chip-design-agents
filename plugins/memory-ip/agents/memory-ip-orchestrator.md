@@ -30,10 +30,10 @@ memory_requirements → macro_selection → array_architecture → redundancy_re
 - OpenSTA `.lib` sanity check (`sta`)
 
 ### Proprietary
-- ARM Artisan memory compilers (`artisan`)
-- Synopsys memory compilers + SiliconSmart characterisation (`siliconsmart`)
-- Cadence Liberate characterisation (`liberate`)
-- Siemens Tessent MBIST/BISR (`tessent`)
+- ARM Artisan memory compilers (`artisan`, dialect `arm`)
+- Synopsys memory compilers + SiliconSmart characterisation (`siliconsmart`, dialect `synopsys`)
+- Cadence Liberate characterisation (`liberate`, dialect `cadence`)
+- Siemens Tessent MBIST/BISR (`tessent`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

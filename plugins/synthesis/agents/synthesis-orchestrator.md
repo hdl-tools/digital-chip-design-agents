@@ -25,9 +25,9 @@ constraint_setup → compile_explore → compile_final → netlist_qc → synthe
 - ABC — logic optimisation and technology mapping
 
 ### Proprietary
-- Synopsys Design Compiler (`dc_shell`)
-- Cadence Genus (`genus`)
-- Synopsys Fusion Compiler (`fc_shell`)
+- Synopsys Design Compiler (`dc_shell`, dialect `synopsys`)
+- Cadence Genus (`genus`, dialect `cadence`)
+- Synopsys Fusion Compiler (`fc_shell`, dialect `synopsys`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

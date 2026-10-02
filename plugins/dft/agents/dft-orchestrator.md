@@ -23,9 +23,9 @@ dft_architecture → scan_insertion → atpg → bist_insertion → jtag_setup �
 - OpenROAD DFT utilities (`openroad`)
 
 ### Proprietary
-- Synopsys TetraMAX ATPG (`tmax`)
-- Cadence Modus Test (`modus`)
-- Siemens Tessent (`tessent`)
+- Synopsys TetraMAX ATPG (`tmax`, dialect `synopsys`)
+- Cadence Modus Test (`modus`, dialect `cadence`)
+- Siemens Tessent (`tessent`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

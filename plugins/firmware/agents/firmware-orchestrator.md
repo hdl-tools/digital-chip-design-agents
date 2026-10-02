@@ -26,9 +26,9 @@ bsp_development → peripheral_drivers → rtos_integration → driver_validatio
 - QEMU system emulator (`qemu-system-arm`, `qemu-system-riscv64`)
 
 ### Proprietary
-- J-Link GDB Server (`JLinkGDBServer`)
-- Lauterbach TRACE32 (`t32marm`)
-- Arm Development Studio (`armds`)
+- J-Link GDB Server (`JLinkGDBServer`, dialect `segger`)
+- Lauterbach TRACE32 (`t32marm`, dialect `lauterbach`)
+- Arm Development Studio (`armds`, dialect `arm`)
 
 <!-- BEGIN SHARED:execution-direct (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ### MCP Preference

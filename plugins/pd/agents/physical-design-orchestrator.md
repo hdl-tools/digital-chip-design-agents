@@ -25,9 +25,9 @@ floorplan → placement → cts → routing → timing_optimization → power_op
 - KLayout — DRC, LVS, GDS viewing (`klayout`)
 
 ### Proprietary
-- Cadence Innovus (`innovus`)
-- Synopsys IC Compiler 2 (`icc2_shell`)
-- Siemens Aprisa
+- Cadence Innovus (`innovus`, dialect `cadence`)
+- Synopsys IC Compiler 2 (`icc2_shell`, dialect `synopsys`)
+- Siemens Aprisa (dialect `siemens`)
 
 ### MCP Preference
 Full ORFS / LibreLane flows are **not** run via MCP — they are long-running and produce

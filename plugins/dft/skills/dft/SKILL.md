@@ -52,9 +52,9 @@ chip meets quality targets (fault coverage and DPPM).
 - **OpenROAD DFT utilities** (`openroad`) — scan insertion within the OpenROAD/ORFS flow
 
 ### Proprietary
-- **Synopsys TetraMAX ATPG** (`tmax`) — pattern generation, fault simulation, and compression
-- **Cadence Modus Test** (`modus`) — ATPG, scan DRC, and diagnosis
-- **Siemens Tessent** (`tessent`) — full DFT suite: scan, ATPG, MBIST, IJTAG
+- **Synopsys TetraMAX ATPG** (`tmax`, dialect `synopsys`) — pattern generation, fault simulation, and compression
+- **Cadence Modus Test** (`modus`, dialect `cadence`) — ATPG, scan DRC, and diagnosis
+- **Siemens Tessent** (`tessent`, dialect `siemens`) — full DFT suite: scan, ATPG, MBIST, IJTAG
 
 ---
 

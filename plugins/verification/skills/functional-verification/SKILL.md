@@ -55,9 +55,9 @@ with documented coverage and a clean regression.
 - **UVVM** — VHDL verification methodology library
 
 ### Proprietary
-- **Synopsys VCS** (`vcs`) — industry-standard SV/UVM simulator
-- **Cadence Xcelium** (`xrun`) — multi-language simulator with coverage engine
-- **Siemens Questa** (`vsim` / `vlog` / `vcom`) — mixed-language simulation with UVM support
+- **Synopsys VCS** (`vcs`, dialect `synopsys`) — industry-standard SV/UVM simulator
+- **Cadence Xcelium** (`xrun`, dialect `cadence`) — multi-language simulator with coverage engine
+- **Siemens Questa** (`vsim` / `vlog` / `vcom`, dialect `siemens`) — mixed-language simulation with UVM support
 
 ---
 

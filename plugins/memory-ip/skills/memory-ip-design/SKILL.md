@@ -76,10 +76,10 @@ for STA, behavioural models for verification.
 - **OpenSTA** (`sta`) — `.lib` load sanity check and macro timing arc inspection
 
 ### Proprietary
-- **ARM Artisan memory compilers** (`artisan`) — production SRAM/register-file/ROM compilers
-- **Synopsys memory compilers + SiliconSmart** (`siliconsmart`) — compilation and Liberty characterisation
-- **Cadence Liberate** (`liberate`) — Liberty characterisation across PVT corners
-- **Siemens Tessent MBIST/BISR** (`tessent`) — repair-register and BISR architecture reference (insertion owned by DFT)
+- **ARM Artisan memory compilers** (`artisan`, dialect `arm`) — production SRAM/register-file/ROM compilers
+- **Synopsys memory compilers + SiliconSmart** (`siliconsmart`, dialect `synopsys`) — compilation and Liberty characterisation
+- **Cadence Liberate** (`liberate`, dialect `cadence`) — Liberty characterisation across PVT corners
+- **Siemens Tessent MBIST/BISR** (`tessent`, dialect `siemens`) — repair-register and BISR architecture reference (insertion owned by DFT)
 
 ---
 

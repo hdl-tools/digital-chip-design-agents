@@ -53,9 +53,9 @@ quality checks before PD handoff.
 - **ABC** — logic optimisation and technology mapping (invoked automatically by Yosys)
 
 ### Proprietary
-- **Synopsys Design Compiler** (`dc_shell`) — industry-standard logic synthesis
-- **Cadence Genus** (`genus`) — RTL-to-netlist with concurrent optimisation
-- **Synopsys Fusion Compiler** (`fc_shell`) — combined synthesis and physical guidance
+- **Synopsys Design Compiler** (`dc_shell`, dialect `synopsys`) — industry-standard logic synthesis
+- **Cadence Genus** (`genus`, dialect `cadence`) — RTL-to-netlist with concurrent optimisation
+- **Synopsys Fusion Compiler** (`fc_shell`, dialect `synopsys`) — combined synthesis and physical guidance
 
 ### Sequential Flow Log Review (Yosys)
 

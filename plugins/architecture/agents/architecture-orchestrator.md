@@ -29,9 +29,9 @@ spec_analysis → arch_exploration → perf_modelling → power_area_estimation 
 - CACTI memory estimator (`cacti`)
 
 ### Proprietary
-- Synopsys Platform Architect
-- ARM Performance Models
-- Cadence Virtual System Platform (VSP)
+- Synopsys Platform Architect (dialect `synopsys`)
+- ARM Performance Models (dialect `arm`)
+- Cadence Virtual System Platform (VSP) (dialect `cadence`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

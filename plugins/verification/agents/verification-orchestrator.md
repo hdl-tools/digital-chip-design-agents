@@ -26,9 +26,9 @@ tb_architecture → test_planning → uvm_tb_build → directed_tests → constr
 - UVVM
 
 ### Proprietary
-- Synopsys VCS (`vcs`)
-- Cadence Xcelium (`xrun`)
-- Siemens Questa (`vsim` / `vlog` / `vcom`)
+- Synopsys VCS (`vcs`, dialect `synopsys`)
+- Cadence Xcelium (`xrun`, dialect `cadence`)
+- Siemens Questa (`vsim` / `vlog` / `vcom`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

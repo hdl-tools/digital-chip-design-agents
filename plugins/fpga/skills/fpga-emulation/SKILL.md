@@ -55,10 +55,10 @@ provides functional and architectural validation months before silicon.
 - **Project X-Ray** — Xilinx 7-series bitstream documentation
 
 ### Proprietary
-- **Xilinx Vivado** (`vivado`) — synthesis, implementation, and bitstream generation for AMD/Xilinx
-- **Intel Quartus** (`quartus_sh`) — synthesis and programming for Intel/Altera FPGAs
-- **Microchip Libero** (`libero`) — synthesis and programming for PolarFire/SmartFusion FPGAs
-- **Synopsys Synplify** — FPGA synthesis front-end targeting multiple device families
+- **Xilinx Vivado** (`vivado`, dialect `xilinx`) — synthesis, implementation, and bitstream generation for AMD/Xilinx
+- **Intel Quartus** (`quartus_sh`, dialect `intel`) — synthesis and programming for Intel/Altera FPGAs
+- **Microchip Libero** (`libero`, dialect `microchip`) — synthesis and programming for PolarFire/SmartFusion FPGAs
+- **Synopsys Synplify** (dialect `synopsys`) — FPGA synthesis front-end targeting multiple device families
 
 ---
 

@@ -57,9 +57,9 @@ and synthesis handoff.
 - **Icarus Verilog** (`iverilog`) — Verilog/SV simulator for quick sanity checks
 
 ### Proprietary
-- **Synopsys SpyGlass** (`spyglass`) — lint, CDC, RDC, and clock-domain analysis
-- **Cadence JasperGold CDC** (`jg`) — formal CDC verification
-- **Siemens Questa CDC** (`vsim`) — CDC analysis and sign-off
+- **Synopsys SpyGlass** (`spyglass`, dialect `synopsys`) — lint, CDC, RDC, and clock-domain analysis
+- **Cadence JasperGold CDC** (`jg`, dialect `cadence`) — formal CDC verification
+- **Siemens Questa CDC** (`vsim`, dialect `siemens`) — CDC analysis and sign-off
 
 ---
 
@@ -178,9 +178,9 @@ a fallback.
 | Tool | Type | Use |
 |------|------|-----|
 | Verilator | Open-source | Toggle coverage → activity factor for gating classification |
-| SpyGlass (Synopsys) | Proprietary | RTL power lint, missing ICG detection |
-| VC Static (Synopsys) | Proprietary | Power-intent rule checking |
-| Questa PowerPro (Siemens) | Proprietary | Formal power analysis |
+| SpyGlass (Synopsys) | Proprietary, dialect `synopsys` | RTL power lint, missing ICG detection |
+| VC Static (Synopsys) | Proprietary, dialect `synopsys` | Power-intent rule checking |
+| Questa PowerPro (Siemens) | Proprietary, dialect `siemens` | Formal power analysis |
 
 ### Output Required
 - RTL source files (.sv) per module

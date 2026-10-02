@@ -27,9 +27,9 @@ module_planning → rtl_coding → design_input_check → lint_check → cdc_rdc
 - Icarus Verilog (`iverilog`)
 
 ### Proprietary
-- Synopsys SpyGlass (`spyglass`)
-- Cadence JasperGold CDC (`jg`)
-- Siemens Questa CDC (`vsim`)
+- Synopsys SpyGlass (`spyglass`, dialect `synopsys`)
+- Cadence JasperGold CDC (`jg`, dialect `cadence`)
+- Siemens Questa CDC (`vsim`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

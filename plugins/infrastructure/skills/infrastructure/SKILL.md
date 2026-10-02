@@ -92,11 +92,38 @@ role to fill the field: a `null` cannot produce a false conflict.
 |---|---|---|---|---|
 | Synopsys VCS | `vcs` | `rtl_simulator` | `synopsys` | `vcs -ID` — parse the `Compiler version` line only |
 | Cadence Xcelium | `xrun` (`xmsim`) | `rtl_simulator` | `cadence` | `xrun -version` — parse the `TOOL:<tab>xrun(64)<tab><version>` line |
-| Mentor QuestaSim | `vsim` (`questa`, `questasim`) | `rtl_simulator` | `siemens` | none — UNVERIFIED |
+| Mentor QuestaSim | `vsim` (`questa`, `questasim`, `vlog`, `vcom`) | `rtl_simulator` | `siemens` | none — UNVERIFIED |
 | Synopsys Design Compiler | `dc_shell` (`dc_shell-t`) | `synthesis` | `synopsys` | `dc_shell -version` — parse the `dc_shell version` line |
+| Cadence Genus | `genus` | `synthesis` | `cadence` | `genus -version` — parse the `Program Name:` line |
+| Synopsys Fusion Compiler | `fc_shell` | `synthesis` | `synopsys` | none — UNVERIFIED |
 | Cadence Innovus | `innovus` | `physical_design` | `cadence` | none — UNVERIFIED |
+| Synopsys IC Compiler 2 | `icc2_shell` | `physical_design` | `synopsys` | none — UNVERIFIED |
 | Synopsys PrimeTime | `pt_shell` (`pt_shell64`) | `sta` | `synopsys` | `pt_shell -version` — parse the `pt_shell version` line |
+| Cadence Tempus | `tempus` | `sta` | `cadence` | none — UNVERIFIED |
 | Synopsys Formality | `fm_shell` (`formality`) | `lec` | `synopsys` | `fm_shell -version` — parse the `Formality (R) Version` line |
+| Cadence Conformal | `conformal` | `lec` | `cadence` | none — UNVERIFIED |
+| Cadence JasperGold | `jg` | `formal` | `cadence` | none — UNVERIFIED |
+| Synopsys VC Formal | `vcf` | `formal` | `synopsys` | none — UNVERIFIED |
+| Siemens Questa Formal | `qformal` | `formal` | `siemens` | none — UNVERIFIED |
+| Synopsys TetraMAX | `tmax` | `atpg` | `synopsys` | none — UNVERIFIED |
+| Cadence Modus Test | `modus` | `atpg` | `cadence` | none — UNVERIFIED |
+| Siemens Tessent | `tessent` | `atpg` | `siemens` | none — UNVERIFIED |
+| Synopsys SpyGlass | `spyglass` | `lint_cdc` | `synopsys` | none — UNVERIFIED |
+| Xilinx Vitis HLS | `vitis_hls` | `hls` | `xilinx` | none — UNVERIFIED |
+| Cadence Stratus | `stratus` | `hls` | `cadence` | none — UNVERIFIED |
+| Siemens Catapult | `catapult` | `hls` | `siemens` | none — UNVERIFIED |
+| Xilinx Vivado | `vivado` | `fpga_pnr` | `xilinx` | none — UNVERIFIED |
+| Intel Quartus | `quartus_sh` | `fpga_pnr` | `intel` | none — UNVERIFIED |
+| Microchip Libero | `libero` | `fpga_pnr` | `microchip` | none — UNVERIFIED |
+| ARM Artisan | `artisan` | `mem_compiler` | `arm` | none — UNVERIFIED |
+| Synopsys SiliconSmart | `siliconsmart` | `characterisation` | `synopsys` | none — UNVERIFIED |
+| Cadence Liberate | `liberate` | `characterisation` | `cadence` | none — UNVERIFIED |
+| Synopsys StarRC | `starrc` | `extraction` | `synopsys` | none — UNVERIFIED |
+| Cadence Voltus | `voltus` | `power_analysis` | `cadence` | none — UNVERIFIED |
+| Arm Compiler 6 | `armcc` | `embedded_compiler` | `arm` | none — UNVERIFIED |
+| SEGGER J-Link GDB Server | `JLinkGDBServer` | `debug_probe` | `segger` | none — UNVERIFIED |
+| Lauterbach TRACE32 | `t32marm` | `debug_probe` | `lauterbach` | none — UNVERIFIED |
+| Arm Development Studio | `armds` | `debug_probe` | `arm` | none — UNVERIFIED |
 
 **`vcs -ID` also prints a FLEXlm host ID.** Parse and store the `Compiler version`
 value only — never write the host ID into `tool-status.json`.
@@ -105,19 +132,53 @@ value only — never write the host ID into `tool-status.json`.
 an interactive shell or check out a license. The flags above were each measured: exit 0
 with the named line present, in 1–26 s, no license queue. `dc_shell -version` prints an
 unrelated ASLR advisory first, so parse the line containing `version`, never the first line
-of output.
+of output. `genus -version` was measured the same way: 26 s cold, 12 s warm, which is why
+rule 4 below sets the probe timeout at 60 s rather than the original 10 s.
 
-**The two `UNVERIFIED` rows are unverified upstream, not an oversight.** Neither could be
-confirmed on the reference host, and in both cases the obstacle was the install rather than
-the flag: `innovus -version` exits 0 reporting an expired build authorisation, and
-`vsim -version` exits 0 failing to load `libXext.so.6`. A site with a working install of
+**The two original `UNVERIFIED` rows are unverified upstream, not an oversight.** Neither
+could be confirmed on the reference host, and in both cases the obstacle was the install
+rather than the flag: `innovus -version` exits 0 reporting an expired build authorisation,
+and `vsim -version` exits 0 failing to load `libXext.so.6`. A site with a working install of
 either should confirm the flag and contribute it here.
+
+**The remaining `UNVERIFIED` rows above have no probe evidence at all, which is worth
+recording precisely so a later contributor does not re-measure it blind:**
+`voltus -version` and `tempus -version` each exit 0 but with `cds_plat.dat` absent, the
+same shape as the `innovus` failure. `joules`, `conformal`, `starrc`, `liberate`, and `jg`
+did not resolve to a binary under `<root>/linux/<version>/bin/` on the reference host at
+all. Three of the exit-0 cases print no version line, which is exactly why rule 4's WARN
+conditions below treat "exits 0, no version line" as its own case rather than a pass.
 
 Note on Formality: the primary command is `fm_shell`. `formality` is the legacy GUI wrapper
 and is absent from recent installs, so it is listed as the alternate.
 
 Same `role` with a different `dialect` means the two tools are not interchangeable
 however similar their purpose. `environment_validation` reports such coexistence.
+
+**Single-member roles are intentional, not an oversight** — each is a role whose only
+plausible peers are already claimed by their primary role, so the role can never produce a
+dialect-conflict WARN today:
+- `lint_cdc` holds only `spyglass`. `jg` and `vsim` also do clock-domain-crossing work, but
+  `jg` is recorded under `formal` and `vsim` under `rtl_simulator` — a tool carries one
+  `role` in `tool-status.json`, and each already does its primary job elsewhere.
+- `mem_compiler` holds only `artisan`. Synopsys's memory compiler shares a binary with
+  `siliconsmart`, which is recorded under `characterisation` — the job that binary performs.
+- `extraction` holds only `starrc`. No skill in this repo names a second extraction tool.
+- `power_analysis` has three single-command peers plus three commandless ones (below); none
+  of `voltus`, `primepower`, `joules`, or `powerpro` has a second same-dialect alternative.
+- `embedded_compiler` holds only `armcc` with a command; Green Hills and IAR are its
+  commandless peers.
+
+**Products named in domain skills with no documented command, so not detectable by this
+table** (the table is keyed on `which <command>`; a row with no command cannot be probed):
+Synopsys Platform Architect (`arch_simulator`/`synopsys`), ARM Performance Models
+(`arch_simulator`/`arm`), Cadence Virtual System Platform (`arch_simulator`/`cadence`),
+Green Hills MULTI (`embedded_compiler`/`greenhills`), IAR Embedded Workbench
+(`embedded_compiler`/`iar`), Synopsys Synplify (`synthesis`/`synopsys`), Siemens Aprisa
+(`physical_design`/`siemens`), Synopsys PrimePower, Cadence Joules RTL, and Siemens Questa
+PowerPro (all `power_analysis`), Synopsys VC Static (`lint_cdc`/`synopsys`). A command name
+is not guessed here any more than a probe flag is above; each is instead given its `role`
+and `dialect` at the point of use in its domain skill.
 
 ---
 
@@ -449,6 +510,33 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 | `vsim` | `questa`, `questasim`, `mentor/questa` |
 | `pt_shell` | `primetime`, `synopsys/pt`, `pt_shell` |
 | `fm_shell` | `formality`, `synopsys/formality`, `fm_shell` |
+| `genus` | `genus`, `cadence-genus`, `cadence/genus` |
+| `fc_shell` | `fusion-compiler`, `synopsys/fc`, `fc_shell` |
+| `icc2_shell` | `ic-compiler`, `icc2`, `synopsys/icc2` |
+| `tempus` | `tempus`, `cadence-tempus`, `cadence/tempus` |
+| `conformal` | `conformal`, `cadence-conformal`, `cadence/conformal` |
+| `jg` | `jaspergold`, `cadence-jg`, `cadence/jg` |
+| `vcf` | `vc-formal`, `vcf`, `synopsys/vcf` |
+| `qformal` | `questa-formal`, `qformal`, `mentor/qformal` |
+| `tmax` | `tetramax`, `tmax`, `synopsys/tmax` |
+| `modus` | `modus`, `cadence-modus`, `cadence/modus` |
+| `tessent` | `tessent`, `siemens-tessent`, `siemens/tessent` |
+| `spyglass` | `spyglass`, `synopsys-spyglass`, `synopsys/spyglass` |
+| `vitis_hls` | `vitis`, `vitis-hls`, `xilinx/vitis` |
+| `stratus` | `stratus`, `cadence-stratus`, `cadence/stratus` |
+| `catapult` | `catapult`, `siemens-catapult`, `siemens/catapult` |
+| `vivado` | `vivado`, `xilinx/vivado` |
+| `quartus_sh` | `quartus`, `intel/quartus` |
+| `libero` | `libero`, `microchip/libero` |
+| `artisan` | `artisan`, `arm-artisan`, `arm/artisan` |
+| `siliconsmart` | `siliconsmart`, `synopsys/siliconsmart` |
+| `liberate` | `liberate`, `cadence-liberate`, `cadence/liberate` |
+| `starrc` | `starrc`, `synopsys-starrc`, `synopsys/starrc` |
+| `voltus` | `voltus`, `cadence-voltus`, `cadence/voltus` |
+| `armcc` | `armcc`, `arm-compiler`, `arm/armcc` |
+| `JLinkGDBServer` | `jlink`, `segger`, `segger/jlink` |
+| `t32marm` | `trace32`, `lauterbach`, `lauterbach/trace32` |
+| `armds` | `armds`, `arm-ds`, `arm/armds` |
 | `verilator` | `verilator` |
 | `yosys` | `yosys` |
 | `openroad` | `openroad` |

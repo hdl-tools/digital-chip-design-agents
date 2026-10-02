@@ -26,9 +26,9 @@ ip_procurement → ip_configuration → bus_fabric_setup → top_integration →
 - Edalize
 
 ### Proprietary
-- Synopsys VCS (`vcs`)
-- Cadence Xcelium (`xrun`)
-- Siemens Questa (`vsim`)
+- Synopsys VCS (`vcs`, dialect `synopsys`)
+- Cadence Xcelium (`xrun`, dialect `cadence`)
+- Siemens Questa (`vsim`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

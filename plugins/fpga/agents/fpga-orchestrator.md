@@ -26,10 +26,10 @@ rtl_adaptation → partitioning → fpga_synthesis → bring_up → sw_validatio
 - Project IceStorm / Project X-Ray
 
 ### Proprietary
-- Xilinx Vivado (`vivado`)
-- Intel Quartus (`quartus_sh`)
-- Microchip Libero (`libero`)
-- Synopsys Synplify
+- Xilinx Vivado (`vivado`, dialect `xilinx`)
+- Intel Quartus (`quartus_sh`, dialect `intel`)
+- Microchip Libero (`libero`, dialect `microchip`)
+- Synopsys Synplify (dialect `synopsys`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

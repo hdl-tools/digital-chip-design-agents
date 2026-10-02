@@ -56,9 +56,9 @@ compliance, and equivalence checking between RTL and gate-level netlists.
 - **Tabby CAD Suite** — commercial bundle of sby + solvers (from YosysHQ)
 
 ### Proprietary
-- **Cadence JasperGold** (`jg`) — industry-standard FPV, CDC, DFT formal
-- **Synopsys VC Formal** (`vcf`) — property checking and equivalence verification
-- **Siemens Questa Formal** (`qformal`) — FPV and coverage closure
+- **Cadence JasperGold** (`jg`, dialect `cadence`) — industry-standard FPV, CDC, DFT formal
+- **Synopsys VC Formal** (`vcf`, dialect `synopsys`) — property checking and equivalence verification
+- **Siemens Questa Formal** (`qformal`, dialect `siemens`) — FPV and coverage closure
 
 ---
 
