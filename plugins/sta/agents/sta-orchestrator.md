@@ -42,11 +42,11 @@ highest-value MCP use case in the entire flow.
 5. **Direct execution** — last resort; multi-corner timing reports are extremely large
 
 ## Loop-Back Rules
-- path_analysis: violations found             → exception_review       (unlimited)
-- exception_review: invalid exceptions       → path_analysis          (max 3×)
+- path_analysis: violations found             → exception_review       (unlimited) `timing`
+- exception_review: invalid exceptions       → path_analysis          (max 3×) `timing`
 - exception_review: all signed off           → eco_guidance
 - eco_guidance: ECO applied                  → multi_corner_analysis  (max 10× total)
-- eco_guidance: ECO cell count > 2%          → escalate to PD team
+- eco_guidance: ECO cell count > 2%          → escalate to PD team `power_area`
 
 ## Sign-off Criteria
 - setup_wns_ns: >= design_state.constraints.timing.wns_ns_target at all corners (default: 0)
@@ -145,7 +145,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

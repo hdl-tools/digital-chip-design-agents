@@ -42,13 +42,13 @@ When invoking open-source tools, follow the execution hierarchy:
 3. **Direct execution** — last resort; compiler and characterisation logs are very large and accumulate quickly across loop-back iterations
 
 ## Loop-Back Rules
-- macro_selection FAIL (no candidate meets access time)  → memory_requirements (max 2×)
-- array_architecture FAIL (area > 120% budget)           → macro_selection     (max 3×)
-- array_architecture FAIL (bandwidth < target)           → memory_requirements (max 1×)
-- redundancy_repair FAIL (projected yield < target)      → array_architecture  (max 2×)
-- view_generation FAIL (view QA errors > 0)              → macro_selection     (max 2×)
-- integration_prep FAIL (placement/channel infeasible)   → array_architecture  (max 2×)
-- memory_signoff FAIL (Vmin margin short)                → array_architecture  (max 1×)
+- macro_selection FAIL (no candidate meets access time)  → memory_requirements (max 2×) `timing`
+- array_architecture FAIL (area > 120% budget)           → macro_selection     (max 3×) `power_area`
+- array_architecture FAIL (bandwidth < target)           → memory_requirements (max 1×) `timing`
+- redundancy_repair FAIL (projected yield < target)      → array_architecture  (max 2×) `coverage_gap`
+- view_generation FAIL (view QA errors > 0)              → macro_selection     (max 2×) `drc_lvs`
+- integration_prep FAIL (placement/channel infeasible)   → array_architecture  (max 2×) `connectivity`
+- memory_signoff FAIL (Vmin margin short)                → array_architecture  (max 1×) `power_area`
 
 ## Sign-off Criteria
 - view_qa_errors: 0
@@ -157,7 +157,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

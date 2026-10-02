@@ -45,11 +45,11 @@ direct execution:
 <!-- END SHARED:execution-direct -->
 
 ## Loop-Back Rules
-- backend_dev FAIL (codegen errors > 0)          → backend_dev           (max 5×)
-- assembler_dev FAIL (encoding errors)            → assembler_dev         (max 3×)
-- linker_config FAIL (unresolved symbols)         → linker_config         (max 3×)
-- runtime_libs FAIL (lib test fail)               → runtime_libs          (max 3×)
-- toolchain_validation FAIL (pass rate < 95%)     → backend_dev           (max 3×)
+- backend_dev FAIL (codegen errors > 0)          → backend_dev           (max 5×) `functional`
+- assembler_dev FAIL (encoding errors)            → assembler_dev         (max 3×) `functional`
+- linker_config FAIL (unresolved symbols)         → linker_config         (max 3×) `connectivity`
+- runtime_libs FAIL (lib test fail)               → runtime_libs          (max 3×) `functional`
+- toolchain_validation FAIL (pass rate < 95%)     → backend_dev           (max 3×) `functional`
 
 ## Sign-off Criteria
 - compiler_regression_pass_pct: >= 99
@@ -145,7 +145,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->
