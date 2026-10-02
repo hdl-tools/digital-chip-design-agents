@@ -41,12 +41,12 @@ When invoking open-source tools, follow the execution hierarchy:
 - design_input_check FAIL (input set wrong: duplicate include basename, stale or sibling generated tree, missing path, shadowing config) → escalate: "input_setup: <file> resolves from <path used> ahead of <path intended> - repoint the filelist, include path or config; no RTL was edited"
 - lint_check FAIL (rule check did not complete; cause in the input set, or not attributed to RTL this run wrote) → escalate: "input_setup: lint stopped before any rule ran - <evidence>; the RTL was not evaluated and no RTL was edited"
 - lint_check FAIL (rule check did not complete; parse error confined to RTL this run wrote, design_input_check PASS) → rtl_coding (counts toward the 5× below; `tool_error`, never `functional`)
-- lint_check FAIL (errors > 0, rule check completed) → rtl_coding        (max 5×)
-- cdc_rdc_analysis FAIL (unwaived violations) → rtl_coding        (max 3×)
-- synth_check FAIL (WNS < −0.5 ns)           → rtl_coding        (max 2×)
-- synth_check FAIL (area > 120% estimate)    → module_planning   (max 1×)
-- rtl_signoff FAIL (missing modules)         → module_planning   (max 1×)
-- rtl_signoff FAIL (quality issues)          → rtl_coding        (max 2×)
+- lint_check FAIL (errors > 0, rule check completed) → rtl_coding        (max 5×) `functional`
+- cdc_rdc_analysis FAIL (unwaived violations) → rtl_coding        (max 3×) `connectivity`
+- synth_check FAIL (WNS < −0.5 ns)           → rtl_coding        (max 2×) `timing`
+- synth_check FAIL (area > 120% estimate)    → module_planning   (max 1×) `power_area`
+- rtl_signoff FAIL (missing modules)         → module_planning   (max 1×) `spec_gap`
+- rtl_signoff FAIL (quality issues)          → rtl_coding        (max 2×) `functional`
 
 ## Sign-off Criteria
 - lint_errors: 0
@@ -146,7 +146,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

@@ -142,7 +142,7 @@ and returns it.
 The adapter is `plugins/infrastructure/tools/mcp-adapter.py`. Each server runs the one wrapper
 named by `--wrapper`, except `verilator`: `mode: "lint"` runs `wrap-verilator-lint.sh` from the
 same directory as the configured `wrap-verilator-sim.sh`, because the sim wrapper's first
-argument is a compiled simulation binary. The 8 batch servers therefore use 9 wrappers.
+argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 11 wrapper scripts; `wrap-vcs-compile.sh` and `wrap-xrun-compile.sh` are invoked directly, not through MCP.
 
 ### Tier 2: Interactive session MCP servers (stateful, query-based)
 Use these when an agent iterates many times over an already-loaded design (e.g. ECO timing
@@ -739,7 +739,7 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
 ## Stage: wrapper_deployment
 
 ### Domain Rules
-1. Deploy all 9 wrapper scripts to `plugins/infrastructure/tools/`
+1. Deploy all 11 wrapper scripts to `plugins/infrastructure/tools/`
 2. Run `chmod +x` on every wrapper; if permission denied: FAIL and escalate with
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
@@ -791,10 +791,10 @@ wrapper prints nothing, prints something that is not JSON, or prints JSON withou
 wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
-- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 9)
+- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 11)
 
 ### Output Required
-- 9 executable wrapper scripts in `plugins/infrastructure/tools/`
+- 11 executable wrapper scripts in `plugins/infrastructure/tools/`
 
 ---
 
@@ -949,7 +949,7 @@ silent pass.
    against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
-3. Verify all 9 wrapper scripts exist and have executable bit set
+3. Verify all 11 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 tool-server snippets; `mcp-memory.json` is optional and its absence is not a FAIL) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
@@ -975,12 +975,37 @@ silent pass.
    least one proprietary tool in the group keeps the WARN rare enough to be read; two
    open-source simulators are on nearly every host.
 8. If any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
-9. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
+9. **Simulator compile smoke test (opt-in)** — gated by `design_state.pipeline_config.simulator_smoke_test`
+   (boolean; absent or `false` is the default). Compiling consumes a license seat that
+   `tool_discovery`/`tool_installation` never touch, so this never runs unless explicitly enabled.
+   - **Disabled (default):** emit WARN — description `"simulator invocation not verified"`, fix
+     `"set design_state.pipeline_config.simulator_smoke_test = true to compile-check detected
+     simulators"`. Never FAIL for this.
+   - **Enabled:** for every `tool-status.json` entry whose `role` is `rtl_simulator` and status is
+     `FOUND` or `FOUND_PREFER_MODULE`, compile a 3-line placeholder module
+     (`module adice_smoke_test; endmodule`) through that tool's wrapper — `wrap-vcs-compile.sh` for
+     `vcs`, `wrap-xrun-compile.sh` for `xrun`, `wrap-verilator-lint.sh` for `verilator`. `vsim` and
+     `iverilog` have no wrapper: record `UNVERIFIED` with no command, same as an unprobed
+     proprietary tool. Read the wrapper's own `status`, never the exit code alone — the reason
+     this check exists at all: `innovus -version`, `vsim -version` and `voltus -version` all exit
+     0 on this host while reporting an expired license, a missing shared library, or a platform
+     install error.
+     - `status: "FAIL"` → FAIL this stage: the tool cannot compile a trivial module.
+     - `status: "WARN"`, `verified: false`, with a license-queue or timeout signal in `warnings`
+       → WARN, not FAIL, so a license-starved site can still sign off.
+     - `status: "PASS"`, or `"WARN"` with `verified: true` → smoke test passed.
+   Record each probed simulator as `{tool, status, verified}` under
+   `simulator_smoke_test.results` in `tool-manifest.json`.
+10. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result
 
 ### QoR Metrics to Evaluate
 - `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
   differing `dialect` values where at least one is `PROPRIETARY_ONLY` — computed by rule 7.
   WARN only; it never blocks sign-off
+- `simulator_smoke_tests_run`: count of `rtl_simulator`-role tools actually compile-checked by
+  rule 9 when `pipeline_config.simulator_smoke_test` is enabled; `0` when disabled or none were
+  `FOUND`. A per-tool compile FAIL is reported through rule 9's stage FAIL path, not through
+  this count.
 
 The rest of this stage's verdict is in `tool-manifest.json` (Output Required) rather than in
 QoR counts: Python env liveness, wrapper executable bits, MCP file presence and the
@@ -992,7 +1017,8 @@ critical-path check.
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
-- [ ] All 9 wrappers deployed and executable
+- [ ] All 11 wrappers deployed and executable
+- [ ] Simulator compile smoke test run and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 tool-server MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`
@@ -1034,11 +1060,12 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
       "path": ""
     }
   ],
-  "wrappers": { "expected": 9, "executable": 0, "missing": [] },
+  "wrappers": { "expected": 11, "executable": 0, "missing": [] },
   "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
   ],
+  "simulator_smoke_test": { "enabled": false, "results": [] },
   "critical_path": { "required": ["yosys", "verilator", "openroad", "sta"], "missing": [] },
   "signoff": false
 }
@@ -1047,4 +1074,6 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
 `python_packages[].resolved_via` is the record behind rule 2's WARN: it is what makes "found, but
 outside the active environment" auditable after the run instead of print-only. `dialect_conflicts`
 lists the members per role, not just the count rule 7 reports, so the conflict can be read back
-without re-deriving it.
+without re-deriving it. `simulator_smoke_test.results` is a list of `{tool, status, verified}` —
+one entry per `rtl_simulator`-role tool rule 9 probed — so a license-queue WARN is distinguishable
+from a tool that was never probed because the gate was disabled.

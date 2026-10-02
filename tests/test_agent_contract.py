@@ -836,6 +836,38 @@ def test_failure_class_enum_lists_input_setup(path):
         )
 
 
+_CLASS_ALTERNATION = "|".join(sorted(FAILURE_CLASSES - {"none"}, key=len, reverse=True))
+ROW_NAMES_A_CLASS = re.compile(
+    r"`(?:" + _CLASS_ALTERNATION + r")`|\"(?:" + _CLASS_ALTERNATION + r"):"
+)
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_every_fail_or_warn_loop_back_row_names_a_failure_class(path):
+    """Issue #93: a Loop-Back Rules row sends a FAIL/WARN to another stage, but
+    only 3 of 88 rows across the agents named the `failure_class` the resulting
+    `history[]` entry must carry -- every other row left it to be inferred from
+    the condition prose at record time. Skip `meta` (no Loop-Back Rules section,
+    per test_decision_enum_lists_loop_back_for_agents_with_loop_back_rules) and any
+    row whose target is `proceed`: those WARNs never block sign-off and produce no
+    escalation to classify."""
+    text = _read(path)
+    if path.parent.parent.name == "meta":
+        pytest.skip("pipeline-orchestrator has no Loop-Back Rules section")
+    if "## Loop-Back Rules" not in text:
+        pytest.skip("agent has no Loop-Back Rules section")
+    for row in _loop_back_rows(text):
+        condition = row.split("→", 1)[0] if "→" in row else row
+        if "FAIL" not in condition and "WARN" not in condition:
+            continue
+        target = row.split("→", 1)[1].strip() if "→" in row else ""
+        if target.startswith("proceed"):
+            continue
+        assert ROW_NAMES_A_CLASS.search(row), (
+            f"{_rel(path)}: FAIL/WARN row names no failure_class: {row.strip()!r}"
+        )
+
+
 def test_rtl_design_checks_its_inputs_before_linting_them():
     text = _read(RTL_AGENT)
     stages = _stage_sequence(text)

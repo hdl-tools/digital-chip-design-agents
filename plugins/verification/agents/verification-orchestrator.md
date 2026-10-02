@@ -37,11 +37,11 @@ When invoking open-source tools, follow the execution hierarchy:
 3. **Direct execution** — last resort; simulation logs and coverage data are very large
 
 ## Loop-Back Rules
-- uvm_tb_build FAIL (build errors)                  → uvm_tb_build       (max 3×)
-- directed_tests: DUT bug found                     → write fix_request (status=open, failure_class=functional|protocol) → ESCALATE awaiting pipeline-orchestrator
-- coverage_analysis: functional_coverage < 100%     → constrained_random  (max 5×)
-- coverage_analysis: code_line_coverage < 95%       → directed_tests      (max 3×)
-- regression_signoff FAIL (failure rate > 0%)       → constrained_random  (max 3×)
+- uvm_tb_build FAIL (build errors)                  → uvm_tb_build       (max 3×) `tool_error`
+- directed_tests: DUT bug found                     → write fix_request (status=open, failure_class=functional|protocol) → ESCALATE awaiting pipeline-orchestrator `functional`
+- coverage_analysis: functional_coverage < 100%     → constrained_random  (max 5×) `coverage_gap`
+- coverage_analysis: code_line_coverage < 95%       → directed_tests      (max 3×) `coverage_gap`
+- regression_signoff FAIL (failure rate > 0%)       → constrained_random  (max 3×) `functional`
 
 ## Sign-off Criteria
 - functional_coverage_pct: 100
@@ -142,7 +142,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->
