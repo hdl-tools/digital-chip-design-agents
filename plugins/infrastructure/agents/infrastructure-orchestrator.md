@@ -52,17 +52,19 @@ built for one dialect is not valid for another of the same role.
 > `load-modules.sh`.
 
 ## Loop-Back Rules
-- tool_installation FAIL (python3 missing)                      → escalate immediately (python3 required for all wrappers)
-- tool_installation FAIL (python3 module not loaded)            → escalate: "Python available via module `<python_env.module_name>` — source load-modules.sh then re-run"
+- tool_installation FAIL (python3 missing)                      → escalate immediately (python3 required for all wrappers) `resource_limit`
+- tool_installation FAIL (python3 module not loaded)            → escalate: "resource_limit: Python available via module `<python_env.module_name>` — source load-modules.sh then re-run"
 - module_discovery WARN (`module_system` "none")                 → proceed (no module system present; module system is optional)
 - module_discovery WARN (detected, `module_listing` UNAVAILABLE, no critical tool MISSING) → proceed (record the WARN; `tools_via_modules` is empty because the listing failed, not because no modules exist)
-- module_discovery WARN (`module_listing` UNAVAILABLE and critical tool MISSING) → escalate: "<module_system> module system at $MODULESHOME could not be listed; <tools> may be available via modules and were never checked. Re-run from a shell where `module` resolves — bash: `source $MODULESHOME/module.sh`, tcsh: `source $MODULESHOME/module.csh` — then re-run module_discovery"
+- module_discovery WARN (`module_listing` UNAVAILABLE and critical tool MISSING) → escalate: "resource_limit: <module_system> module system at $MODULESHOME could not be listed; <tools> may be available via modules and were never checked. Re-run from a shell where `module` resolves — bash: `source $MODULESHOME/module.sh`, tcsh: `source $MODULESHOME/module.csh` — then re-run module_discovery"
 - module_discovery (one invocation-ladder rung fails)           → advance to the next rung; only an exhausted ladder is a WARN
-- environment_validation FAIL (python_env.type == module, module unloaded) → escalate: "Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation"
-- environment_validation FAIL (critical tool MISSING)           → escalate: "Critical tool(s) `<tools>` MISSING; per-tool install scripts were generated in install-missing-tools/. Review and run them, then re-run environment_validation. tool_installation only generates scripts and never executes them, so no retry can change this status."
-- environment_validation WARN (critical tool MISSING_LOAD_MODULE)    → escalate: instruct user to source load-modules.sh and re-run
+- environment_validation FAIL (python_env.type == module, module unloaded) → escalate: "resource_limit: Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation"
+- environment_validation FAIL (critical tool MISSING)           → escalate: "resource_limit: Critical tool(s) `<tools>` MISSING; per-tool install scripts were generated in install-missing-tools/. Review and run them, then re-run environment_validation. tool_installation only generates scripts and never executes them, so no retry can change this status."
+- environment_validation WARN (critical tool MISSING_LOAD_MODULE)    → escalate: instruct user to source load-modules.sh and re-run `resource_limit`
 - environment_validation WARN (same-role/different-dialect coexistence) → proceed (report the WARN in the sign-off summary; never blocks sign-off)
-- wrapper_deployment FAIL (permission denied)                   → escalate with `sudo chmod +x plugins/infrastructure/tools/*.sh`
+- environment_validation FAIL (simulator smoke test compile error)     → escalate: "resource_limit: Simulator `<tool>` failed to compile a trivial smoke-test module — `<wrapper error>`; this is a tool/license defect, not something a retry can fix. Fix the tool or license issue, then re-run environment_validation."
+- environment_validation WARN (simulator smoke test not enabled, or license-queue block/timeout) → proceed (report the WARN in the sign-off summary; never blocks sign-off)
+- wrapper_deployment FAIL (permission denied)                   → escalate with `sudo chmod +x plugins/infrastructure/tools/*.sh` `resource_limit`
 
 ## State Object
 Initialise and maintain this JSON state across all stages:
@@ -121,6 +123,7 @@ Each stage must return:
     "proprietary_versioned": 0,
     "install_scripts_generated": 0,
     "dialect_conflicts": 0,
+    "simulator_smoke_tests_run": 0,
     "wrappers_deployed": 0,
     "mcp_servers_configured": 0
   },
@@ -141,7 +144,7 @@ only, and `install_scripts_generated` from `tool_installation` only.
 2. Enforce loop-back rules strictly — do not proceed past a FAIL (see Stage Gating and Escalation, item 2)
 3. If max iterations exceeded: stop, present full state and escalation report (procedure: Stage Gating and Escalation, item 3)
 4. Never auto-run per-tool install scripts — present them to the user for review; each MISSING tool gets its own `install-<toolname>.sh` written to `install-missing-tools/`
-5. On completion: confirm `tool-manifest.json` written by `environment_validation` and matching the validation-receipt schema in the skill's `environment_validation` Output Required (it is created there, not updated from an earlier stage), all 9 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 tool-server MCP config snippets written with resolved absolute paths and printed (plus `mcp-memory.json`, the optional memory server, when present)
+5. On completion: confirm `tool-manifest.json` written by `environment_validation` and matching the validation-receipt schema in the skill's `environment_validation` Output Required (it is created there, not updated from an earlier stage), all 11 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 tool-server MCP config snippets written with resolved absolute paths and printed (plus `mcp-memory.json`, the optional memory server, when present)
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the Failure Classification & Retry Strategy table below; `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate history entry below also includes `retry_strategy` (`none` for `await_approval`/checkpoint). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `environment_validation` only): before setting `environment.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"environment_validation"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "environment_validation", "agent": "infrastructure-orchestrator", "reason": "checkpoint environment_validation requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: tools_detected, wrappers_deployed>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `environment.signoff=true`. On re-invocation: if `"environment_validation"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Infrastructure memory (opt-in — default off): see the **Infrastructure Memory** section below. Persist tool versions and setup config to `<MEM>/infrastructure/` **only** when `design_state.pipeline_config.track_infrastructure` is `true` or the orchestrator was invoked with `--track-memory`. When neither is set, skip all `<MEM>/infrastructure/` reads and writes entirely — current behavior is unchanged.
@@ -210,7 +213,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

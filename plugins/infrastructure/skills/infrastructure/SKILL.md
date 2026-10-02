@@ -975,12 +975,37 @@ silent pass.
    least one proprietary tool in the group keeps the WARN rare enough to be read; two
    open-source simulators are on nearly every host.
 8. If any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
-9. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
+9. **Simulator compile smoke test (opt-in)** — gated by `design_state.pipeline_config.simulator_smoke_test`
+   (boolean; absent or `false` is the default). Compiling consumes a license seat that
+   `tool_discovery`/`tool_installation` never touch, so this never runs unless explicitly enabled.
+   - **Disabled (default):** emit WARN — description `"simulator invocation not verified"`, fix
+     `"set design_state.pipeline_config.simulator_smoke_test = true to compile-check detected
+     simulators"`. Never FAIL for this.
+   - **Enabled:** for every `tool-status.json` entry whose `role` is `rtl_simulator` and status is
+     `FOUND` or `FOUND_PREFER_MODULE`, compile a 3-line placeholder module
+     (`module adice_smoke_test; endmodule`) through that tool's wrapper — `wrap-vcs-compile.sh` for
+     `vcs`, `wrap-xrun-compile.sh` for `xrun`, `wrap-verilator-lint.sh` for `verilator`. `vsim` and
+     `iverilog` have no wrapper: record `UNVERIFIED` with no command, same as an unprobed
+     proprietary tool. Read the wrapper's own `status`, never the exit code alone — the reason
+     this check exists at all: `innovus -version`, `vsim -version` and `voltus -version` all exit
+     0 on this host while reporting an expired license, a missing shared library, or a platform
+     install error.
+     - `status: "FAIL"` → FAIL this stage: the tool cannot compile a trivial module.
+     - `status: "WARN"`, `verified: false`, with a license-queue or timeout signal in `warnings`
+       → WARN, not FAIL, so a license-starved site can still sign off.
+     - `status: "PASS"`, or `"WARN"` with `verified: true` → smoke test passed.
+   Record each probed simulator as `{tool, status, verified}` under
+   `simulator_smoke_test.results` in `tool-manifest.json`.
+10. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result
 
 ### QoR Metrics to Evaluate
 - `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
   differing `dialect` values where at least one is `PROPRIETARY_ONLY` — computed by rule 7.
   WARN only; it never blocks sign-off
+- `simulator_smoke_tests_run`: count of `rtl_simulator`-role tools actually compile-checked by
+  rule 9 when `pipeline_config.simulator_smoke_test` is enabled; `0` when disabled or none were
+  `FOUND`. A per-tool compile FAIL is reported through rule 9's stage FAIL path, not through
+  this count.
 
 The rest of this stage's verdict is in `tool-manifest.json` (Output Required) rather than in
 QoR counts: Python env liveness, wrapper executable bits, MCP file presence and the
@@ -993,6 +1018,7 @@ critical-path check.
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
 - [ ] All 11 wrappers deployed and executable
+- [ ] Simulator compile smoke test run and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 tool-server MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`
@@ -1039,6 +1065,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
   ],
+  "simulator_smoke_test": { "enabled": false, "results": [] },
   "critical_path": { "required": ["yosys", "verilator", "openroad", "sta"], "missing": [] },
   "signoff": false
 }
@@ -1047,4 +1074,6 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
 `python_packages[].resolved_via` is the record behind rule 2's WARN: it is what makes "found, but
 outside the active environment" auditable after the run instead of print-only. `dialect_conflicts`
 lists the members per role, not just the count rule 7 reports, so the conflict can be read back
-without re-deriving it.
+without re-deriving it. `simulator_smoke_test.results` is a list of `{tool, status, verified}` —
+one entry per `rtl_simulator`-role tool rule 9 probed — so a license-queue WARN is distinguishable
+from a tool that was never probed because the gate was disabled.
