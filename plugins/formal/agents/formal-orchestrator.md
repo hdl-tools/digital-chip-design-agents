@@ -27,9 +27,9 @@ property_planning → environment_setup → fpv_run → cex_analysis → lec_run
 - Tabby CAD Suite
 
 ### Proprietary
-- Cadence JasperGold (`jg`)
-- Synopsys VC Formal (`vcf`)
-- Siemens Questa Formal (`qformal`)
+- Cadence JasperGold (`jg`, dialect `cadence`)
+- Synopsys VC Formal (`vcf`, dialect `synopsys`)
+- Siemens Questa Formal (`qformal`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

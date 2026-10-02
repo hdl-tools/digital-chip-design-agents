@@ -33,18 +33,34 @@ tool_discovery → module_discovery → tool_installation → wrapper_deployment
 - xschem (`xschem`), GTKWave (`gtkwave`), uv (`uv`)
 
 ### Proprietary (detect only — never install)
-Same `role`, different `dialect` — these are not a substitutable menu. A command line
-built for one dialect is not valid for another of the same role.
+34 proprietary tools are tracked (full table with commands and probes: infrastructure
+skill, "Proprietary" section). Grouped by `role` here because that is the unit a
+dialect-conflict WARN fires on — same `role`, different `dialect` is not a substitutable
+menu; a command line built for one dialect is not valid for another of the same role.
 
-| Tool | `role` | `dialect` |
-|---|---|---|
-| Synopsys VCS (`vcs`) | `rtl_simulator` | `synopsys` |
-| Cadence Xcelium (`xrun`) | `rtl_simulator` | `cadence` |
-| Mentor QuestaSim (`vsim`) | `rtl_simulator` | `siemens` |
-| Synopsys Design Compiler (`dc_shell`) | `synthesis` | `synopsys` |
-| Cadence Innovus (`innovus`) | `physical_design` | `cadence` |
-| Synopsys PrimeTime (`pt_shell`) | `sta` | `synopsys` |
-| Synopsys Formality (`fm_shell`, alt `formality`) | `lec` | `synopsys` |
+| `role` | dialects present (tool `command`) |
+|---|---|
+| `rtl_simulator` | `synopsys` (`vcs`) · `cadence` (`xrun`) · `siemens` (`vsim`) |
+| `synthesis` | `synopsys` (`dc_shell`, `fc_shell`, Synplify) · `cadence` (`genus`) |
+| `physical_design` | `cadence` (`innovus`) · `synopsys` (`icc2_shell`) · `siemens` (Aprisa) |
+| `sta` | `synopsys` (`pt_shell`) · `cadence` (`tempus`) |
+| `lec` | `synopsys` (`fm_shell`, alt `formality`) · `cadence` (`conformal`) |
+| `formal` | `cadence` (`jg`) · `synopsys` (`vcf`) · `siemens` (`qformal`) |
+| `atpg` | `synopsys` (`tmax`) · `cadence` (`modus`) · `siemens` (`tessent`) |
+| `lint_cdc` | `synopsys` (`spyglass`, VC Static) — single dialect, see skill |
+| `hls` | `xilinx` (`vitis_hls`) · `cadence` (`stratus`) · `siemens` (`catapult`) |
+| `fpga_pnr` | `xilinx` (`vivado`) · `intel` (`quartus_sh`) · `microchip` (`libero`) |
+| `mem_compiler` | `arm` (`artisan`) — single dialect |
+| `characterisation` | `synopsys` (`siliconsmart`) · `cadence` (`liberate`) |
+| `extraction` | `synopsys` (`starrc`) — single dialect |
+| `power_analysis` | `cadence` (`voltus`, Joules RTL) · `synopsys` (PrimePower) · `siemens` (PowerPro) |
+| `embedded_compiler` | `arm` (`armcc`) · `greenhills` (MULTI) · `iar` (Embedded Workbench) |
+| `debug_probe` | `segger` (`JLinkGDBServer`) · `lauterbach` (`t32marm`) · `arm` (`armds`) |
+| `arch_simulator` | `synopsys` (Platform Architect) · `arm` (Performance Models) · `cadence` (VSP) |
+
+Products named in parentheses with no backtick have no documented command and are not
+detectable; their `role`/`dialect` is recorded in the skill and at the point of use in
+the owning domain skill.
 
 > Proprietary tools not found in PATH may still be available via a module system — classic
 > Environment Modules or a site-local `module` wrapper. The `module_discovery` stage classifies

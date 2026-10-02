@@ -26,9 +26,9 @@ algorithm_analysis → directive_planning → hls_synthesis → rtl_qc → cosim
 - MLIR/CIRCT (`circt-opt`)
 
 ### Proprietary
-- Xilinx Vitis HLS (`vitis_hls`)
-- Cadence Stratus (`stratus`)
-- Siemens Catapult (`catapult`)
+- Xilinx Vitis HLS (`vitis_hls`, dialect `xilinx`)
+- Cadence Stratus (`stratus`, dialect `cadence`)
+- Siemens Catapult (`catapult`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

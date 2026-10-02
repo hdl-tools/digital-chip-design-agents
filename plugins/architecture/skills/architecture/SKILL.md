@@ -55,9 +55,9 @@ PPA modelling, risk assessment, and sign-off.
 - **Python estimation scripts** (`python3 estimate.py`) — custom PPA models
 
 ### Proprietary
-- **Synopsys Platform Architect** — IP-level performance and power exploration
-- **ARM Performance Models** — cycle-accurate ARM subsystem models
-- **Cadence Virtual System Platform (VSP)** — SoC-level virtual prototyping
+- **Synopsys Platform Architect** (dialect `synopsys`) — IP-level performance and power exploration
+- **ARM Performance Models** (dialect `arm`) — cycle-accurate ARM subsystem models
+- **Cadence Virtual System Platform (VSP)** (dialect `cadence`) — SoC-level virtual prototyping
 
 ---
 
@@ -187,8 +187,8 @@ Perform this analysis using the activity factors already collected for dynamic p
 | gem5 | Open-source | Workload activity factor extraction (already in flow) |
 | CACTI | Open-source | Memory clock power estimate (already in flow) |
 | Yosys + ABC | Open-source | Post-synth switching activity cross-check (optional) |
-| Synopsys PrimePower | Proprietary | RTL-level power sign-off (optional) |
-| Cadence Joules RTL | Proprietary | RTL power analysis (optional) |
+| Synopsys PrimePower | Proprietary, dialect `synopsys` | RTL-level power sign-off (optional) |
+| Cadence Joules RTL | Proprietary, dialect `cadence` | RTL power analysis (optional) |
 
 ### QoR Metrics to Evaluate
 - Area estimate: < 80% of `design_state.constraints.area.area_um2` budget (required constraint — see architecture-orchestrator Behaviour Rule 9)

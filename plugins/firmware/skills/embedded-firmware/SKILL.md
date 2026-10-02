@@ -54,9 +54,9 @@ to run on real silicon — correctness here enables all subsequent SW developmen
 - **QEMU** (`qemu-system-arm`, `qemu-system-riscv64`) — firmware validation before hardware is available
 
 ### Proprietary
-- **J-Link GDB Server** (`JLinkGDBServer`) — high-speed JTAG/SWD probe from SEGGER
-- **Lauterbach TRACE32** (`t32marm`) — hardware trace and debug for bring-up
-- **Arm Development Studio** (`armds`) — Eclipse-based IDE with Arm compiler and debugger
+- **J-Link GDB Server** (`JLinkGDBServer`, dialect `segger`) — high-speed JTAG/SWD probe from SEGGER
+- **Lauterbach TRACE32** (`t32marm`, dialect `lauterbach`) — hardware trace and debug for bring-up
+- **Arm Development Studio** (`armds`, dialect `arm`) — Eclipse-based IDE with Arm compiler and debugger
 
 ---
 

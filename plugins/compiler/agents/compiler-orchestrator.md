@@ -25,9 +25,9 @@ isa_analysis → backend_dev → assembler_dev → linker_config → runtime_lib
 - QEMU system emulator (`qemu-system-*`)
 
 ### Proprietary
-- Green Hills MULTI
-- IAR Embedded Workbench
-- Arm Compiler 6 (`armcc`)
+- Green Hills MULTI (dialect `greenhills`)
+- IAR Embedded Workbench (dialect `iar`)
+- Arm Compiler 6 (`armcc`, dialect `arm`)
 
 <!-- BEGIN SHARED:execution-direct (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ### MCP Preference

@@ -24,8 +24,8 @@ constraint_validation → multi_corner_analysis → path_analysis → exception_
 - OpenROAD STA subsystem (`openroad -no_init`) — runs sequentially via tcl script
 
 ### Proprietary
-- Synopsys PrimeTime (`pt_shell`)
-- Cadence Tempus (`tempus`)
+- Synopsys PrimeTime (`pt_shell`, dialect `synopsys`)
+- Cadence Tempus (`tempus`, dialect `cadence`)
 
 ### MCP Preference
 Multi-corner ECO loops query timing repeatedly on the same loaded design — this is the
