@@ -47,6 +47,8 @@ WRAPPERS = {
     "gem5": ("gem5", "simInsts 1000\nhostSeconds 1.5\n", ["config.py"]),
     "bambu": ("bambu-hls", "Total latency: 12 cycles\n", ["top.c"]),
     "verilator-sim": (None, "TEST PASSED\n", []),
+    "vcs-compile": ("vcs", "CPU time: 12.3 seconds to compile\n", ["-full64", "top.sv"]),
+    "xrun-compile": ("xrun", "xrun: compile complete\n", ["top.sv"]),
 }
 
 
@@ -138,7 +140,7 @@ def test_nonzero_exit_fails_and_is_propagated(tmp_path, name):
     assert out["status"] == "FAIL"
 
 
-@pytest.mark.parametrize("name", sorted(set(WRAPPERS) - {"verilator-sim"}))
+@pytest.mark.parametrize("name", sorted(set(WRAPPERS) - {"verilator-sim", "vcs-compile", "xrun-compile"}))
 def test_error_line_with_exit_0_fails(tmp_path, name):
     _, out = run_wrapper(tmp_path, name, WRAPPERS[name][1] + "ERROR: bad thing\n")
     assert out["status"] == "FAIL"
