@@ -1,6 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [1.9.1] — 2026-10-04
+
+Correctness fixes to what orchestrators check and report, from issues #126–#129. Highlights:
+
+- **The RTL Lint Gate reaches what downstream tools actually read.** A new front-end check
+  parses converted RTL (sv2v → yosys) with the consuming tool (#126). A new rule requires every
+  tool's source list to see a new module, and `check_design_inputs.py --rtl-dir/--list` finds
+  the omissions (#127).
+- **Reporting Contract items 8 and 9.** Run every CI job a change triggers, not only the step
+  that last failed (#128). Hand off what a run established even when it withholds signoff
+  (#129).
+- **rtl-design:**
+  - closing a `fix_request` re-runs every gate the edit could affect, not only lint (#128);
+  - the unverified-claims list builds up stage by stage instead of only at `rtl_signoff` (#129).
 
 ### issue #129: an honest run that withholds signoff still hands downstream what it established
 

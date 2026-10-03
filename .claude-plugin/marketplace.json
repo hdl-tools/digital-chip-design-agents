@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Full digital chip design pipeline — 16 plugins across 15 domains, from infrastructure setup through tape-out and firmware, with closed-loop verification↔RTL feedback.",
-    "version": "1.9.0"
+    "version": "1.9.1"
   },
   "plugins": [
     {
