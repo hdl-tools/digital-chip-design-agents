@@ -1051,6 +1051,49 @@ def test_rtl_lint_gate_reaches_the_converted_file_and_every_source_list(path):
         assert clause in flat, f"{_rel(path)}: RTL Lint Gate is missing clause {clause!r}"
 
 
+IDE_GUARD_FILES = [
+    REPO_ROOT / "ides" / "codex" / "AGENTS.md",
+    REPO_ROOT / "ides" / "gemini" / "gemini-header.md",
+    REPO_ROOT / "ides" / "copilot" / ".github" / "copilot-instructions.md",
+]
+
+
+@pytest.mark.parametrize("path", AGENT_FILES + IDE_GUARD_FILES, ids=_rel)
+def test_reporting_obliges_the_gates_a_change_triggers(path):
+    """Issue #128: item 1 bound only "every gate named in the task", so fixing the
+    one CI step that failed and pushing was compliant, and the next step failed on
+    the next run. A file that lands in a path-filtered job's directory is covered by
+    that job whether or not the task named it."""
+    flat = _flat(_read(path))
+    if path in IDE_GUARD_FILES:
+        clauses = ("workflow path filters", "not only the step that last failed")
+    else:
+        clauses = (
+            "Run the gates your change triggers, not only the gates you were asked about",
+            "path filters, do not guess",
+            "run every step of each locally",
+            "even if the task never named that job",
+        )
+    for clause in clauses:
+        assert clause in flat, f"{_rel(path)}: missing triggered-gates clause {clause!r}"
+
+
+def test_fix_request_gate_covers_every_gate_the_edit_affects():
+    """Issue #128: Behaviour Rule 10 closed a fix_request on `lint_check` alone, so a
+    repair that broke a synchroniser or a timed path was marked fixed."""
+    rule = next(
+        line for line in _read(RTL_AGENT).splitlines() if line.startswith("10. Fix-request gate")
+    )
+    for clause in (
+        "every gate the edit could affect",
+        "re-run `cdc_rdc_analysis`",
+        "`synth_check`",
+        "front-end check",
+        "reported NOT RUN with the reason",
+    ):
+        assert clause in rule, f"Behaviour Rule 10 is missing {clause!r}"
+
+
 def test_frontend_and_black_box_failures_have_a_route():
     """Issue #126: a yosys syntax error in synth_check had no Loop-Back row, so it had
     no classified route back to the stage that wrote the construct. Issue #127:
