@@ -1,0 +1,15 @@
+{
+  "_comment": "NEGATIVE fixture — intentionally invalid. The schema MUST reject it. Three seeded faults: (1) candidates[0].status 'chosen' is not an allowed status enum; (2) refinement_needed is true with refinement_request null; (3) candidates[1] has no name.",
+  "format_version": "1.5",
+  "design_name": "invalid_example",
+  "architecture": {
+    "selected_candidate": "pipelined_mac_array",
+    "candidates": [
+      { "name": "pipelined_mac_array", "profile": "balanced", "status": "chosen" },
+      { "profile": "aggressive", "status": "rejected", "rejection_reason": "over area budget" }
+    ],
+    "signoff": true,
+    "refinement_needed": true,
+    "refinement_request": null
+  }
+}

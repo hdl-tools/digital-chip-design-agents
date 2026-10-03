@@ -20,6 +20,9 @@ that produces a validated microarchitecture document ready for RTL handoff.
 ## Stage Sequence
 spec_analysis → arch_exploration → perf_modelling → power_area_estimation → risk_assessment → arch_signoff
 
+Refinement mode (Behaviour Rule 10) enters at `perf_modelling`:
+perf_modelling → power_area_estimation → risk_assessment → arch_signoff
+
 ## Tool Options
 
 ### Open-Source
@@ -93,6 +96,11 @@ Each stage must return:
 7. Checkpoint gate (at `arch_signoff` only, unless invoked in fix-request-servicing mode — i.e. a `fix_request.id` was passed in the prompt): before setting `architecture.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"arch_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "arch_signoff", "agent": "architecture-orchestrator", "reason": "checkpoint arch_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: selected arch, estimated MHz, area>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `architecture.signoff=true`. On re-invocation: if `"arch_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Constraint extraction (at `spec_analysis`, unless invoked in fix-request-servicing mode): parse the product specification for target clock frequency, area budget, and power budget. Populate `constraints.clock.clk_mhz`, `constraints.area.area_um2`, and `constraints.power.power_mw` from spec values where derivable; leave as `null` when not specified. Write the full constraints object (see Design State section) to `design_state.json` as part of the `spec_analysis` stage write — do not wait for the session-end atomic RMW. This ensures downstream orchestrators can read constraints as soon as architecture completes.
 9. Constraint validation (at `spec_analysis`, skip in fix-request-servicing mode): after extracting constraints from spec, verify `clock.clk_mhz`, `area.area_um2`, and `power.power_mw` are all non-null. If any required key remains `null` after extraction, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "spec_analysis", "agent": "architecture-orchestrator", "reason": "required constraint <key> missing from product specification", "fix_request_id": null, "last_summary": "<comma-separated missing keys>", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "<missing key>"`, print the gate message, and halt. Resume path: user adds missing values to `design_state.constraints`, clears `pending_approval`, re-invokes.
+10. Candidate persistence and refinement mode:
+    - **Persist every candidate.** At `arch_exploration` write the full trade-off matrix to `design_state.architecture.candidates[]` in the shape shown in the Design State section — rejected and infeasible candidates included, each with its `rejection_reason`. Upsert by `name`: update an existing entry, append a new one, never clear the array. Later stages update the entries they re-score (`freq_mhz`, `area_um2`, `power_mw`, `risk`, `status`). Exactly one entry has `status: "selected"`, and it matches `selected_candidate`.
+    - **Enter refinement mode** when the session-start read finds `architecture.refinement_needed == true`, a non-null `architecture.refinement_request`, and a non-empty `architecture.candidates[]`, and no `fix_request.id` was passed in the prompt. Skip `spec_analysis` and `arch_exploration` and start at `perf_modelling`, marking the skipped stages `status: "skipped"` in the state object. Rules 8 and 9 do not run; the constraints in `design_state.json` stand. Treat `refinement_request.measured` against `refinement_request.constraint_ref` as a measured downstream result that overrides your own estimate for the selected candidate. Re-score every persisted candidate against it, the rejected ones included, and refine the best one that can close the gap. The `perf_modelling` and `power_area_estimation` loop-backs to `arch_exploration` still apply: on that loop-back you may add at most one new candidate, persisted like the others.
+    - **Fall back to the full flow** when `refinement_needed` is `true` but `candidates[]` is empty (a state written before candidates were persisted). Run every stage from `spec_analysis`, and use `refinement_request` as an input to `arch_exploration`.
+    - **Close the request** only when `arch_signoff` passes: append `refinement_request` plus `{ "serviced_by_run": "<run_id>", "outcome": "<selected candidate and the re-estimated value against constraint_ref>" }` to `architecture.refinement_history[]`, set `refinement_request` to `null` and `refinement_needed` to `false`, and update `selected_candidate`. On any other termination path, leave `refinement_needed`, `refinement_request` and `refinement_history[]` as they were.
 
 <!-- BEGIN SHARED:failure-classification (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Failure Classification & Retry Strategy
@@ -195,8 +203,9 @@ These rules apply to every stage and take precedence over keeping the flow movin
    `decision: "escalate"`, the observed `failure_class` with its mapped `retry_strategy`,
    `suggested_next_step: "escalate"`, and a `reason` naming the upstream domain, the artifact,
    and the evidence. If your Loop-Back Rules or Behaviour Rules define a `fix_request` hand-off
-   for this case, follow it exactly. Otherwise the history entry and your final report are the
-   hand-off — do not write to `fix_requests[]`.
+   for this case, follow it exactly. If this file has an Architecture Refinement Request
+   section and the fault is the architecture, follow that section too. Otherwise the history
+   entry and your final report are the hand-off — do not write to `fix_requests[]`.
 5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
    checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
    for the pipeline-orchestrator.
@@ -342,7 +351,10 @@ line must be a valid JSON object followed by a newline:
   "key_metrics": {
     "selected_arch": "<value>",
     "estimated_mhz": "<value>",
-    "estimated_area_um2": "<value>"
+    "estimated_area_um2": "<value>",
+    "candidates_evaluated": "<number of entries in architecture.candidates[]>",
+    "winning_candidate_profile": "conservative | balanced | aggressive | other",
+    "refinement_of": "<refinement_request.requested_by when run in refinement mode, else null>"
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
@@ -359,7 +371,8 @@ on successful signoff. Create the file and parent directories if they do not exi
 
 ### Read (session start)
 After reading `<MEM>/architecture/knowledge.md`, read `design_state.json` if it exists.
-Extract: `spec`, `constraints`, `pipeline_config`, `approved_checkpoints`.
+Extract: `spec`, `constraints`, `architecture`, `pipeline_config`, `approved_checkpoints`.
+If `architecture.refinement_needed` is `true`, decide between refinement mode and the full flow here (Behaviour Rule 10).
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
 
@@ -404,13 +417,32 @@ Domain fields to merge:
   },
   "architecture": {
     "selected_candidate": "<name of selected arch>",
-    "candidates": [],
+    "candidates": [
+      {
+        "name": "<candidate name>",
+        "profile": "conservative | balanced | aggressive | other",
+        "freq_mhz": null,
+        "area_um2": null,
+        "power_mw": null,
+        "risk": "low | medium | high",
+        "assumptions": ["<assumption>", "..."],
+        "status": "selected | rejected | infeasible",
+        "rejection_reason": "<why not chosen, or null for the selected candidate>",
+        "evaluated_in_run": "<run_id that last scored this candidate>"
+      }
+    ],
     "microarch_doc": "<path or inline summary>",
     "signoff": false,
-    "refinement_needed": false
+    "refinement_needed": false,
+    "refinement_request": null,
+    "refinement_history": []
   }
 }
 ```
+`refinement_needed` and `refinement_request` are also written by the synthesis, PD and STA
+orchestrators (their Architecture Refinement Request section). Merge `architecture` key by
+key — never replace the object wholesale. Preserve those two keys and `refinement_history[]`
+unless Behaviour Rule 10 closes the request.
 
 History entry to append:
 ```json

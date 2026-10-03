@@ -1370,3 +1370,72 @@ def test_module_version_selection_is_specified():
     stage = stages["module_discovery"]
     for field in ('"selected"', '"selected_basis"', '"candidates"'):
         assert field in stage, f"module-status.json does not record {field}"
+
+
+ARCH_AGENT = REPO_ROOT / "plugins" / "architecture" / "agents" / "architecture-orchestrator.md"
+REFINEMENT_REQUESTERS = {
+    "synthesis": REPO_ROOT / "plugins" / "synthesis" / "agents" / "synthesis-orchestrator.md",
+    "pd": REPO_ROOT / "plugins" / "pd" / "agents" / "physical-design-orchestrator.md",
+    "sta": REPO_ROOT / "plugins" / "sta" / "agents" / "sta-orchestrator.md",
+}
+REFINEMENT_HEADING = "## Architecture Refinement Request"
+
+
+def test_architecture_persists_candidates_and_resumes_from_them():
+    """Issue #35: candidates lived only in session context, so a downstream failure
+    restarted exploration from nothing. The orchestrator must persist every candidate
+    and, when flagged, re-enter at perf_modelling from them."""
+    text = _read(ARCH_AGENT)
+    rule = text.split("10. Candidate persistence and refinement mode:", 1)
+    assert len(rule) == 2, "architecture orchestrator lost Behaviour Rule 10"
+    rule = rule[1].split("\n<!-- BEGIN SHARED", 1)[0]
+
+    assert "`design_state.architecture.candidates[]`" in rule
+    assert "rejected" in rule and "never clear the array" in rule, (
+        "rejected candidates must persist, and the array is upserted, not rewritten"
+    )
+    assert "start at `perf_modelling`" in rule, "refinement mode does not enter at perf_modelling"
+    assert "candidates[]` is empty" in rule, "no fallback for a state with no persisted candidates"
+    assert "refinement_history[]" in rule, "a serviced request is not archived"
+    # The flag is cleared only on sign-off; an escalated refinement run must leave it set.
+    assert "only when `arch_signoff` passes" in rule
+
+    read = text.split("## Design State", 1)[1].split("### Write", 1)[0]
+    assert "`architecture`" in read, "the session-start read does not extract architecture"
+
+    merge = JSON_FENCE.findall(text.split("Domain fields to merge:", 1)[1])[0]
+    for field in ('"candidates"', '"rejection_reason"', '"refinement_request"', '"refinement_history"'):
+        assert field in merge, f"design_state merge block lacks {field}"
+
+    record = JSON_FENCE.findall(text.split("### Write (session end)", 1)[1])[0]
+    for field in ("candidates_evaluated", "winning_candidate_profile", "refinement_of"):
+        assert field in record, f"experience record lacks key_metrics.{field}"
+
+
+@pytest.mark.parametrize("domain", sorted(REFINEMENT_REQUESTERS))
+def test_downstream_refinement_request_is_narrow(domain):
+    """The refinement request is the one place a downstream domain writes architecture
+    state. It must be limited to the flag and the request, and never overwrite an open one."""
+    text = _read(REFINEMENT_REQUESTERS[domain])
+    assert text.count(REFINEMENT_HEADING) == 1, f"{domain} lacks the refinement section"
+    section = text.split(REFINEMENT_HEADING, 1)[1].split("\n## ", 1)[0]
+    assert "set only these two keys" in section
+    # Collapse newlines: the forbidden list wraps across lines.
+    forbid = " ".join(section.split()).split("never touch", 1)[1].split(" field", 1)[0]
+    for field in ("`candidates[]`", "`selected_candidate`", "`signoff`"):
+        assert field in forbid, f"{domain} section does not forbid touching {field}"
+    assert "Do not overwrite an open request" in section
+    assert "nothing dispatches it" in section, "the section implies automatic re-entry"
+
+    read = text.split("## Design State", 1)[1].split("### Write", 1)[0]
+    assert "`architecture`" in read, f"{domain} never reads architecture.selected_candidate"
+
+
+def test_only_designated_domains_request_refinement():
+    """Any other domain writing refinement_needed would be an unreviewed cross-domain write."""
+    allowed = {ARCH_AGENT, *REFINEMENT_REQUESTERS.values()}
+    offenders = [
+        _rel(path) for path in AGENT_FILES
+        if path not in allowed and "refinement_needed" in _read(path)
+    ]
+    assert not offenders, f"refinement_needed referenced outside the designated agents: {offenders}"

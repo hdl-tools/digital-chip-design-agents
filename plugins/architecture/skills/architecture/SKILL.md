@@ -118,6 +118,9 @@ PPA modelling, risk assessment, and sign-off.
 - Trade-off matrix with all candidates
 - Recommended candidate with quantitative justification
 - Assumptions and risk summary per candidate
+- The same matrix persisted to `design_state.architecture.candidates[]`, one entry per
+  candidate — rejected ones included, each with a `rejection_reason` — so a downstream
+  refinement can resume from it (architecture-orchestrator Behaviour Rule 10)
 
 ---
 
@@ -131,6 +134,11 @@ PPA modelling, risk assessment, and sign-off.
 5. Validate with representative workloads from the use-case list
 6. Include best/typical/worst-case scenarios
 7. Flag any model assumption that has not been validated
+8. Refinement mode (entered here when `architecture.refinement_needed` is set): the
+   downstream measurement in `refinement_request.measured` replaces the model estimate for
+   the selected candidate. Recalibrate the model so it reproduces that measurement, then
+   re-score every persisted candidate with the recalibrated model before choosing one. A
+   model that still predicts the old estimate is uncalibrated, and its scores are not evidence.
 
 ### QoR Metrics to Evaluate
 - Throughput: meets or exceeds target by ≥ 10% margin

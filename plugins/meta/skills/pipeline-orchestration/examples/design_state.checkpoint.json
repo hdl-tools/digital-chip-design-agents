@@ -82,10 +82,22 @@
   "archive_fix_requests": [],
   "architecture": {
     "selected_candidate": "pipelined_mac_array",
-    "candidates": [],
+    "candidates": [
+      { "name": "iterative_mac", "profile": "conservative", "freq_mhz": 550, "area_um2": 900000, "power_mw": 40, "risk": "low",
+        "assumptions": ["single shared multiplier", "4-cycle MAC latency"], "status": "rejected",
+        "rejection_reason": "throughput 0.25 MAC/cycle misses the 1 MAC/cycle target", "evaluated_in_run": "architecture_20260501_090000123_a1b2c3" },
+      { "name": "pipelined_mac_array", "profile": "balanced", "freq_mhz": 520, "area_um2": 1800000, "power_mw": 85, "risk": "medium",
+        "assumptions": ["4-lane array", "4-stage pipeline"], "status": "selected",
+        "rejection_reason": null, "evaluated_in_run": "architecture_20260501_090000123_a1b2c3" },
+      { "name": "systolic_8x8", "profile": "aggressive", "freq_mhz": 600, "area_um2": 2600000, "power_mw": 140, "risk": "high",
+        "assumptions": ["8x8 systolic grid", "weight-stationary dataflow"], "status": "rejected",
+        "rejection_reason": "area 2600000 um2 and power 140 mW both exceed the 2000000 um2 / 100 mW budgets", "evaluated_in_run": "architecture_20260501_090000123_a1b2c3" }
+    ],
     "microarch_doc": "docs/dsp_core_microarch.md",
     "signoff": true,
-    "refinement_needed": false
+    "refinement_needed": false,
+    "refinement_request": null,
+    "refinement_history": []
   },
   "rtl": {
     "top_module": "dsp_core",

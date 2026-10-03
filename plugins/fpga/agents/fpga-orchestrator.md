@@ -179,8 +179,9 @@ These rules apply to every stage and take precedence over keeping the flow movin
    `decision: "escalate"`, the observed `failure_class` with its mapped `retry_strategy`,
    `suggested_next_step: "escalate"`, and a `reason` naming the upstream domain, the artifact,
    and the evidence. If your Loop-Back Rules or Behaviour Rules define a `fix_request` hand-off
-   for this case, follow it exactly. Otherwise the history entry and your final report are the
-   hand-off — do not write to `fix_requests[]`.
+   for this case, follow it exactly. If this file has an Architecture Refinement Request
+   section and the fault is the architecture, follow that section too. Otherwise the history
+   entry and your final report are the hand-off — do not write to `fix_requests[]`.
 5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
    checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
    for the pipeline-orchestrator.

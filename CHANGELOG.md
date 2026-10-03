@@ -1,5 +1,38 @@
 # Changelog
 
+## [Unreleased]
+
+### issue #35: architecture candidates persist, and a downstream gap can send architecture back to refine them
+
+#### Added
+
+- **`architecture.candidates[]` is populated.** Candidates used to live only in session context, so the
+  schema field always stayed `[]`. Architecture Behaviour Rule 10 now persists the full trade-off
+  matrix at `arch_exploration`: every candidate, rejected ones included, with its PPA estimate,
+  risk, `status` and `rejection_reason`. Entries are upserted by `name`.
+- **Refinement request from synthesis, PD and STA.** A new shared section, Architecture
+  Refinement Request, synced to those three orchestrators, is a narrow exception to "never change another domain's
+  state". When the upstream fault is the microarchitecture, the orchestrator sets only
+  `architecture.refinement_needed` and `architecture.refinement_request` (requester, `timing`/`power_area`, constraint,
+  measured value, reason, evidence). It never overwrites an open request, and then escalates as before.
+  Stage-gating item 4 now points to this section.
+- **Refinement mode in the architecture orchestrator.** On a flagged state with persisted
+  candidates, the orchestrator skips `spec_analysis`/`arch_exploration` and enters at `perf_modelling`. The downstream
+  measurement overrides the model estimate, and every persisted candidate is re-scored. The request moves to
+  `architecture.refinement_history[]` only when `arch_signoff` passes. A flagged state with no
+  candidates falls back to the full flow.
+- **Experience record** `key_metrics` gains `candidates_evaluated`, `winning_candidate_profile`
+  and `refinement_of`.
+- **Schema:** `docs/design_state.schema.json` defines `architecture`, `archCandidate` and
+  `archRefinementRequest`. `refinement_needed: true` requires an open request. No
+  `format_version` bump, since every field is optional and additive. New fixtures
+  `design_state.arch_refinement.json` and `invalid/design_state.bad_arch_candidate.json`.
+
+#### Not changed
+
+- The pipeline-orchestrator does not auto-dispatch architecture on the flag. Re-entry is manual
+  and remains a V2 extension point.
+
 ## [1.9.1] — 2026-10-04
 
 Correctness fixes to what orchestrators check and report, from issues #126–#129. Highlights:

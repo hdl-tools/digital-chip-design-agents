@@ -175,8 +175,9 @@ These rules apply to every stage and take precedence over keeping the flow movin
    `decision: "escalate"`, the observed `failure_class` with its mapped `retry_strategy`,
    `suggested_next_step: "escalate"`, and a `reason` naming the upstream domain, the artifact,
    and the evidence. If your Loop-Back Rules or Behaviour Rules define a `fix_request` hand-off
-   for this case, follow it exactly. Otherwise the history entry and your final report are the
-   hand-off — do not write to `fix_requests[]`.
+   for this case, follow it exactly. If this file has an Architecture Refinement Request
+   section and the fault is the architecture, follow that section too. Otherwise the history
+   entry and your final report are the hand-off — do not write to `fix_requests[]`.
 5. **`pending_approval` is for gates only.** Set it only where your Behaviour Rules say so (the
    checkpoint gate and, where present, constraint validation). `type: "escalation"` is reserved
    for the pipeline-orchestrator.
@@ -208,6 +209,51 @@ These rules apply to every stage and take precedence over keeping the flow movin
    measured result of each iteration, and what the user must decide. Do not record
    `resource_limit` — the cap was not reached.
 <!-- END SHARED:stage-gating -->
+
+<!-- BEGIN SHARED:architecture-refinement (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
+## Architecture Refinement Request
+A narrow, explicit exception to "never change another domain's state": when the upstream
+fault (Stage Gating and Escalation, item 4) is the **architecture**, flag it for refinement
+instead of only reporting it.
+
+1. **When it applies — all three must hold.**
+   - Item 4 applies: retrying here cannot close the gap.
+   - The evidence points at the microarchitecture, not the RTL coding, the constraints or the
+     tool setup. Examples: WNS < 0 across every compile/optimisation strategy tried, with the
+     critical path inside a datapath whose depth the architecture chose; utilisation above
+     `constraints.area.utilization_pct_max` with the measured cell area above the
+     architecture's estimate for the selected candidate; the same structural timing gap at
+     every corner. A single failing path an RTL fix can retime is not an architecture fault.
+   - `design_state.architecture.selected_candidate` is non-null. With no recorded architecture,
+     there is nothing to refine — escalate under item 4 alone.
+2. **What to write.** In the session-end atomic read-modify-write, set only these two keys
+   under `architecture`; never touch `candidates[]`, `selected_candidate`, `signoff` or any
+   other `architecture` field:
+   ```json
+   {
+     "refinement_needed": true,
+     "refinement_request": {
+       "requested_by": "<this orchestrator, e.g. synthesis-orchestrator>",
+       "requested_at": "<ISO-8601>",
+       "failure_class": "timing | power_area",
+       "constraint_ref": "<dot-path constraint key, e.g. clock.clk_mhz>",
+       "measured": "<measured value with unit, e.g. WNS -0.42 ns at ss_setup>",
+       "reason": "<why the architecture, not the RTL, is the fault>",
+       "evidence_path": "<report path or null>"
+     }
+   }
+   ```
+3. **Do not overwrite an open request.** If `architecture.refinement_needed` is already
+   `true`, leave the existing `refinement_request` in place and cite your evidence in the
+   `history[]` `reason` instead.
+4. **Then escalate as item 4 says.** The terminal `history[]` entry keeps `decision:
+   "escalate"`, the observed `failure_class` (`timing` or `power_area`) with its mapped
+   `retry_strategy`, and `suggested_next_step: "escalate"`. Its `reason` names the
+   architecture domain, the measured gap and the constraint, and states that
+   `architecture.refinement_needed` was set. The user re-invokes the architecture
+   orchestrator, which resumes from its persisted candidates; nothing dispatches it
+   automatically.
+<!-- END SHARED:architecture-refinement -->
 
 <!-- BEGIN SHARED:long-running-jobs (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Long-Running Jobs
@@ -337,7 +383,7 @@ Create the file and parent directories if they do not exist.
 
 ### Read (session start)
 After reading `<MEM>/synthesis/knowledge.md`, read `design_state.json` if it exists.
-Extract: `rtl`, `constraints`, `environment`, `pipeline_config`, `approved_checkpoints`.
+Extract: `rtl`, `constraints`, `architecture` (only `selected_candidate`, `refinement_needed`; see Architecture Refinement Request), `environment`, `pipeline_config`, `approved_checkpoints`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
 

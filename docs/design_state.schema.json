@@ -44,6 +44,7 @@
       }
     },
     "constraints": { "type": "object", "additionalProperties": true },
+    "architecture": { "$ref": "#/$defs/architecture" },
     "fix_requests": {
       "type": "array",
       "items": { "$ref": "#/$defs/fixRequest" }
@@ -59,6 +60,64 @@
   },
   "$defs": {
     "confidence": { "enum": ["high", "medium", "low"] },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "selected_candidate": { "type": ["string", "null"] },
+        "microarch_doc": { "type": ["string", "null"] },
+        "signoff": { "type": "boolean" },
+        "refinement_needed": { "type": "boolean" },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/archCandidate" } },
+        "refinement_request": {
+          "oneOf": [ { "type": "null" }, { "$ref": "#/$defs/archRefinementRequest" } ]
+        },
+        "refinement_history": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/archRefinementRequest" },
+              { "required": ["serviced_by_run"],
+                "properties": { "serviced_by_run": { "type": "string" }, "outcome": { "type": ["string", "null"] } } }
+            ]
+          }
+        }
+      },
+      "comment": "refinement_needed=true requires an open refinement_request: the flag alone gives the architecture orchestrator nothing to refine against.",
+      "if": { "required": ["refinement_needed"], "properties": { "refinement_needed": { "const": true } } },
+      "then": { "required": ["refinement_request"], "properties": { "refinement_request": { "type": "object" } } }
+    },
+    "archCandidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "status"],
+      "properties": {
+        "name": { "type": "string" },
+        "profile": { "enum": ["conservative", "balanced", "aggressive", "other"] },
+        "freq_mhz": { "type": ["number", "null"] },
+        "area_um2": { "type": ["number", "null"] },
+        "power_mw": { "type": ["number", "null"] },
+        "risk": { "enum": ["low", "medium", "high"] },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["selected", "rejected", "infeasible"] },
+        "rejection_reason": { "type": ["string", "null"] },
+        "evaluated_in_run": { "type": ["string", "null"] }
+      }
+    },
+    "archRefinementRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["requested_by", "requested_at", "failure_class", "reason"],
+      "properties": {
+        "requested_by": { "enum": ["synthesis-orchestrator", "physical-design-orchestrator", "sta-orchestrator"] },
+        "requested_at": { "type": "string" },
+        "failure_class": { "enum": ["timing", "power_area"] },
+        "constraint_ref": { "type": ["string", "null"] },
+        "measured": { "type": ["string", "null"] },
+        "reason": { "type": "string" },
+        "evidence_path": { "type": ["string", "null"] }
+      }
+    },
     "historyFailureClass": {
       "enum": ["none", "functional", "timing", "power_area", "drc_lvs",
                "coverage_gap", "connectivity", "tool_error", "input_setup",
