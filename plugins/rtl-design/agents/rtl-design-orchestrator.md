@@ -282,6 +282,18 @@ Applies to every report you make: a stage result, an escalation, and the final s
    the next run, and each cycle costs a full CI run. A new file is covered by whatever job
    matches its directory, even if the task never named that job. If a triggered step cannot
    run locally, name it and say why, as item 2 requires.
+9. **Hand off what you established, whatever the outcome.** The domain fields you merge into
+   `design_state.json` are the next domain's input, and an absent key reads there as "not
+   reported", so nothing is assumed covered. On every termination path — signoff, escalation,
+   max-iterations, a NOT RUN gate, turn budget, interruption — merge every domain field with
+   what this run actually established, not only what the final stage would have produced:
+   - a list (files, unverified claims, waivers, open issues) is written in full from the
+     stages that ran, and `[]` only when it is genuinely empty;
+   - a status or metric this run did not measure is `false` or `null`, with the reason in
+     `notes`, never carried over from an earlier run as if measured.
+
+   Build a hand-off list in the stage that produces each entry, not in the sign-off stage.
+   Withholding signoff (item 7) never means withholding the hand-off.
 <!-- END SHARED:reporting-contract -->
 
 <!-- BEGIN SHARED:rtl-lint-gate (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
@@ -441,9 +453,16 @@ Domain fields to merge:
 }
 ```
 
-`rtl.unverified[]` is the skill's unverified-claims list (`rtl_signoff` Output Required). Write
-`[]` when there are none — downstream orchestrators treat an absent key as "not reported", not
-as "nothing to check".
+`rtl.unverified[]` is the skill's unverified-claims list. It accumulates from every stage
+that reaches a conclusion without a tool run (`rtl_coding` review, `lint_check`,
+`cdc_rdc_analysis`), and `rtl_signoff` only completes it. Write it on every termination path
+(Reporting Contract item 9), not only after `rtl_signoff`. A run that withholds signoff because
+a gate was NOT RUN still hands over every claim it made, and a CDC tool that was unavailable
+makes each crossing you reasoned about a `cdc` claim. Write `[]` only when there are none —
+downstream orchestrators treat an absent key as "not reported", not as "nothing to check".
+`rtl.files[]` is the block's complete current file set, every file this run added included,
+not only the files of the last run that reached signoff. `lint_clean` and `cdc_clean` are
+`true` only when measured clean in this run on the current files.
 
 History entry to append:
 ```json

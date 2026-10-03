@@ -187,6 +187,9 @@ a fallback.
 - RTL source files (.sv) per module
 - SVA assertion files per module
 - Inline comments on all non-obvious logic
+- Unverified-claims entries: each CDC, reset, FSM, protocol, arithmetic or parameter
+  conclusion reached in review without a tool run, appended to the unverified-claims list
+  (see `rtl_signoff`) now, not at sign-off
 - `clock_gating_coverage` metric per domain (appended to sign-off record)
 
 ---
@@ -330,6 +333,8 @@ only outputs are a report and a PASS or FAIL.
 
 ### Output Required
 - Lint report (per file, per rule)
+- Unverified-claims entries: every finding labelled `UNVERIFIED` under rule 9, appended to the
+  unverified-claims list in this stage
 - Waiver file
 - Clean lint summary
 - Front-end check: conversion and parse commands with exit status, or NOT RUN and why
@@ -344,6 +349,10 @@ only outputs are a report and a PASS or FAIL.
 3. Multi-bit data: async FIFO or handshake protocol
 4. Pulse crossings: pulse stretcher + synchroniser
 5. Zero CDC violations (unwaived) before proceeding
+6. No CDC tool available: the stage is NOT RUN, not PASS. Every crossing you reasoned about
+   instead is an `UNVERIFIED` `cdc` (or `reset`) claim — append one entry per crossing to the
+   unverified-claims list in this stage, naming the synchroniser you relied on. Downstream
+   formal and verification can then check each one
 
 ### RDC Rules
 1. All reset domains explicitly defined in constraints
@@ -358,6 +367,7 @@ only outputs are a report and a PASS or FAIL.
 
 ### Output Required
 - CDC/RDC report
+- Unverified-claims entries for every crossing not closed by a tool run (rule 6)
 - Synchroniser instance list
 - Waiver file
 
@@ -419,12 +429,16 @@ only outputs are a report and a PASS or FAIL.
 - Compile order document
 - Assertion library (.sva files)
 - RTL sign-off record
-- Unverified-claims list: every `UNVERIFIED` conclusion from lint and code review, one entry
-  per claim as `{module, category, claim}` with `category` one of `cdc`, `reset`, `fsm`,
+- Unverified-claims list: every `UNVERIFIED` conclusion from code review, lint and CDC, one
+  entry per claim as `{module, category, claim}` with `category` one of `cdc`, `reset`, `fsm`,
   `protocol`, `arithmetic`, `parameter`. Include one `fsm` entry for every FSM that uses
   `unique case` without `default`, naming its recovery assertion. This list is the hand-off to
   verification and formal — a claim left off it is a claim nobody downstream will check. An
-  empty list must be stated as empty, not omitted
+  empty list must be stated as empty, not omitted. The list is built up by `rtl_coding`,
+  `lint_check` and `cdc_rdc_analysis` as each stage reaches its conclusions; this stage
+  completes it. It is handed off on every termination path, including a run that stops
+  before this stage or withholds signoff — a run that never reaches sign-off still hands over
+  every claim it made
 
 ---
 

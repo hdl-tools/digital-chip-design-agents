@@ -240,6 +240,18 @@ Applies to every report you make: a stage result, an escalation, and the final s
    the next run, and each cycle costs a full CI run. A new file is covered by whatever job
    matches its directory, even if the task never named that job. If a triggered step cannot
    run locally, name it and say why, as item 2 requires.
+9. **Hand off what you established, whatever the outcome.** The domain fields you merge into
+   `design_state.json` are the next domain's input, and an absent key reads there as "not
+   reported", so nothing is assumed covered. On every termination path — signoff, escalation,
+   max-iterations, a NOT RUN gate, turn budget, interruption — merge every domain field with
+   what this run actually established, not only what the final stage would have produced:
+   - a list (files, unverified claims, waivers, open issues) is written in full from the
+     stages that ran, and `[]` only when it is genuinely empty;
+   - a status or metric this run did not measure is `false` or `null`, with the reason in
+     `notes`, never carried over from an earlier run as if measured.
+
+   Build a hand-off list in the stage that produces each entry, not in the sign-off stage.
+   Withholding signoff (item 7) never means withholding the hand-off.
 <!-- END BLOCK reporting-contract -->
 
 <!-- BLOCK rtl-lint-gate
@@ -337,6 +349,9 @@ after: ^## (General Behaviour|Behaviour for All Domains)$
 - If a tool aborted before checking the design, or ran on the wrong inputs (filelist, include
   path, config, generated headers), change nothing in the design: report the input and stop.
 - Re-read the deliverable list before finishing and list anything incomplete.
+- Whenever you stop, with or without signoff, record what you established for the next stage:
+  the files you produced and every conclusion you reached without a tool run. Not claiming
+  signoff never means handing over nothing.
 - Separate measured values from inference.
 - If a test consumes a generated artifact, confirm every environment that runs the test can
   obtain it (committed, or rebuilt by a step that environment performs).

@@ -29,6 +29,9 @@ requirements — is loaded below via @-imports from the plugin source files.
 - If a tool aborted before checking the design, or ran on the wrong inputs (filelist, include
   path, config, generated headers), change nothing in the design: report the input and stop.
 - Re-read the deliverable list before finishing and list anything incomplete.
+- Whenever you stop, with or without signoff, record what you established for the next stage:
+  the files you produced and every conclusion you reached without a tool run. Not claiming
+  signoff never means handing over nothing.
 - Separate measured values from inference.
 - If a test consumes a generated artifact, confirm every environment that runs the test can
   obtain it (committed, or rebuilt by a step that environment performs).
