@@ -1078,6 +1078,47 @@ def test_reporting_obliges_the_gates_a_change_triggers(path):
         assert clause in flat, f"{_rel(path)}: missing triggered-gates clause {clause!r}"
 
 
+@pytest.mark.parametrize("path", AGENT_FILES + IDE_GUARD_FILES, ids=_rel)
+def test_hand_off_is_written_whatever_the_outcome(path):
+    """Issue #129: the hand-off was produced only by the sign-off stage, so a run
+    that honestly withheld signoff handed downstream nothing, and the next domain
+    read the absent key as "not reported"."""
+    flat = _flat(_read(path))
+    if path in IDE_GUARD_FILES:
+        clauses = ("Whenever you stop, with or without signoff",)
+    else:
+        clauses = (
+            "Hand off what you established, whatever the outcome",
+            "On every termination path",
+            "never carried over from an earlier run as if measured",
+            "Build a hand-off list in the stage that produces each entry",
+            "Withholding signoff (item 7) never means withholding the hand-off",
+        )
+    for clause in clauses:
+        assert clause in flat, f"{_rel(path)}: missing hand-off clause {clause!r}"
+
+
+def test_rtl_unverified_claims_accumulate_before_signoff():
+    """Issue #129: `rtl.unverified[]` was an Output Required of `rtl_signoff` only.
+    Each stage that reaches a conclusion without a tool run now appends to it, and a
+    CDC stage with no tool turns every reasoned crossing into a claim."""
+    skill = _read(RTL_SKILL)
+    for stage in ("rtl_coding", "lint_check", "cdc_rdc_analysis"):
+        body = skill.split(f"## Stage: {stage}", 1)[1].split("\n## Stage: ", 1)[0]
+        assert "Unverified-claims entries" in body, f"{stage} does not append unverified claims"
+    cdc = _flat(skill.split("## Stage: cdc_rdc_analysis", 1)[1].split("\n## Stage: ", 1)[0])
+    assert "No CDC tool available: the stage is NOT RUN, not PASS" in cdc
+    assert "handed off on every termination path" in _flat(skill)
+
+    agent = _flat(_read(RTL_AGENT))
+    for clause in (
+        "Write it on every termination path",
+        "`rtl.files[]` is the block's complete current file set",
+        "`true` only when measured clean in this run",
+    ):
+        assert clause in agent, f"rtl-design-orchestrator is missing {clause!r}"
+
+
 def test_fix_request_gate_covers_every_gate_the_edit_affects():
     """Issue #128: Behaviour Rule 10 closed a fix_request on `lint_check` alone, so a
     repair that broke a synchroniser or a timed path was marked fixed."""

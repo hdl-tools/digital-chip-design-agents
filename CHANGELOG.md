@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### issue #129: an honest run that withholds signoff still hands downstream what it established
+
+#### Fixed
+
+- **`rtl.unverified[]` was produced only by `rtl_signoff`.** A run that correctly withheld
+  signoff — a CDC tool missing, a gate NOT RUN — never reached that stage and wrote no
+  unverified-claims list. Downstream verification then read the absent key as "the RTL flow
+  did not report". New Reporting Contract item 9, in all 16 orchestrators: on every
+  termination path, merge every domain field with what the run actually established. Lists
+  are written in full from the stages that ran, an unmeasured status is `false`/`null` with
+  the reason, and a hand-off list is built in the stage that produces each entry. Withholding
+  signoff never means withholding the hand-off. The IDE adapters' Verification and Reporting
+  guards carry a short form.
+- **rtl-design builds the list up stage by stage.** `rtl_coding`, `lint_check` and
+  `cdc_rdc_analysis` each append their `UNVERIFIED` conclusions as they reach them, and
+  `rtl_signoff` completes the list. New `cdc_rdc_analysis` rule 6: with no CDC tool the stage
+  is NOT RUN, and every reasoned crossing becomes a `cdc` claim. `rtl.files[]` must be the
+  block's complete current file set. `lint_clean`/`cdc_clean` are `true` only when measured
+  in this run. A new rule is added to the Reporting Contract instead of the Behaviour Rules,
+  so no rule is renumbered.
+
 ### issue #128: report the gates a change triggers, not only the gates the task names
 
 #### Fixed
