@@ -11,6 +11,7 @@ the input set itself. It reads; it never writes or edits a design file.
 Usage:
     python3 check_design_inputs.py <filelist.f> [--root DIR] [--cwd DIR]
         [--env NAME=VALUE ...] [--generated OUT_DIR=SOURCE ...]
+        [--rtl-dir DIR ... [--list NAME=FILELIST ...] [--exempt [LIST:]MODULE ...]]
 
     --root       design root; include dirs and sources outside it are reported, and the
                  search for sibling trees on disk stops there
@@ -18,6 +19,20 @@ Usage:
     --env        value for $NAME / ${NAME} / $(NAME) in the filelist, over the environment
     --generated  a generated output dir on the include path and the generator source
                  (file or dir) it is built from; reported if the output is older
+    --rtl-dir    a directory of first-party RTL; every file under it that declares a
+                 module must be visible to every list (registration check)
+    --list       another tool's source list to check registration against, as NAME=FILE
+                 (simulation, synthesis, PD, formal). <filelist.f> is always checked too,
+                 under its file name. A list kept in a Makefile variable can be dumped
+                 first: make -s --eval='print-%:;@echo $($*)' print-VAR > var.f
+    --exempt     MODULE, or LIST:MODULE, that is deliberately absent (a simulation-only
+                 model missing from the PD list); state why in the report
+
+Registration check: a module that is on disk but missing from one tool's list is
+silently black-boxed by converters and synthesisers (sv2v, yosys), while a simulator
+reading a different list stays green. Each omission is an ERROR naming the list and the
+file. A file is visible to a list if the list names it or a `-y` directory holds it.
+Testbenches (`*_tb.sv`, `tb_*.sv` and the `.v` forms) are skipped.
 
 Filelist syntax understood: `-f` (paths relative to --cwd), `-F` (paths relative to
 the filelist that names them), `+incdir+a+b`, `-I dir`, `-Idir`, `-incdir dir`,
@@ -43,6 +58,10 @@ _VERSION_WORD = r"(?:v?\d+(?:[._]\d+)*|old|new|bak|backup|orig|prev|copy|tmp|leg
 VERSION_SUFFIX_RE = re.compile(rf"(?:[._-]{_VERSION_WORD}|v\d+)+$", re.I)
 VERSION_ONLY_RE = re.compile(rf"^{_VERSION_WORD}$", re.I)
 MAX_ANCESTORS = 4
+MODULE_RE = re.compile(r"^\s*(?:macro)?module\s+(?:(?:automatic|static)\s+)?(\w+)", re.M)
+BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+LINE_COMMENT_RE = re.compile(r"//[^\n]*")
+RTL_EXTS = {".v", ".sv"}
 
 
 class Inputs:
@@ -348,7 +367,121 @@ def check_generated(pairs, cwd, inputs):
                          [out_dir])
 
 
-def run(filelist, root=None, cwd=None, env=None, generated=()):
+def _declared_modules(path):
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+    return MODULE_RE.findall(LINE_COMMENT_RE.sub("", BLOCK_COMMENT_RE.sub("", text)))
+
+
+def _is_testbench(name):
+    stem = os.path.splitext(name)[0].lower()
+    return stem.endswith("_tb") or stem.startswith("tb_")
+
+
+def _rtl_files(rtl_dirs):
+    """Every first-party RTL file that declares a module, mapped to its modules."""
+    found = {}
+    for top in rtl_dirs:
+        for folder, subdirs, names in os.walk(top):
+            subdirs.sort()
+            for name in sorted(names):
+                if os.path.splitext(name)[1].lower() not in RTL_EXTS or _is_testbench(name):
+                    continue
+                path = os.path.normpath(os.path.join(folder, name))
+                modules = _declared_modules(path)
+                if modules:
+                    found[path] = modules
+    return found
+
+
+def _real(path):
+    return os.path.normcase(os.path.realpath(path))
+
+
+def check_registration(rtl_dirs, lists, exempt, inputs):
+    """Report first-party modules on disk that a tool's source list does not reach.
+
+    `lists` maps a list name to its parsed Inputs; `exempt` maps a list name, or "*"
+    for every list, to the module names deliberately left out of it.
+    """
+    present = []
+    for directory in rtl_dirs:
+        if os.path.isdir(directory):
+            present.append(directory)
+        else:
+            inputs.issue("ERROR", "missing_rtl_dir",
+                         f"RTL directory does not exist: {directory}", [directory])
+    files = _rtl_files(present)
+    if present and not files:
+        inputs.issue("WARN", "no_rtl_modules",
+                     "no module declarations found under --rtl-dir - registration not verified",
+                     present)
+
+    missing, exempted = [], []
+    for name, listed in lists.items():
+        visible = {_real(p) for p in listed.sources}
+        lib_dirs = {_real(d) for d in listed.library_dirs}
+        waived = exempt.get("*", set()) | exempt.get(name, set())
+        list_path = listed.filelists[0] if listed.filelists else name
+        for path, modules in files.items():
+            real = _real(path)
+            if real in visible or os.path.dirname(real) in lib_dirs:
+                continue
+            entry = {"list": name, "file": path, "modules": modules}
+            if set(modules) <= waived:
+                exempted.append(entry)
+                continue
+            missing.append(entry)
+            inputs.issue(
+                "ERROR", "module_not_in_list",
+                f"{', '.join(modules)} ({path}) is not in the '{name}' list. A tool that reads "
+                "it black-boxes the module without an error - add the file, or exempt it and "
+                "say why",
+                [path, list_path], list=name, modules=modules,
+            )
+
+    return {
+        "rtl_dirs": list(rtl_dirs),
+        "lists": {name: (listed.filelists[0] if listed.filelists else None)
+                  for name, listed in lists.items()},
+        "rtl_files": len(files),
+        "missing": missing,
+        "exempt": exempted,
+    }
+
+
+def _registration(top, inputs, rtl_dirs, lists, exempt):
+    if not rtl_dirs:
+        inputs.issue("ERROR", "bad_registration_argument",
+                     "--list and --exempt need at least one --rtl-dir to check against", [])
+        return None
+    parsed = {os.path.basename(top): inputs}
+    for item in lists:
+        name, sep, path = item.partition("=")
+        if not sep or not name or not path:
+            inputs.issue("ERROR", "bad_list_argument",
+                         f"--list expects NAME=FILELIST, got '{item}'", [])
+            continue
+        if name in parsed:
+            inputs.issue("ERROR", "bad_list_argument", f"list name '{name}' is used twice", [])
+            continue
+        other = Inputs(inputs.cwd, inputs.env)
+        parse_filelist(_resolve(path, inputs.cwd), inputs.cwd, other)
+        for entry in other.issues:
+            if entry["severity"] == "ERROR" and entry["kind"] in ("missing_filelist",
+                                                                    "filelist_cycle"):
+                inputs.issues.append(dict(entry, list=name))
+        parsed[name] = other
+    waivers = {}
+    for item in exempt:
+        scope, sep, module = item.rpartition(":")
+        waivers.setdefault(scope if sep else "*", set()).add(module)
+    return check_registration([_resolve(d, inputs.cwd) for d in rtl_dirs], parsed, waivers,
+                              inputs)
+
+
+def run(filelist, root=None, cwd=None, env=None, generated=(), rtl_dirs=(), lists=(),
+        exempt=()):
     cwd = os.path.abspath(cwd or os.getcwd())
     merged_env = dict(os.environ)
     merged_env.update(env or {})
@@ -364,6 +497,9 @@ def run(filelist, root=None, cwd=None, env=None, generated=()):
     check_outside_root(root, inputs)
     check_sources(inputs)
     check_generated(generated, cwd, inputs)
+    registration = None
+    if rtl_dirs or lists or exempt:
+        registration = _registration(top, inputs, rtl_dirs, lists, exempt)
 
     errors = [i for i in inputs.issues if i["severity"] == "ERROR"]
     warnings = [i for i in inputs.issues if i["severity"] == "WARN"]
@@ -402,6 +538,7 @@ def run(filelist, root=None, cwd=None, env=None, generated=()):
             "duplicate_include_basenames": kinds.get("duplicate_include", 0),
             "by_kind": kinds,
         },
+        "registration": registration,
         "issues": inputs.issues,
     }
 
@@ -415,6 +552,9 @@ def main(argv=None):
     parser.add_argument("--cwd")
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE")
     parser.add_argument("--generated", action="append", default=[], metavar="OUT_DIR=SOURCE")
+    parser.add_argument("--rtl-dir", action="append", default=[], metavar="DIR")
+    parser.add_argument("--list", action="append", default=[], metavar="NAME=FILELIST")
+    parser.add_argument("--exempt", action="append", default=[], metavar="[LIST:]MODULE")
     args = parser.parse_args(argv)
 
     env = {}
@@ -424,7 +564,8 @@ def main(argv=None):
             parser.error(f"--env expects NAME=VALUE, got '{item}'")
         env[name] = value
 
-    result = run(args.filelist, root=args.root, cwd=args.cwd, env=env, generated=args.generated)
+    result = run(args.filelist, root=args.root, cwd=args.cwd, env=env, generated=args.generated,
+                 rtl_dirs=args.rtl_dir, lists=args.list, exempt=args.exempt)
     print(json.dumps(result, indent=2))
     return 1 if result["status"] == "FAIL" else 0
 

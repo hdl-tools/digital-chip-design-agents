@@ -53,7 +53,8 @@ and synthesis handoff.
 - **Slang** (`slang`) — modern, standards-compliant SV parser and elaborator; lint with
   `slang -Weverything --ignore-unknown-modules` (full elaboration — see `lint_check` rule 6)
 - **Surelog** (`surelog`) — SystemVerilog pre-processor and front-end for Yosys
-- **sv2v** (`sv2v`) — SystemVerilog-to-Verilog converter
+- **sv2v** (`sv2v`) — SystemVerilog-to-Verilog converter; the front-end check (`lint_check`
+  rule 15) parses its output with the tool that consumes it
 - **Icarus Verilog** (`iverilog`) — Verilog/SV simulator for quick sanity checks
 
 ### Proprietary
@@ -216,15 +217,31 @@ only outputs are a report and a PASS or FAIL.
 6. Where the input set is a `.f` filelist, run `check_design_inputs.py` (in this skill's
    directory) and report its JSON:
    `python3 check_design_inputs.py <filelist.f> --root <design root> [--env NAME=VALUE] [--generated OUT_DIR=SOURCE]`.
-   It applies rules 2, 3 and 5, and rule 4's age check for each `--generated` pair. Rule 1, and
-   any flow driven by a vendor project file instead of a `.f` filelist, is checked by hand
-   against the rules above
+   It applies rules 2, 3 and 5, rule 4's age check for each `--generated` pair, and rule 8
+   with `--rtl-dir` and `--list`. Rule 1, and any flow driven by a vendor project file instead
+   of a `.f` filelist, is checked by hand against the rules above
 7. On FAIL, change no design file. The fix is in the input set — usually one line of a filelist
    — and choosing between two trees is the owner's decision: report `failure_class:
    "input_setup"`, `suggested_next_step: "escalate"`, the file, both absolute paths and the
-   line to change. Never loop back to `rtl_coding`
+   line to change. Never loop back to `rtl_coding` — the one exception is rule 8's
+   registration of a module this run added
+8. Registration: every module on disk must reach every tool. Projects keep separate source
+   lists for simulation, lint, synthesis, PD and formal, often as Makefile variables, and a
+   module missing from one of them is black-boxed by converters and synthesisers (sv2v,
+   yosys) without an error — the simulation regression cannot notice, because it reads a
+   different list. Enumerate every source list that feeds a tool in the project, dump any kept
+   in a Makefile variable to a file
+   (`make -s --eval='print-%:;@echo $($*)' print-<VAR> > <var>.f`), and run
+   `python3 check_design_inputs.py <filelist.f> --rtl-dir <rtl dir> --list <name>=<file> ...
+   [--exempt <list>:<module>]`. Each `module_not_in_list` is an ERROR naming the list and the
+   file. Exempt a module only with a stated reason (a simulation-only model absent from the PD
+   list). This is the one `design_input_check` failure that is not escalated: when the module
+   was added by this run, adding it to the list is this run's job — a list edit, no RTL edit.
+   A pre-existing module missing from a list, or a list you cannot edit, is `input_setup` per
+   rule 7
 
 ### QoR Metrics to Evaluate
+- Modules on disk missing from a tool's source list, not exempted: must be 0
 - Include file names present in two directories with different content: must be 0
 - Missing filelists, include directories and sources: must be 0
 - Generated output trees on the include path, per generator: exactly 1
@@ -234,6 +251,8 @@ only outputs are a report and a PASS or FAIL.
 ### Output Required
 - Design-input report: absolute filelist and config paths, ordered absolute include
   directories, and every finding with the paths it names
+- Registration report: every source list checked, each module missing from one, and each
+  exemption with its reason
 - Stage status: PASS, or FAIL with `failure_class: "input_setup"`
 
 ---
@@ -257,7 +276,9 @@ only outputs are a report and a PASS or FAIL.
    its cross-file widths as unchecked
 8. A module missing from the filelist (library cell, hard macro, black-boxed IP) is a stub.
    Undriven or unused findings on nets that only a stub drives are not ERRORs; record them as
-   informational and name the stubbed module
+   informational and name the stubbed module and the library, macro or IP it stands for. A
+   stub is benign only if you can name that: an unknown module that resolves to first-party
+   RTL in this repository is a missing filelist entry (`design_input_check` rule 8), not a stub
 9. Every finding states its evidence. Tool-proven: quote the tool's message and rule name.
    Reasoned without a tool run: label it `UNVERIFIED`. A clean lint run proves nothing about
    CDC, reset sequencing, FSM reachability, protocol deadlock or arithmetic overflow
@@ -287,9 +308,22 @@ only outputs are a report and a PASS or FAIL.
     findings in the RTL itself, which are the ones the levels in rules 1–2 apply to. A flow
     wrapper's non-zero exit is not "lint failed": a wrapper may gate on log text and fail a run
     in which the lint tool reported 0 errors. Read the tool's own error count
+15. Front-end check: lint does not prove the downstream front-end accepts the RTL. Verilator,
+    slang and every simulator read SystemVerilog natively; a flow that converts the RTL before
+    synthesis (sv2v, Surelog/UHDM, a vendor SV-to-Verilog step) produces a file none of them
+    read. Where any downstream flow does that, run the conversion over the filelist and parse
+    its output with the consuming tool:
+    `sv2v <files> > out.v && yosys -q -p 'read_verilog out.v; hierarchy -check -top <top>'`
+    (read rule 8 stubs first with `read_verilog -lib <stubs>`). Report it as its own gate with
+    the command and exit status. A construct legal in SystemVerilog and illegal in Verilog-2005
+    (IEEE 1364) — a part-select on a function-call result, `f(x)[N-1:0]`, is the canonical
+    case; assign the result to a named signal and select from that — passes lint and the whole
+    regression and fails only here. Fix the source construct, never the converted file. No
+    conversion tool available: report the gate NOT RUN
 
 ### QoR Metrics to Evaluate
 - Rule check completed: must be true — an aborted run has no ERROR count
+- Front-end check, where a downstream flow converts the RTL: exit 0 with no parse error
 - ERROR count: must be 0 before proceeding
 - WARNING count: review all; waive with documented justification
 - All RTL files checked (not just top-level)
@@ -298,6 +332,7 @@ only outputs are a report and a PASS or FAIL.
 - Lint report (per file, per rule)
 - Waiver file
 - Clean lint summary
+- Front-end check: conversion and parse commands with exit status, or NOT RUN and why
 
 ---
 
@@ -338,8 +373,16 @@ only outputs are a report and a PASS or FAIL.
 5. Check for multi-driven nets or unresolved X
 6. Flag high-fanout nets needing buffering strategy
 7. Verify all clock definitions synthesise correctly
+8. Use the front-end the downstream flows use. If PD or synthesis reads sv2v output, run
+   synth_check on sv2v output, not through a SystemVerilog-native front-end (Surelog, slang
+   plugin) that accepts constructs the real flow rejects
+9. A parse or elaboration error is not a QoR result: fix the source construct in
+   `rtl_coding` (`lint_check` rule 15). A black box (undefined module) that resolves to
+   first-party RTL is a missing source-list entry (`design_input_check` rule 8); one with no
+   first-party RTL is a missing library or macro view — escalate as `input_setup`
 
 ### QoR Metrics to Evaluate
+- Front-end parse and `hierarchy -check`: no error, no undefined module
 - WNS at target frequency: > −0.5 ns acceptable at this stage (sign-off target: `design_state.constraints.timing.wns_ns_target`, default: 0)
 - Area: < 120% of microarch estimate
 - No unmapped cells
@@ -364,6 +407,8 @@ only outputs are a report and a PASS or FAIL.
 - [ ] SVA assertions in place for key properties
 - [ ] Code review completed; any CDC, reset or protocol conclusion not closed by a tool run is recorded as `UNVERIFIED`
 - [ ] File list and compile order documented
+- [ ] Every module in every tool's source list (simulation, lint, synthesis, PD, formal), or exempted with a reason
+- [ ] Converted RTL parses in each downstream front-end (front-end check), or the gate is reported NOT RUN
 - [ ] ICG cells inserted for all high/moderate gating opportunity domains
 - [ ] Always-on domains annotated with `/* always-on: <reason> */`
 - [ ] `clock_gating_coverage` ≥ `design_state.constraints.power.gating_coverage_pct_min`% for high-opportunity domains (default: 60%); reported in sign-off record

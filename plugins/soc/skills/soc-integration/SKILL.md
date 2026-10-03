@@ -162,7 +162,21 @@ integration, and chip-level simulation sign-off.
     alone, every IP is an unknown module and port-width mismatches go unchecked
 11. An IP that is deliberately black-boxed (hard macro, analog block, encrypted IP) is a stub:
     undriven-net findings on its outputs are not connectivity errors. Record them as
-    informational and name the stub, so a real unconnected port is not lost among them
+    informational and name the stub, so a real unconnected port is not lost among them. A
+    stub is benign only if you can name the macro or IP it stands for: an unknown module that
+    resolves to first-party RTL in this repository is a missing filelist entry (rule 12)
+12. An IP or module is not integrated until every tool's source list can see it. Simulation,
+    lint, synthesis, PD and formal usually read separate lists, often Makefile variables, and a
+    module missing from one is black-boxed by sv2v and yosys without an error while the
+    chip-level regression, reading another list, stays green. Enumerate every list and confirm
+    each new file is in each, or state why not; for `.f` lists run
+    `plugins/rtl-design/skills/rtl-design/check_design_inputs.py <filelist.f> --rtl-dir <rtl>
+    --list <name>=<file> ...`
+13. Where a downstream flow converts the RTL before synthesis (sv2v, Surelog/UHDM), run the
+    conversion on the SoC filelist and parse the output with the consuming tool
+    (`sv2v <files> > out.v && yosys -q -p 'read_verilog out.v; hierarchy -check -top soc_top'`).
+    A construct legal in SystemVerilog and not in Verilog-2005 passes lint and chip-level
+    simulation and fails only there
 
 ### Integration Checklist (per IP)
 - [ ] Correct module name and parameters
@@ -171,6 +185,7 @@ integration, and chip-level simulation sign-off.
 - [ ] Reset: correct domain and polarity
 - [ ] Power ports: correct UPF domain
 - [ ] Scan: SI/SO connected
+- [ ] Source files registered in every tool's source list (simulation, lint, synthesis, PD, formal)
 
 ### Common Integration Bugs
 | Bug | Consequence |
@@ -179,6 +194,8 @@ integration, and chip-level simulation sign-off.
 | Reset polarity inversion | Block never exits reset |
 | Unconnected valid/enable | Block runs freely or never |
 | AXI address offset wrong | Peripheral at wrong base address |
+| Module missing from the synthesis or PD source list | Silently black-boxed: wrong netlist behind a green simulation regression |
+| SystemVerilog construct the converter cannot lower | Synthesis or PD front-end syntax error that lint and simulation never see |
 
 ### Output Required
 - Top-level RTL (soc_top.sv)
@@ -222,6 +239,8 @@ integration, and chip-level simulation sign-off.
 - [ ] CDC: 0 violations at chip level
 - [ ] All chip-level simulation tests: PASS
 - [ ] AXI protocol checker: clean
+- [ ] Every module visible to every tool's source list, exemptions named with a reason
+- [ ] Converted RTL parses in each downstream front-end, or the check is reported NOT RUN
 
 ### Output Required
 - Integration sign-off report

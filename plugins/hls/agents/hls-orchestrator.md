@@ -270,7 +270,10 @@ and blocking assignments are correct there.
    for the files you touched. A file linted alone reports its submodules as unknown.
 4. **A stubbed module is not a bug in the file that instantiates it.** A library cell, hard
    macro, vendor primitive or black-boxed IP missing from the filelist leaves the nets it drives
-   looking undriven. Record those findings as informational and name the stub.
+   looking undriven. Record those findings as informational and name the stub and the library,
+   macro or IP it stands for. A stub is benign only if you can name that. An unknown module
+   that resolves to first-party RTL in this repository is not a stub: it is a missing filelist
+   entry (item 9).
 5. **Say what proved each finding.** Quote the tool's message and rule name for a tool-proven
    finding; label anything you reasoned without a tool run `UNVERIFIED`. A clean lint run proves
    nothing about CDC, reset sequencing, FSM reachability, protocol deadlock or arithmetic
@@ -289,11 +292,33 @@ and blocking assignments are correct there.
    first shadows the current one. Record `input_setup`, edit no RTL, and escalate with the
    paths. Only a parse error in a file this run wrote, with the input set checked, is yours to
    repair.
-8. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
-   runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM` as
-   warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
-   escalation. If it is unavailable, the items above stand on their own — it augments, never
-   replaces, this gate.
+8. **Lint does not prove the downstream front-end accepts the RTL.** Verilator, slang and the
+   simulation regression all read SystemVerilog natively. If any downstream flow converts this
+   RTL before synthesis — sv2v, Surelog/UHDM, a vendor SV-to-Verilog step — run that conversion
+   over the filelist and parse its output with the tool that will consume it, e.g.
+   `sv2v <files> > out.v && yosys -q -p 'read_verilog out.v; hierarchy -check -top <top>'`.
+   Report it as its own gate, the front-end check, with the command and its exit status. A
+   construct that is legal SystemVerilog and illegal in the target revision — a part-select on
+   a function-call result, `f(x)[N-1:0]`, is the canonical case — passes lint and every
+   simulation and fails only here, because nothing else reads the converted file. Fix such an
+   error in the source construct, never in the converted file. Read the item 4 stubs into the
+   consuming tool as black boxes first (`read_verilog -lib <stubs>`), so `hierarchy -check`
+   fails only on modules that are really missing. If no conversion tool is available, report
+   the gate NOT RUN.
+9. **A new module is not integrated until every tool's source list can see it.** Projects keep
+   separate source lists for simulation, lint, synthesis, PD and formal, often as Makefile
+   variables. When you add an RTL file, enumerate every source list that feeds a tool in this
+   project and confirm the file is in each, or state why it should not be. Converters and
+   synthesisers black-box a module missing from their list without an error, and the
+   simulation regression cannot notice because it reads a different list. Where the lists are
+   `.f` files, or can be dumped to one, run `check_design_inputs.py <filelist.f> --rtl-dir <rtl>
+   --list <name>=<file> ...` from `plugins/rtl-design/skills/rtl-design/`: it names each list
+   that misses a module on disk.
+10. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
+    runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM`
+    as warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
+    escalation. If it is unavailable, the items above stand on their own — it augments, never
+    replaces, this gate.
 <!-- END SHARED:rtl-lint-gate -->
 
 ## Memory
