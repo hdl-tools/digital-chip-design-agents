@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### issue #128: report the gates a change triggers, not only the gates the task names
+
+#### Fixed
+
+- **Fixing the one CI step that failed and pushing was compliant.** Reporting Contract item 1
+  bound only "every gate named in the task" and the criteria an agent claims. New item 8, in
+  all 16 orchestrators: before reporting complete or pushing to a repository with its own CI,
+  read the workflow path filters, find every job the changed paths trigger, and run each job's
+  steps locally, not only the step that last failed. A triggered step that cannot run is named
+  with the reason. The IDE adapters' Verification and Reporting guards (Codex, Gemini, Copilot)
+  carry the same rule.
+- **rtl-design Behaviour Rule 10 closed a `fix_request` on `lint_check` alone.** It is now the
+  fix-request gate: run every gate the edit could affect. That always includes `lint_check`
+  with the front-end check, plus `cdc_rdc_analysis` for an edit to a crossing, synchroniser or
+  reset path, and `synth_check` for an edit to logic depth or state, or one that adds a module.
+  `status=fixed` needs lint and the front-end check to pass. Every other affected gate must
+  pass or be reported NOT RUN, and `rtl_response.diff_summary` records each result.
+
 ### issues #126, #127: the RTL Lint Gate reaches the converted file and every source list
 
 #### Fixed

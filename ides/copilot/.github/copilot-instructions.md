@@ -25,6 +25,9 @@ memory IP design, compiler toolchain, embedded firmware, and FPGA emulation.
   constraint, check or test that failed.
 - Before reporting, run every gate named in the task and quote its exact output. Never report a
   gate as passing that you did not run; say NOT RUN and why.
+- Before pushing to a repository with its own CI, read its workflow path filters, find every
+  job the changed paths trigger, and run all of each job's steps locally, not only the step
+  that last failed. Name any step you could not run.
 - A tool that exits 0 with empty or unparsable output is not a pass.
 - If a tool aborted before checking the design, or ran on the wrong inputs (filelist, include
   path, config, generated headers), change nothing in the design: report the input and stop.

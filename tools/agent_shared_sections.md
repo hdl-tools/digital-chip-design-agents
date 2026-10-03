@@ -231,6 +231,15 @@ Applies to every report you make: a stage result, an escalation, and the final s
 7. **Record what you reported.** The domain `signoff` field and `signoff_achieved` may be `true`
    only when every Sign-off Criteria item is measured-PASS. A criterion that is NOT RUN or
    unverified means signoff is false; name it in the `history[]` `reason` and in `notes`.
+8. **Run the gates your change triggers, not only the gates you were asked about.** Items 1–7
+   bind the gates the task names. A change that lands in a repository with its own CI also
+   triggers that repository's gates. Before reporting work complete or pushing, determine which
+   CI jobs the paths you changed trigger — read the workflow files and their path filters, do
+   not guess — and run every step of each locally, not only the step that last failed. Fixing
+   the one step CI happened to report and pushing is not completion: the next step fails on
+   the next run, and each cycle costs a full CI run. A new file is covered by whatever job
+   matches its directory, even if the task never named that job. If a triggered step cannot
+   run locally, name it and say why, as item 2 requires.
 <!-- END BLOCK reporting-contract -->
 
 <!-- BLOCK rtl-lint-gate
@@ -321,6 +330,9 @@ after: ^## (General Behaviour|Behaviour for All Domains)$
   constraint, check or test that failed.
 - Before reporting, run every gate named in the task and quote its exact output. Never report a
   gate as passing that you did not run; say NOT RUN and why.
+- Before pushing to a repository with its own CI, read its workflow path filters, find every
+  job the changed paths trigger, and run all of each job's steps locally, not only the step
+  that last failed. Name any step you could not run.
 - A tool that exits 0 with empty or unparsable output is not a pass.
 - If a tool aborted before checking the design, or ran on the wrong inputs (filelist, include
   path, config, generated headers), change nothing in the design: report the input and stop.
