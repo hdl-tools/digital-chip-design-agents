@@ -54,9 +54,9 @@ and co-simulation to verify RTL matches the golden C model.
 - **MLIR/CIRCT** (`circt-opt`) — compiler infrastructure for hardware design
 
 ### Proprietary
-- **Xilinx Vitis HLS** (`vitis_hls`) — C/C++ to RTL for AMD/Xilinx devices
-- **Cadence Stratus** (`stratus`) — SystemC/C++ HLS for ASIC and FPGA
-- **Siemens Catapult** (`catapult`) — algorithmic synthesis from C++/SystemC
+- **Xilinx Vitis HLS** (`vitis_hls`, dialect `xilinx`) — C/C++ to RTL for AMD/Xilinx devices
+- **Cadence Stratus** (`stratus`, dialect `cadence`) — SystemC/C++ HLS for ASIC and FPGA
+- **Siemens Catapult** (`catapult`, dialect `siemens`) — algorithmic synthesis from C++/SystemC
 
 ---
 

@@ -26,9 +26,9 @@ ip_procurement → ip_configuration → bus_fabric_setup → top_integration →
 - Edalize
 
 ### Proprietary
-- Synopsys VCS (`vcs`)
-- Cadence Xcelium (`xrun`)
-- Siemens Questa (`vsim`)
+- Synopsys VCS (`vcs`, dialect `synopsys`)
+- Cadence Xcelium (`xrun`, dialect `cadence`)
+- Siemens Questa (`vsim`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:
@@ -37,11 +37,12 @@ When invoking open-source tools, follow the execution hierarchy:
 3. **Direct execution** — last resort; chip-level simulation logs are very large
 
 ## Loop-Back Rules
-- ip_configuration FAIL (timing/interface error)  → ip_procurement    (max 2×)
-- top_integration FAIL (connectivity errors)       → top_integration   (max 3×)
-- top_integration FAIL (module missing from a tool's source list, or converted RTL does not parse) → top_integration (register the file or fix the source construct; counts toward the 3× above)
-- chip_level_sim FAIL (peripheral test fail)       → top_integration   (max 3×)
-- chip_level_sim FAIL (bus protocol violation)     → bus_fabric_setup  (max 2×)
+- ip_configuration FAIL (timing/interface error)  → ip_procurement    (max 2×) `connectivity`
+- top_integration FAIL (connectivity errors)       → top_integration   (max 3×) `connectivity`
+- top_integration FAIL (module missing from a tool's source list) → top_integration (register the file; counts toward the 3× above) `connectivity`
+- top_integration FAIL (converted RTL does not parse in the downstream front-end) → top_integration (fix the source construct, never the converted file; counts toward the 3× above) `tool_error`
+- chip_level_sim FAIL (peripheral test fail)       → top_integration   (max 3×) `functional`
+- chip_level_sim FAIL (bus protocol violation)     → bus_fabric_setup  (max 2×) `connectivity`
 
 ## Sign-off Criteria
 - connectivity_errors: 0
@@ -139,7 +140,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

@@ -124,7 +124,9 @@ A tool touches several places, and the stated counts are checked by
 
 1. **Discovery.** Add a row to the skill's Open-Source or Proprietary table, keyed by its
    command, with `role` and `dialect`. Add it to the agent's **Tool Options** too. A
-   proprietary tool needs a probe that is verified or marked `UNVERIFIED`.
+   proprietary tool needs a probe that is verified or marked `UNVERIFIED`. It also needs a
+   row in `module_discovery`'s Module-to-tool mapping table keyed on that same command --
+   `test_critical_path_tools_are_keyed_by_command` fails without one.
 2. **Installation.** Add it to the skill's Package Name Mapping Table if it can be installed.
 3. **Wrapper (if it has one).** Add `plugins/infrastructure/tools/wrap-<tool>.sh`, which must
    follow the Wrapper JSON Output Schema. Update every stated wrapper count in the skill and

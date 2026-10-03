@@ -25,9 +25,9 @@ constraint_setup → compile_explore → compile_final → netlist_qc → synthe
 - ABC — logic optimisation and technology mapping
 
 ### Proprietary
-- Synopsys Design Compiler (`dc_shell`)
-- Cadence Genus (`genus`)
-- Synopsys Fusion Compiler (`fc_shell`)
+- Synopsys Design Compiler (`dc_shell`, dialect `synopsys`)
+- Cadence Genus (`genus`, dialect `cadence`)
+- Synopsys Fusion Compiler (`fc_shell`, dialect `synopsys`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:
@@ -36,10 +36,10 @@ When invoking open-source tools, follow the execution hierarchy:
 3. **Direct execution** — last resort; raw logs will consume significant context
 
 ## Loop-Back Rules
-- compile_final FAIL (WNS < 0)          → compile_final    (max 3×)
-- compile_final FAIL (area > budget)    → compile_explore  (max 2×)
-- netlist_qc FAIL (LEC unmatched)       → compile_final    (max 2×)
-- netlist_qc FAIL (unmapped cells)      → compile_final    (max 2×)
+- compile_final FAIL (WNS < 0)          → compile_final    (max 3×) `timing`
+- compile_final FAIL (area > budget)    → compile_explore  (max 2×) `power_area`
+- netlist_qc FAIL (LEC unmatched)       → compile_final    (max 2×) `functional`
+- netlist_qc FAIL (unmapped cells)      → compile_final    (max 2×) `tool_error`
 - compile_explore FAIL (front-end parse or elaboration error, e.g. a yosys syntax error on sv2v output) → escalate: "functional: <file>:<line> is not accepted by the synthesis front-end - the RTL is upstream; route to rtl-design (RTL Lint Gate front-end check)"
 - netlist_qc FAIL (black box: undefined module that resolves to first-party RTL) → escalate: "input_setup: <module> (<file>) is missing from the synthesis source list <list> - register it upstream; re-running synthesis cannot fix it"
 - netlist_qc FAIL (black box: no first-party RTL - library, macro or IP view absent) → escalate: "input_setup: <module> has no definition in the synthesis inputs - supply its library or stub view"
@@ -138,7 +138,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

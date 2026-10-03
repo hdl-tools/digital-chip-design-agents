@@ -54,9 +54,9 @@ integration, and chip-level simulation sign-off.
 - **Edalize** — EDA tool abstraction layer used with FuseSoC
 
 ### Proprietary
-- **Synopsys VCS** (`vcs`) — chip-level simulation with coverage
-- **Cadence Xcelium** (`xrun`) — multi-language chip-level simulation
-- **Siemens Questa** (`vsim`) — chip-level simulation and protocol checking
+- **Synopsys VCS** (`vcs`, dialect `synopsys`) — chip-level simulation with coverage
+- **Cadence Xcelium** (`xrun`, dialect `cadence`) — multi-language chip-level simulation
+- **Siemens Questa** (`vsim`, dialect `siemens`) — chip-level simulation and protocol checking
 
 ---
 

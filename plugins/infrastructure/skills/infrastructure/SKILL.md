@@ -92,11 +92,38 @@ role to fill the field: a `null` cannot produce a false conflict.
 |---|---|---|---|---|
 | Synopsys VCS | `vcs` | `rtl_simulator` | `synopsys` | `vcs -ID` — parse the `Compiler version` line only |
 | Cadence Xcelium | `xrun` (`xmsim`) | `rtl_simulator` | `cadence` | `xrun -version` — parse the `TOOL:<tab>xrun(64)<tab><version>` line |
-| Mentor QuestaSim | `vsim` (`questa`, `questasim`) | `rtl_simulator` | `siemens` | none — UNVERIFIED |
+| Mentor QuestaSim | `vsim` (`questa`, `questasim`, `vlog`, `vcom`) | `rtl_simulator` | `siemens` | none — UNVERIFIED |
 | Synopsys Design Compiler | `dc_shell` (`dc_shell-t`) | `synthesis` | `synopsys` | `dc_shell -version` — parse the `dc_shell version` line |
+| Cadence Genus | `genus` | `synthesis` | `cadence` | `genus -version` — parse the `Program Name:` line |
+| Synopsys Fusion Compiler | `fc_shell` | `synthesis` | `synopsys` | none — UNVERIFIED |
 | Cadence Innovus | `innovus` | `physical_design` | `cadence` | none — UNVERIFIED |
+| Synopsys IC Compiler 2 | `icc2_shell` | `physical_design` | `synopsys` | none — UNVERIFIED |
 | Synopsys PrimeTime | `pt_shell` (`pt_shell64`) | `sta` | `synopsys` | `pt_shell -version` — parse the `pt_shell version` line |
+| Cadence Tempus | `tempus` | `sta` | `cadence` | none — UNVERIFIED |
 | Synopsys Formality | `fm_shell` (`formality`) | `lec` | `synopsys` | `fm_shell -version` — parse the `Formality (R) Version` line |
+| Cadence Conformal | `conformal` | `lec` | `cadence` | none — UNVERIFIED |
+| Cadence JasperGold | `jg` | `formal` | `cadence` | none — UNVERIFIED |
+| Synopsys VC Formal | `vcf` | `formal` | `synopsys` | none — UNVERIFIED |
+| Siemens Questa Formal | `qformal` | `formal` | `siemens` | none — UNVERIFIED |
+| Synopsys TetraMAX | `tmax` | `atpg` | `synopsys` | none — UNVERIFIED |
+| Cadence Modus Test | `modus` | `atpg` | `cadence` | none — UNVERIFIED |
+| Siemens Tessent | `tessent` | `atpg` | `siemens` | none — UNVERIFIED |
+| Synopsys SpyGlass | `spyglass` | `lint_cdc` | `synopsys` | none — UNVERIFIED |
+| Xilinx Vitis HLS | `vitis_hls` | `hls` | `xilinx` | none — UNVERIFIED |
+| Cadence Stratus | `stratus` | `hls` | `cadence` | none — UNVERIFIED |
+| Siemens Catapult | `catapult` | `hls` | `siemens` | none — UNVERIFIED |
+| Xilinx Vivado | `vivado` | `fpga_pnr` | `xilinx` | none — UNVERIFIED |
+| Intel Quartus | `quartus_sh` | `fpga_pnr` | `intel` | none — UNVERIFIED |
+| Microchip Libero | `libero` | `fpga_pnr` | `microchip` | none — UNVERIFIED |
+| ARM Artisan | `artisan` | `mem_compiler` | `arm` | none — UNVERIFIED |
+| Synopsys SiliconSmart | `siliconsmart` | `characterisation` | `synopsys` | none — UNVERIFIED |
+| Cadence Liberate | `liberate` | `characterisation` | `cadence` | none — UNVERIFIED |
+| Synopsys StarRC | `starrc` | `extraction` | `synopsys` | none — UNVERIFIED |
+| Cadence Voltus | `voltus` | `power_analysis` | `cadence` | none — UNVERIFIED |
+| Arm Compiler 6 | `armcc` | `embedded_compiler` | `arm` | none — UNVERIFIED |
+| SEGGER J-Link GDB Server | `JLinkGDBServer` | `debug_probe` | `segger` | none — UNVERIFIED |
+| Lauterbach TRACE32 | `t32marm` | `debug_probe` | `lauterbach` | none — UNVERIFIED |
+| Arm Development Studio | `armds` | `debug_probe` | `arm` | none — UNVERIFIED |
 
 **`vcs -ID` also prints a FLEXlm host ID.** Parse and store the `Compiler version`
 value only — never write the host ID into `tool-status.json`.
@@ -105,19 +132,53 @@ value only — never write the host ID into `tool-status.json`.
 an interactive shell or check out a license. The flags above were each measured: exit 0
 with the named line present, in 1–26 s, no license queue. `dc_shell -version` prints an
 unrelated ASLR advisory first, so parse the line containing `version`, never the first line
-of output.
+of output. `genus -version` was measured the same way: 26 s cold, 12 s warm, which is why
+rule 4 below sets the probe timeout at 60 s rather than the original 10 s.
 
-**The two `UNVERIFIED` rows are unverified upstream, not an oversight.** Neither could be
-confirmed on the reference host, and in both cases the obstacle was the install rather than
-the flag: `innovus -version` exits 0 reporting an expired build authorisation, and
-`vsim -version` exits 0 failing to load `libXext.so.6`. A site with a working install of
+**The two original `UNVERIFIED` rows are unverified upstream, not an oversight.** Neither
+could be confirmed on the reference host, and in both cases the obstacle was the install
+rather than the flag: `innovus -version` exits 0 reporting an expired build authorisation,
+and `vsim -version` exits 0 failing to load `libXext.so.6`. A site with a working install of
 either should confirm the flag and contribute it here.
+
+**The remaining `UNVERIFIED` rows above have no probe evidence at all, which is worth
+recording precisely so a later contributor does not re-measure it blind:**
+`voltus -version` and `tempus -version` each exit 0 but with `cds_plat.dat` absent, the
+same shape as the `innovus` failure. `joules`, `conformal`, `starrc`, `liberate`, and `jg`
+did not resolve to a binary under `<root>/linux/<version>/bin/` on the reference host at
+all. Three of the exit-0 cases print no version line, which is exactly why rule 4's WARN
+conditions below treat "exits 0, no version line" as its own case rather than a pass.
 
 Note on Formality: the primary command is `fm_shell`. `formality` is the legacy GUI wrapper
 and is absent from recent installs, so it is listed as the alternate.
 
 Same `role` with a different `dialect` means the two tools are not interchangeable
 however similar their purpose. `environment_validation` reports such coexistence.
+
+**Single-member roles are intentional, not an oversight** — each is a role whose only
+plausible peers are already claimed by their primary role, so the role can never produce a
+dialect-conflict WARN today:
+- `lint_cdc` holds only `spyglass`. `jg` and `vsim` also do clock-domain-crossing work, but
+  `jg` is recorded under `formal` and `vsim` under `rtl_simulator` — a tool carries one
+  `role` in `tool-status.json`, and each already does its primary job elsewhere.
+- `mem_compiler` holds only `artisan`. Synopsys's memory compiler shares a binary with
+  `siliconsmart`, which is recorded under `characterisation` — the job that binary performs.
+- `extraction` holds only `starrc`. No skill in this repo names a second extraction tool.
+- `power_analysis` has three single-command peers plus three commandless ones (below); none
+  of `voltus`, `primepower`, `joules`, or `powerpro` has a second same-dialect alternative.
+- `embedded_compiler` holds only `armcc` with a command; Green Hills and IAR are its
+  commandless peers.
+
+**Products named in domain skills with no documented command, so not detectable by this
+table** (the table is keyed on `which <command>`; a row with no command cannot be probed):
+Synopsys Platform Architect (`arch_simulator`/`synopsys`), ARM Performance Models
+(`arch_simulator`/`arm`), Cadence Virtual System Platform (`arch_simulator`/`cadence`),
+Green Hills MULTI (`embedded_compiler`/`greenhills`), IAR Embedded Workbench
+(`embedded_compiler`/`iar`), Synopsys Synplify (`synthesis`/`synopsys`), Siemens Aprisa
+(`physical_design`/`siemens`), Synopsys PrimePower, Cadence Joules RTL, and Siemens Questa
+PowerPro (all `power_analysis`), Synopsys VC Static (`lint_cdc`/`synopsys`). A command name
+is not guessed here any more than a probe flag is above; each is instead given its `role`
+and `dialect` at the point of use in its domain skill.
 
 ---
 
@@ -142,7 +203,7 @@ and returns it.
 The adapter is `plugins/infrastructure/tools/mcp-adapter.py`. Each server runs the one wrapper
 named by `--wrapper`, except `verilator`: `mode: "lint"` runs `wrap-verilator-lint.sh` from the
 same directory as the configured `wrap-verilator-sim.sh`, because the sim wrapper's first
-argument is a compiled simulation binary. The 8 batch servers therefore use 9 wrappers.
+argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 11 wrapper scripts; `wrap-vcs-compile.sh` and `wrap-xrun-compile.sh` are invoked directly, not through MCP.
 
 ### Tier 2: Interactive session MCP servers (stateful, query-based)
 Use these when an agent iterates many times over an already-loaded design (e.g. ECO timing
@@ -449,6 +510,33 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 | `vsim` | `questa`, `questasim`, `mentor/questa` |
 | `pt_shell` | `primetime`, `synopsys/pt`, `pt_shell` |
 | `fm_shell` | `formality`, `synopsys/formality`, `fm_shell` |
+| `genus` | `genus`, `cadence-genus`, `cadence/genus` |
+| `fc_shell` | `fusion-compiler`, `synopsys/fc`, `fc_shell` |
+| `icc2_shell` | `ic-compiler`, `icc2`, `synopsys/icc2` |
+| `tempus` | `tempus`, `cadence-tempus`, `cadence/tempus` |
+| `conformal` | `conformal`, `cadence-conformal`, `cadence/conformal` |
+| `jg` | `jaspergold`, `cadence-jg`, `cadence/jg` |
+| `vcf` | `vc-formal`, `vcf`, `synopsys/vcf` |
+| `qformal` | `questa-formal`, `qformal`, `mentor/qformal` |
+| `tmax` | `tetramax`, `tmax`, `synopsys/tmax` |
+| `modus` | `modus`, `cadence-modus`, `cadence/modus` |
+| `tessent` | `tessent`, `siemens-tessent`, `siemens/tessent` |
+| `spyglass` | `spyglass`, `synopsys-spyglass`, `synopsys/spyglass` |
+| `vitis_hls` | `vitis`, `vitis-hls`, `xilinx/vitis` |
+| `stratus` | `stratus`, `cadence-stratus`, `cadence/stratus` |
+| `catapult` | `catapult`, `siemens-catapult`, `siemens/catapult` |
+| `vivado` | `vivado`, `xilinx/vivado` |
+| `quartus_sh` | `quartus`, `intel/quartus` |
+| `libero` | `libero`, `microchip/libero` |
+| `artisan` | `artisan`, `arm-artisan`, `arm/artisan` |
+| `siliconsmart` | `siliconsmart`, `synopsys/siliconsmart` |
+| `liberate` | `liberate`, `cadence-liberate`, `cadence/liberate` |
+| `starrc` | `starrc`, `synopsys-starrc`, `synopsys/starrc` |
+| `voltus` | `voltus`, `cadence-voltus`, `cadence/voltus` |
+| `armcc` | `armcc`, `arm-compiler`, `arm/armcc` |
+| `JLinkGDBServer` | `jlink`, `segger`, `segger/jlink` |
+| `t32marm` | `trace32`, `lauterbach`, `lauterbach/trace32` |
+| `armds` | `armds`, `arm-ds`, `arm/armds` |
 | `verilator` | `verilator` |
 | `yosys` | `yosys` |
 | `openroad` | `openroad` |
@@ -739,7 +827,7 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
 ## Stage: wrapper_deployment
 
 ### Domain Rules
-1. Deploy all 9 wrapper scripts to `plugins/infrastructure/tools/`
+1. Deploy all 11 wrapper scripts to `plugins/infrastructure/tools/`
 2. Run `chmod +x` on every wrapper; if permission denied: FAIL and escalate with
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
@@ -791,10 +879,10 @@ wrapper prints nothing, prints something that is not JSON, or prints JSON withou
 wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
-- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 9)
+- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 11)
 
 ### Output Required
-- 9 executable wrapper scripts in `plugins/infrastructure/tools/`
+- 11 executable wrapper scripts in `plugins/infrastructure/tools/`
 
 ---
 
@@ -949,7 +1037,7 @@ silent pass.
    against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
-3. Verify all 9 wrapper scripts exist and have executable bit set
+3. Verify all 11 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 tool-server snippets; `mcp-memory.json` is optional and its absence is not a FAIL) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
@@ -975,12 +1063,37 @@ silent pass.
    least one proprietary tool in the group keeps the WARN rare enough to be read; two
    open-source simulators are on nearly every host.
 8. If any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
-9. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
+9. **Simulator compile smoke test (opt-in)** — gated by `design_state.pipeline_config.simulator_smoke_test`
+   (boolean; absent or `false` is the default). Compiling consumes a license seat that
+   `tool_discovery`/`tool_installation` never touch, so this never runs unless explicitly enabled.
+   - **Disabled (default):** emit WARN — description `"simulator invocation not verified"`, fix
+     `"set design_state.pipeline_config.simulator_smoke_test = true to compile-check detected
+     simulators"`. Never FAIL for this.
+   - **Enabled:** for every `tool-status.json` entry whose `role` is `rtl_simulator` and status is
+     `FOUND` or `FOUND_PREFER_MODULE`, compile a 3-line placeholder module
+     (`module adice_smoke_test; endmodule`) through that tool's wrapper — `wrap-vcs-compile.sh` for
+     `vcs`, `wrap-xrun-compile.sh` for `xrun`, `wrap-verilator-lint.sh` for `verilator`. `vsim` and
+     `iverilog` have no wrapper: record `UNVERIFIED` with no command, same as an unprobed
+     proprietary tool. Read the wrapper's own `status`, never the exit code alone — the reason
+     this check exists at all: `innovus -version`, `vsim -version` and `voltus -version` all exit
+     0 on this host while reporting an expired license, a missing shared library, or a platform
+     install error.
+     - `status: "FAIL"` → FAIL this stage: the tool cannot compile a trivial module.
+     - `status: "WARN"`, `verified: false`, with a license-queue or timeout signal in `warnings`
+       → WARN, not FAIL, so a license-starved site can still sign off.
+     - `status: "PASS"`, or `"WARN"` with `verified: true` → smoke test passed.
+   Record each probed simulator as `{tool, status, verified}` under
+   `simulator_smoke_test.results` in `tool-manifest.json`.
+10. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result
 
 ### QoR Metrics to Evaluate
 - `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
   differing `dialect` values where at least one is `PROPRIETARY_ONLY` — computed by rule 7.
   WARN only; it never blocks sign-off
+- `simulator_smoke_tests_run`: count of `rtl_simulator`-role tools actually compile-checked by
+  rule 9 when `pipeline_config.simulator_smoke_test` is enabled; `0` when disabled or none were
+  `FOUND`. A per-tool compile FAIL is reported through rule 9's stage FAIL path, not through
+  this count.
 
 The rest of this stage's verdict is in `tool-manifest.json` (Output Required) rather than in
 QoR counts: Python env liveness, wrapper executable bits, MCP file presence and the
@@ -992,7 +1105,8 @@ critical-path check.
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
-- [ ] All 9 wrappers deployed and executable
+- [ ] All 11 wrappers deployed and executable
+- [ ] Simulator compile smoke test run and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 tool-server MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`
@@ -1034,11 +1148,12 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
       "path": ""
     }
   ],
-  "wrappers": { "expected": 9, "executable": 0, "missing": [] },
+  "wrappers": { "expected": 11, "executable": 0, "missing": [] },
   "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
   ],
+  "simulator_smoke_test": { "enabled": false, "results": [] },
   "critical_path": { "required": ["yosys", "verilator", "openroad", "sta"], "missing": [] },
   "signoff": false
 }
@@ -1047,4 +1162,6 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
 `python_packages[].resolved_via` is the record behind rule 2's WARN: it is what makes "found, but
 outside the active environment" auditable after the run instead of print-only. `dialect_conflicts`
 lists the members per role, not just the count rule 7 reports, so the conflict can be read back
-without re-deriving it.
+without re-deriving it. `simulator_smoke_test.results` is a list of `{tool, status, verified}` —
+one entry per `rtl_simulator`-role tool rule 9 probed — so a license-queue WARN is distinguishable
+from a tool that was never probed because the gate was disabled.

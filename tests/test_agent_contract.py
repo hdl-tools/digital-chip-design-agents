@@ -233,36 +233,98 @@ def test_progress_guard_present_in_stage_gating(path):
 
 INFRA_SKILL = REPO_ROOT / "plugins" / "infrastructure" / "skills" / "infrastructure" / "SKILL.md"
 
-# The Proprietary table rows: | Tool | Command (alt) | role | dialect | probe |
-PROPRIETARY_ROW = re.compile(r"^\|\s*(?:Synopsys|Cadence|Mentor|Siemens)\s[^|]*\|(.*)$", re.M)
+# A proprietary table data row: | Tool | Command (alt) | `role` | `dialect` | probe |
+# Not vendor-anchored -- the table also carries Xilinx/Intel/Microchip/Arm/SEGGER/
+# Lauterbach rows, which a Synopsys|Cadence|Mentor|Siemens anchor cannot see.
+TABLE_ROW = re.compile(r"^\|(.*)\|\s*$", re.M)
+
+# A domain skill's flat Proprietary bullet, with or without a command:
+# "- **Cadence Genus** (`genus`, dialect `cadence`) -- ..." or
+# "- **Siemens Aprisa** (dialect `siemens`) -- ...". The parenthetical right after
+# the bold name is captured whole; command backticks are pulled out of the part
+# before ", dialect" so the dialect value's own backticks are never mistaken for
+# a command.
+DOMAIN_PROPRIETARY_BULLET = re.compile(r"^- \*\*[^*]+\*\* \(([^)]*)\)", re.M)
+
+
+def _proprietary_rows(text: str) -> list[list[str]]:
+    """Data rows of the infra skill's Proprietary table, as stripped columns.
+
+    Slices from the section heading to the next ``---`` (the same idiom
+    ``_module_system_enum``/``_stage_sections`` use for other sections), then
+    drops the header and separator row so only `Tool | Command (alt) | role |
+    dialect | probe` rows remain.
+    """
+    section = text.split("### Proprietary (detect only", 1)[1].split("\n---", 1)[0]
+    lines = [m.group(1) for m in TABLE_ROW.finditer(section)]
+    data_lines = lines[2:]  # drop header + `|---|---|...` separator
+    return [[c.strip() for c in line.split("|")] for line in data_lines]
+
+
+def _domain_proprietary_commands() -> set[str]:
+    """Every backticked command a domain skill's Proprietary list names.
+
+    Commandless bullets (no backtick before ", dialect") contribute nothing --
+    by decision, a product with no documented command gets no table row.
+    """
+    commands: set[str] = set()
+    for path in SKILL_FILES:
+        if path == INFRA_SKILL:
+            continue
+        text = _read(path)
+        if "### Proprietary" not in text:
+            continue
+        section = text.split("### Proprietary", 1)[1].split("\n### ", 1)[0]
+        for paren in DOMAIN_PROPRIETARY_BULLET.findall(section):
+            if paren.startswith("dialect"):
+                continue  # commandless bullet: "(dialect `synopsys`)", no comma to split on
+            before_dialect = paren.split(", dialect", 1)[0]
+            commands.update(re.findall(r"`([^`]+)`", before_dialect))
+    return commands
 
 
 def test_proprietary_tools_carry_role_and_dialect():
     """A proprietary tool with no role/dialect is modelled as substitutable with
     every other tool of its kind (issue #82): a command line built for one vendor
-    then looks portable to another whose option vocabulary is disjoint."""
+    then looks portable to another whose option vocabulary is disjoint. Issue #84
+    is the follow-up: 27 of the 34 tools domain skills actually tell agents to use
+    had no row at all, so the WARN could never fire for them."""
     text = _read(INFRA_SKILL)
-    rows = PROPRIETARY_ROW.findall(text)
-    assert len(rows) == 7, f"expected 7 proprietary rows, found {len(rows)}"
+    rows = _proprietary_rows(text)
+    assert rows, "no proprietary rows found -- section heading or `---` fence moved"
 
-    for row in rows:
-        command, role, dialect, probe = [c.strip() for c in row.split("|")[:4]]
-        assert role and role != "-", f"proprietary row {command!r} has no role"
-        assert dialect and dialect != "-", f"proprietary row {command!r} has no dialect"
+    all_commands: set[str] = set()
+    for cols in rows:
+        tool, command_col, role, dialect, probe = cols[:5]
+        assert role and role != "-", f"{tool}: proprietary row has no role"
+        assert dialect and dialect != "-", f"{tool}: proprietary row has no dialect"
         # Every row states its probe or says UNVERIFIED -- never blank, and never a
         # flag with no provenance, which is how a guessed flag that grabs a license
         # or opens an interactive shell would get in.
         if "UNVERIFIED" in probe:
             assert not probe.startswith("`"), (
-                f"{command}: row is both UNVERIFIED and carries a command"
+                f"{tool}: row is both UNVERIFIED and carries a command"
             )
         else:
             assert probe.startswith("`"), (
-                f"{command}: probe must be a command in backticks, or say UNVERIFIED"
+                f"{tool}: probe must be a command in backticks, or say UNVERIFIED"
             )
-        # vcs and xrun were verified first and must never regress to UNVERIFIED.
-        if "`vcs`" in command or "`xrun`" in command:
-            assert "UNVERIFIED" not in probe, f"{command}: verified probe expected"
+        all_commands.update(re.findall(r"`([^`]+)`", command_col))
+
+    # vcs, xrun and genus were verified first and must never regress to UNVERIFIED.
+    for cols in rows:
+        command_col, probe = cols[1], cols[4]
+        if any(f"`{c}`" in command_col for c in ("vcs", "xrun", "genus")):
+            assert "UNVERIFIED" not in probe, f"{command_col}: verified probe expected"
+
+    # Criterion (a): every tool a domain skill tells an agent to use is detectable
+    # here, as a primary or an alternate command. This makes the row count
+    # self-deriving -- naming a new proprietary tool in a domain skill and
+    # forgetting the infra table row fails here instead of drifting unnoticed.
+    missing = _domain_proprietary_commands() - all_commands
+    assert not missing, (
+        f"domain skills name these proprietary commands with no infra table row: {missing}"
+    )
 
     # The schema downstream stages read must carry both fields, or the table above
     # is documentation with no recorded output.
@@ -510,9 +572,7 @@ PRODUCT_NAMES = re.compile(r"Yosys|Verilator|OpenROAD|OpenSTA")
 OPEN_SOURCE_ENTRY = re.compile(r"^- \*\*[^*]+\*\* \(`([^`]+)`\)", re.M)
 
 # Proprietary table: | Synopsys Formality | `fm_shell` (`formality`) | lec | synopsys | probe |
-PROPRIETARY_PRIMARY = re.compile(
-    r"^\|\s*(?:Synopsys|Cadence|Mentor|Siemens)[^|]*\|\s*`([^`]+)`", re.M
-)
+PRIMARY_COMMAND = re.compile(r"^`([^`]+)`")
 MAPPING_KEY = re.compile(r"^\|\s*`([^`]+)`\s*\|", re.M)
 
 
@@ -569,7 +629,11 @@ def test_critical_path_tools_are_keyed_by_command():
     )[0]
     table = stage.split("#### Module-to-tool mapping table", 1)[1].split("#### Rules", 1)[0]
     mapping_keys = set(MAPPING_KEY.findall(table))
-    for primary in PROPRIETARY_PRIMARY.findall(skill):
+    for cols in _proprietary_rows(skill):
+        primary_match = PRIMARY_COMMAND.match(cols[1])
+        if not primary_match:
+            continue  # UNVERIFIED, commandless row -- nothing to key a mapping on
+        primary = primary_match.group(1)
         assert primary in mapping_keys, (
             f"proprietary primary command {primary!r} has no module-mapping row keyed "
             "on it, so module_discovery cannot upgrade its tool-status entry"
@@ -833,6 +897,38 @@ def test_failure_class_enum_lists_input_setup(path):
         assert values == set(FAILURE_CLASSES), (
             f"{_rel(path)}: failure_class enum differs from the mapping table: "
             f"{sorted(values ^ set(FAILURE_CLASSES))}"
+        )
+
+
+_CLASS_ALTERNATION = "|".join(sorted(FAILURE_CLASSES - {"none"}, key=len, reverse=True))
+ROW_NAMES_A_CLASS = re.compile(
+    r"`(?:" + _CLASS_ALTERNATION + r")`|\"(?:" + _CLASS_ALTERNATION + r"):"
+)
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_every_fail_or_warn_loop_back_row_names_a_failure_class(path):
+    """Issue #93: a Loop-Back Rules row sends a FAIL/WARN to another stage, but
+    only 3 of 88 rows across the agents named the `failure_class` the resulting
+    `history[]` entry must carry -- every other row left it to be inferred from
+    the condition prose at record time. Skip `meta` (no Loop-Back Rules section,
+    per test_decision_enum_lists_loop_back_for_agents_with_loop_back_rules) and any
+    row whose target is `proceed`: those WARNs never block sign-off and produce no
+    escalation to classify."""
+    text = _read(path)
+    if path.parent.parent.name == "meta":
+        pytest.skip("pipeline-orchestrator has no Loop-Back Rules section")
+    if "## Loop-Back Rules" not in text:
+        pytest.skip("agent has no Loop-Back Rules section")
+    for row in _loop_back_rows(text):
+        condition = row.split("→", 1)[0] if "→" in row else row
+        if "FAIL" not in condition and "WARN" not in condition:
+            continue
+        target = row.split("→", 1)[1].strip() if "→" in row else ""
+        if target.startswith("proceed"):
+            continue
+        assert ROW_NAMES_A_CLASS.search(row), (
+            f"{_rel(path)}: FAIL/WARN row names no failure_class: {row.strip()!r}"
         )
 
 

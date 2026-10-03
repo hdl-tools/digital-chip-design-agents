@@ -25,9 +25,9 @@ floorplan → placement → cts → routing → timing_optimization → power_op
 - KLayout — DRC, LVS, GDS viewing (`klayout`)
 
 ### Proprietary
-- Cadence Innovus (`innovus`)
-- Synopsys IC Compiler 2 (`icc2_shell`)
-- Siemens Aprisa
+- Cadence Innovus (`innovus`, dialect `cadence`)
+- Synopsys IC Compiler 2 (`icc2_shell`, dialect `synopsys`)
+- Siemens Aprisa (dialect `siemens`)
 
 ### MCP Preference
 Full ORFS / LibreLane flows are **not** run via MCP — they are long-running and produce
@@ -43,13 +43,13 @@ placed/routed, prefer:
 4. **Direct execution** — last resort
 
 ## Loop-Back Rules
-- placement FAIL (WNS < −0.5 ns)              → floorplan             (max 2×)
-- routing FAIL (DRC violations > 0)            → routing               (max 3×)
-- routing FAIL (WNS < 0)                       → timing_optimization   (max 3×)
-- timing_optimization FAIL (ECO > 2% cells)   → routing               (max 1×)
-- signoff FAIL (timing)                        → timing_optimization   (max 2×)
-- signoff FAIL (DRC/LVS)                       → routing               (max 2×)
-- signoff FAIL (power/EM)                      → power_optimization    (max 1×)
+- placement FAIL (WNS < −0.5 ns)              → floorplan             (max 2×) `timing`
+- routing FAIL (DRC violations > 0)            → routing               (max 3×) `drc_lvs`
+- routing FAIL (WNS < 0)                       → timing_optimization   (max 3×) `timing`
+- timing_optimization FAIL (ECO > 2% cells)   → routing               (max 1×) `power_area`
+- signoff FAIL (timing)                        → timing_optimization   (max 2×) `timing`
+- signoff FAIL (DRC/LVS)                       → routing               (max 2×) `drc_lvs`
+- signoff FAIL (power/EM)                      → power_optimization    (max 1×) `power_area`
 
 ## Sign-off Criteria (all required)
 - setup_wns_ns: >= design_state.constraints.timing.wns_ns_target (default: 0)
@@ -150,7 +150,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

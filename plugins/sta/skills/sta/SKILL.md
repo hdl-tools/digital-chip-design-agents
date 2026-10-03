@@ -51,8 +51,8 @@ and timing sign-off. WNS ≥ 0 and TNS = 0 at all corners required for tape-out.
 - **OpenROAD STA subsystem** (`openroad -no_init`) — STA within the OpenROAD PD flow; runs sequentially via tcl script
 
 ### Proprietary
-- **Synopsys PrimeTime** (`pt_shell`) — gold-standard multi-corner STA and power analysis
-- **Cadence Tempus** (`tempus`) — concurrent multi-mode multi-corner STA with ECO guidance
+- **Synopsys PrimeTime** (`pt_shell`, dialect `synopsys`) — gold-standard multi-corner STA and power analysis
+- **Cadence Tempus** (`tempus`, dialect `cadence`) — concurrent multi-mode multi-corner STA with ECO guidance
 
 ### Sequential Flow Log Review (OpenSTA / OpenROAD STA)
 

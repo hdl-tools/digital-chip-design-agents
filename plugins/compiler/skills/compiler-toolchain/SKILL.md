@@ -53,9 +53,9 @@ toolchain no software can run on the designed chip.
 - **QEMU** (`qemu-system-*`) — instruction-accurate ISA emulation for toolchain validation without hardware
 
 ### Proprietary
-- **Green Hills MULTI** — safety-critical compiler and debugger IDE
-- **IAR Embedded Workbench** — certified compiler for ARM/RISC-V
-- **Arm Compiler 6** (`armcc`) — LLVM-based compiler for Arm targets
+- **Green Hills MULTI** (dialect `greenhills`) — safety-critical compiler and debugger IDE
+- **IAR Embedded Workbench** (dialect `iar`) — certified compiler for ARM/RISC-V
+- **Arm Compiler 6** (`armcc`, dialect `arm`) — LLVM-based compiler for Arm targets
 
 ---
 

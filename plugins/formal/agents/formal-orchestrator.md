@@ -27,9 +27,9 @@ property_planning → environment_setup → fpv_run → cex_analysis → lec_run
 - Tabby CAD Suite
 
 ### Proprietary
-- Cadence JasperGold (`jg`)
-- Synopsys VC Formal (`vcf`)
-- Siemens Questa Formal (`qformal`)
+- Cadence JasperGold (`jg`, dialect `cadence`)
+- Synopsys VC Formal (`vcf`, dialect `synopsys`)
+- Siemens Questa Formal (`qformal`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:
@@ -38,10 +38,10 @@ When invoking open-source tools, follow the execution hierarchy:
 3. **Direct execution** — last resort; SymbiYosys/Yosys proof logs can be very large
 
 ## Loop-Back Rules
-- fpv_run: CEX found (RTL bug)           → write fix_request (failure_class=formal_cex, includes CEX trace path) → ESCALATE awaiting pipeline-orchestrator
-- fpv_run: vacuous proof                 → environment_setup                (max 3×)
-- fpv_run: inconclusive                  → fpv_run (increase bound)         (max 3×)
-- lec_run: unmatched points              → escalate: "Netlist does not match RTL/golden model at the reported points; lec_run compares two already-produced artifacts and regenerates neither. Re-run synthesis to produce a corrected netlist (or confirm the RTL/golden model is current), then re-run lec_run."
+- fpv_run: CEX found (RTL bug)           → write fix_request (failure_class=formal_cex, includes CEX trace path) → ESCALATE awaiting pipeline-orchestrator `functional`
+- fpv_run: vacuous proof                 → environment_setup                (max 3×) `tool_error`
+- fpv_run: inconclusive                  → fpv_run (increase bound)         (max 3×) `tool_error`
+- lec_run: unmatched points              → escalate: "functional: Netlist does not match RTL/golden model at the reported points; lec_run compares two already-produced artifacts and regenerates neither. Re-run synthesis to produce a corrected netlist (or confirm the RTL/golden model is current), then re-run lec_run."
 
 ## Sign-off Criteria
 - unproven_p0_properties: 0
@@ -140,7 +140,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->

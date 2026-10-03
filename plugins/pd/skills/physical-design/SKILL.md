@@ -53,9 +53,9 @@ criteria enforced by the physical-design orchestrator.
 - **KLayout** (`klayout`) — DRC, LVS, and GDS-II viewing/editing; used for signoff DRC in open-source flows
 
 ### Proprietary
-- **Cadence Innovus** (`innovus`) — floorplan through signoff; interactive and batch modes
-- **Synopsys IC Compiler 2** (`icc2_shell`) — hierarchical PD with Fusion technology
-- **Siemens Aprisa** — physical implementation for advanced nodes
+- **Cadence Innovus** (`innovus`, dialect `cadence`) — floorplan through signoff; interactive and batch modes
+- **Synopsys IC Compiler 2** (`icc2_shell`, dialect `synopsys`) — hierarchical PD with Fusion technology
+- **Siemens Aprisa** (dialect `siemens`) — physical implementation for advanced nodes
 
 ### Sequential Flow Log Review (OpenROAD / LibreLane)
 

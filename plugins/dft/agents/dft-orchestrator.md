@@ -23,9 +23,9 @@ dft_architecture → scan_insertion → atpg → bist_insertion → jtag_setup �
 - OpenROAD DFT utilities (`openroad`)
 
 ### Proprietary
-- Synopsys TetraMAX ATPG (`tmax`)
-- Cadence Modus Test (`modus`)
-- Siemens Tessent (`tessent`)
+- Synopsys TetraMAX ATPG (`tmax`, dialect `synopsys`)
+- Cadence Modus Test (`modus`, dialect `cadence`)
+- Siemens Tessent (`tessent`, dialect `siemens`)
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:
@@ -34,12 +34,12 @@ When invoking open-source tools, follow the execution hierarchy:
 3. **Direct execution** — last resort; scan insertion and DRC logs can be very large
 
 ## Loop-Back Rules
-- dft_architecture FAIL (scan-readiness finding needs an RTL change) → escalate: "The design contains a construct that blocks scan and that scan insertion cannot repair (see the scan-readiness audit report for the instance and rule). It is owned by the RTL flow; fix the RTL, then re-run dft_architecture."
-- scan_insertion FAIL (DRC errors repairable by insertion) → scan_insertion  (max 3×)
-- scan_insertion FAIL (DRC error caused by the design: generated clock, uncontrollable async reset, unintended latch, combinational loop) → escalate: "Scan DRC fails on a construct in the incoming design that re-running scan insertion does not change. Fix it in the RTL flow, then re-run scan_insertion."
-- atpg FAIL (SAF coverage < target)               → scan_insertion  (max 2×)
-- dft_signoff FAIL (BIST fail)                    → bist_insertion  (max 2×)
-- dft_signoff FAIL (JTAG connectivity fail)        → jtag_setup      (max 2×)
+- dft_architecture FAIL (scan-readiness finding needs an RTL change) → escalate: "connectivity: The design contains a construct that blocks scan and that scan insertion cannot repair (see the scan-readiness audit report for the instance and rule). It is owned by the RTL flow; fix the RTL, then re-run dft_architecture."
+- scan_insertion FAIL (DRC errors repairable by insertion) → scan_insertion  (max 3×) `drc_lvs`
+- scan_insertion FAIL (DRC error caused by the design: generated clock, uncontrollable async reset, unintended latch, combinational loop) → escalate: "drc_lvs: Scan DRC fails on a construct in the incoming design that re-running scan insertion does not change. Fix it in the RTL flow, then re-run scan_insertion."
+- atpg FAIL (SAF coverage < target)               → scan_insertion  (max 2×) `coverage_gap`
+- dft_signoff FAIL (BIST fail)                    → bist_insertion  (max 2×) `functional`
+- dft_signoff FAIL (JTAG connectivity fail)        → jtag_setup      (max 2×) `connectivity`
 
 ## Sign-off Criteria
 - scan_drc_errors: 0
@@ -138,7 +138,15 @@ Where a condition has **no** Loop-Back Rules row at all, there is nothing to def
 class to map from. Do not invent a `failure_class` to manufacture one: record the stage
 result, set `suggested_next_step` to the least destructive action consistent with it, and name
 the missing row in the entry's `reason`. A gap in the rules then surfaces as a gap, rather
-than as an invented class whose mapped strategy escalates a run that should have continued. This table mirrors the authoritative copy in
+than as an invented class whose mapped strategy escalates a run that should have continued.
+
+Where a Loop-Back Rules row exists but names no class, that is an authoring gap in the row, not
+a reason to skip classification: pick the closest class from the table above and name it in the
+entry's `reason` as inferred rather than written into the row, so the gap is still visible for
+the row to be fixed. Do not leave `failure_class` empty or invent a twelfth value to avoid the
+choice.
+
+This table mirrors the authoritative copy in
 `plugins/meta/skills/pipeline-orchestration/SKILL.md`, so every orchestrator carries the
 mapping without loading that skill; `tests/test_agent_contract.py` fails if the two drift.
 <!-- END SHARED:failure-classification -->
