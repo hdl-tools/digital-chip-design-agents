@@ -1,0 +1,64 @@
+{
+  "_comment": "Synthesis found an architecture-level timing gap and flagged architecture for refinement (synthesis Architecture Refinement Request section). The next architecture-orchestrator run enters refinement mode at perf_modelling using the persisted candidates.",
+  "format_version": "1.5",
+  "design_name": "example_dsp_core",
+  "created_at": "2026-05-01T09:00:00Z",
+  "updated_at": "2026-05-02T14:20:00Z",
+  "constraints": {
+    "clock": { "clk_mhz": 500, "clk_uncertainty_ps": 50 },
+    "timing": { "wns_ns_target": 0, "tns_ns_target": 0 },
+    "area": { "area_um2": 2000000, "utilization_pct_target": 75, "utilization_pct_max": 85 },
+    "power": { "power_mw": 100 }
+  },
+  "architecture": {
+    "selected_candidate": "pipelined_mac_array",
+    "candidates": [
+      { "name": "iterative_mac", "profile": "conservative", "freq_mhz": 550, "area_um2": 900000, "power_mw": 40, "risk": "low",
+        "assumptions": ["single shared multiplier", "4-cycle MAC latency"], "status": "rejected",
+        "rejection_reason": "throughput 0.25 MAC/cycle misses the 1 MAC/cycle target", "evaluated_in_run": "architecture_20260501_090000123_a1b2c3" },
+      { "name": "pipelined_mac_array", "profile": "balanced", "freq_mhz": 520, "area_um2": 1800000, "power_mw": 85, "risk": "medium",
+        "assumptions": ["4-lane array", "4-stage pipeline"], "status": "selected",
+        "rejection_reason": null, "evaluated_in_run": "architecture_20260501_090000123_a1b2c3" },
+      { "name": "systolic_8x8", "profile": "aggressive", "freq_mhz": 600, "area_um2": 2600000, "power_mw": 140, "risk": "high",
+        "assumptions": ["8x8 systolic grid", "weight-stationary dataflow"], "status": "rejected",
+        "rejection_reason": "area 2600000 um2 and power 140 mW both exceed the 2000000 um2 / 100 mW budgets", "evaluated_in_run": "architecture_20260501_090000123_a1b2c3" }
+    ],
+    "microarch_doc": "docs/dsp_core_microarch.md",
+    "signoff": true,
+    "refinement_needed": true,
+    "refinement_request": {
+      "requested_by": "synthesis-orchestrator",
+      "requested_at": "2026-05-02T14:20:00Z",
+      "failure_class": "timing",
+      "constraint_ref": "clock.clk_mhz",
+      "measured": "WNS -0.42 ns at ss_setup (achieved ~454 MHz vs 500 MHz target)",
+      "reason": "critical path is the 4-stage multiplier pipeline's second stage at every compile strategy tried (3); retiming and RTL restructuring cannot add a stage, so the pipeline depth the architecture chose is the limit",
+      "evidence_path": "syn/reports/timing_ss_setup.rpt"
+    },
+    "refinement_history": []
+  },
+  "synthesis": {
+    "tool": "yosys",
+    "pdk": "sky130",
+    "netlist": "syn/out/dsp_core.v",
+    "wns_ns": -0.42,
+    "cells": 48210,
+    "area_um2": 1710000,
+    "lec_unmatched": 0,
+    "signoff": false
+  },
+  "history": [
+    {
+      "timestamp": "2026-05-02T14:20:00Z",
+      "agent": "synthesis-orchestrator",
+      "stage": "compile_final",
+      "decision": "escalate",
+      "confidence": "high",
+      "failure_class": "timing",
+      "retry_strategy": "refine",
+      "suggested_next_step": "escalate",
+      "reason": "timing: WNS -0.42 ns at ss_setup against clock.clk_mhz 500 after 3 compile strategies; fault is the architecture's multiplier pipeline depth - set architecture.refinement_needed; re-invoke the architecture orchestrator",
+      "constraint_ref": "clock.clk_mhz"
+    }
+  ]
+}

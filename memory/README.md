@@ -74,7 +74,7 @@ sign-off stage passes all criteria; escalated, abandoned, and partial runs stay 
 
 | Domain       | key_metrics fields                                                    |
 |--------------|-----------------------------------------------------------------------|
-| architecture | `selected_arch`, `estimated_mhz`, `estimated_area_um2`              |
+| architecture | `selected_arch`, `estimated_mhz`, `estimated_area_um2`, `candidates_evaluated`, `winning_candidate_profile`, `refinement_of` |
 | compiler     | `isa_tests_passed`, `abi_compliant`, `regression_pass_rate`          |
 | dft          | `scan_coverage_pct`, `atpg_fault_coverage_pct`                       |
 | firmware     | `build_pass`, `flash_size_kb`, `bsp_tests_passed`                    |
@@ -142,6 +142,7 @@ Key top-level fields:
 - `interfaces` — AXI/protocol interface list (written by architecture)
 - `constraints` — shared timing, area, and power targets (written by architecture)
 - `architecture`, `rtl`, `synthesis`, `sta`, `pd`, ... — per-domain signoff state
+- `architecture.candidates[]` — every candidate the architecture orchestrator evaluated, selected and rejected, with its PPA estimate, risk, `status` and `rejection_reason`. `architecture.refinement_needed` + `architecture.refinement_request` — set by synthesis, PD or STA when a measured gap is an architecture fault; the architecture orchestrator then resumes at `perf_modelling` from the persisted candidates and, on sign-off, moves the request to `architecture.refinement_history[]`. Re-entry is manual: nothing dispatches architecture automatically.
 - `history[]` — append-only execution trace; one entry per **stage** (not per run — as of format_version 1.3), each with: `timestamp`, `agent`, `stage`, `decision` (`proceed|escalate|abandoned|await_approval`), `confidence` (`high|medium|low`), `failure_class` (see taxonomy below), `retry_strategy` (`none|regenerate|refine|escalate`, mapped from `failure_class`; format_version 1.5+), `suggested_next_step` (`proceed|loop_back_to:<stage>|retry_stage|escalate|abandon`), `reason`, `constraint_ref`
 - `fix_requests[]` — structured RTL fix requests written by verification/formal on DUT bug; consumed by RTL orchestrator and dispatched by pipeline-orchestrator (format_version 1.2+)
 - `cross_domain_iteration_count` — integer count of verification↔RTL feedback cycles driven by pipeline-orchestrator; capped at 3 before escalation

@@ -175,7 +175,14 @@ are missing or null. `constraint_ref` in `history[]` entries tags every QoR deci
 constraint key it evaluated. See `plugins/meta/skills/pipeline-orchestration/SKILL.md`
 § Constraints Schema and `CHANGELOG.md` for full details.
 
-## 9. Architecture Exploration Improvement
+## ~~9. Architecture Exploration Improvement~~ ✓ DONE (#35)
+
+Implemented: candidates persist to `architecture.candidates[]`. Synthesis, PD and STA set
+`architecture.refinement_needed` plus `refinement_request` on an architecture-level gap,
+and the architecture orchestrator resumes at `perf_modelling` from the persisted
+candidates. The experience record carries `candidates_evaluated`,
+`winning_candidate_profile` and `refinement_of`. Remaining (V2): the pipeline-orchestrator
+does not auto-dispatch architecture on the flag. Original proposal below.
 
 The architecture SKILL.md already mandates generating three candidates (conservative,
 balanced, aggressive) with a trade-off matrix. The gap is that candidates exist only

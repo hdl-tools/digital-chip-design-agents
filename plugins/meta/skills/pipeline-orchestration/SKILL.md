@@ -500,9 +500,14 @@ Always pass the `fix_request.id` in the subagent prompt so the child can locate 
 
 ### V2 extension points (not wired in V1)
 
-- Architecture↔RTL refinement loop: `architecture.refinement_needed=true` could trigger
-  an arch re-run. The `fix_request` schema is intentionally producer-agnostic; only
-  `created_by` would need a new value (`architecture-orchestrator`).
+- Architecture refinement auto-dispatch: the flag and request are implemented (#35).
+  Synthesis, PD and STA set `architecture.refinement_needed=true` plus
+  `architecture.refinement_request` when a measured gap is an architecture fault. The
+  architecture orchestrator then resumes at `perf_modelling` from the persisted
+  `architecture.candidates[]` on its next invocation. What is **not** wired: this
+  orchestrator does not yet dispatch the architecture orchestrator on that flag, and it does
+  not re-run synthesis, PD or STA afterwards. The user re-invokes them. Refinement requests do
+  not use `fix_requests[]`.
 - Formal property-bug routing: `failure_class=formal_cex` with `suspected_owner=formal`
   would route to the formal orchestrator instead of RTL. Not implemented in V1.
 - **LEC unmatched-points loop**: `lec_run: unmatched points` in `formal-orchestrator.md` is intentionally **not** connected to the fix_request protocol in V1. LEC failures are netlist↔RTL mismatches introduced at synthesis — the correct consumer is `synthesis-orchestrator`, not `rtl-design-orchestrator`. Deferred to V2.
