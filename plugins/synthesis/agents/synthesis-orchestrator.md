@@ -40,6 +40,9 @@ When invoking open-source tools, follow the execution hierarchy:
 - compile_final FAIL (area > budget)    → compile_explore  (max 2×) `power_area`
 - netlist_qc FAIL (LEC unmatched)       → compile_final    (max 2×) `functional`
 - netlist_qc FAIL (unmapped cells)      → compile_final    (max 2×) `tool_error`
+- compile_explore FAIL (front-end parse or elaboration error, e.g. a yosys syntax error on sv2v output) → escalate: "functional: <file>:<line> is not accepted by the synthesis front-end - the RTL is upstream; route to rtl-design (RTL Lint Gate front-end check)"
+- netlist_qc FAIL (black box: undefined module that resolves to first-party RTL) → escalate: "input_setup: <module> (<file>) is missing from the synthesis source list <list> - register it upstream; re-running synthesis cannot fix it"
+- netlist_qc FAIL (black box: no first-party RTL - library, macro or IP view absent) → escalate: "input_setup: <module> has no definition in the synthesis inputs - supply its library or stub view"
 
 ## Sign-off Criteria
 - wns_ns: >= design_state.constraints.timing.wns_ns_target (default: 0)

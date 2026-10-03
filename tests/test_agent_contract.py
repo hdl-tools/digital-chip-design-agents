@@ -941,7 +941,12 @@ def test_rtl_design_checks_its_inputs_before_linting_them():
     rows = _loop_back_rows(text)
     input_rows = [r for r in rows if r.startswith("- design_input_check FAIL")]
     assert input_rows, "no Loop-Back Rules row for design_input_check FAIL"
-    for row in input_rows:
+    # Issue #127: a module this run added but did not register in a tool's source
+    # list is the run's own omission. Its fix is a list edit, never an RTL edit.
+    registration = [r for r in input_rows if "registration only" in r]
+    assert len(registration) == 1, "no design_input_check row for an unregistered module"
+    assert "edit no RTL" in registration[0] and "max 1×" in registration[0]
+    for row in (r for r in input_rows if r not in registration):
         target = row.split("→", 1)[1].strip()
         assert target.startswith("escalate") and "input_setup" in target, (
             f"design_input_check FAIL does not escalate as input_setup: {row.strip()!r}"
@@ -960,7 +965,12 @@ def test_rtl_design_checks_its_inputs_before_linting_them():
         else:
             assert target.startswith("escalate") and "input_setup" in target
 
-    completed = [r for r in rows if r.startswith("- lint_check FAIL") and "did not complete" not in r]
+    completed = [
+        r for r in rows
+        if r.startswith("- lint_check FAIL")
+        and "did not complete" not in r
+        and "front-end check" not in r
+    ]
     assert len(completed) == 1 and "rule check completed" in completed[0], (
         "the plain lint_check row must say it applies to a completed rule check"
     )
@@ -1016,6 +1026,49 @@ def test_rtl_lint_gate_covers_an_aborted_run(path):
         "Record `input_setup`, edit no RTL",
     ):
         assert clause in flat, f"{_rel(path)}: RTL Lint Gate is missing clause {clause!r}"
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_rtl_lint_gate_reaches_the_converted_file_and_every_source_list(path):
+    """Issues #126 and #127. Verilator, slang and the simulator all read the
+    SystemVerilog; none reads sv2v output or the PD source list. A part-select on a
+    function-call result and a module missing from one list both pass every gate the
+    agent ran and break the netlist. And the stub carve-out pre-labelled the second
+    one's only lint symptom as informational."""
+    if path.parent.parent.name not in RTL_AUTHORING_AGENTS:
+        return
+    flat = _flat(_read(path))
+    for clause in (
+        "Lint does not prove the downstream front-end accepts the RTL",
+        "hierarchy -check",
+        "`f(x)[N-1:0]`",
+        "never in the converted file",
+        "A new module is not integrated until every tool's source list can see it",
+        "--rtl-dir",
+        "A stub is benign only if you can name that",
+        "is not a stub: it is a missing filelist entry",
+    ):
+        assert clause in flat, f"{_rel(path)}: RTL Lint Gate is missing clause {clause!r}"
+
+
+def test_frontend_and_black_box_failures_have_a_route():
+    """Issue #126: a yosys syntax error in synth_check had no Loop-Back row, so it had
+    no classified route back to the stage that wrote the construct. Issue #127:
+    synthesis checked for black boxes but had no row for one either."""
+    rtl_rows = _loop_back_rows(_read(RTL_AGENT))
+    parse = [r for r in rtl_rows if r.startswith("- synth_check FAIL (parse")]
+    assert parse and parse[0].split("→", 1)[1].strip().startswith("rtl_coding")
+    assert any(r.startswith("- lint_check FAIL (front-end check") for r in rtl_rows)
+
+    synth_agent = REPO_ROOT / "plugins" / "synthesis" / "agents" / "synthesis-orchestrator.md"
+    black_box = [r for r in _loop_back_rows(_read(synth_agent)) if "black box" in r]
+    assert len(black_box) == 2, "synthesis needs a first-party and a missing-view black-box row"
+    for row in black_box:
+        assert row.split("→", 1)[1].strip().startswith("escalate") and "input_setup" in row
+
+    knowledge = _flat(_read(RTL_KNOWLEDGE))
+    assert "iverilog -Wall out.v" not in knowledge, "knowledge still parses sv2v output with iverilog"
+    assert "a Surelog-fronted synth_check passes RTL that breaks PD" in knowledge
 
 
 def test_rtl_flow_doc_and_knowledge_follow_the_agent():

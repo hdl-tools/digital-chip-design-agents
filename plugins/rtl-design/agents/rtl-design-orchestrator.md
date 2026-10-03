@@ -39,10 +39,15 @@ When invoking open-source tools, follow the execution hierarchy:
 
 ## Loop-Back Rules
 - design_input_check FAIL (input set wrong: duplicate include basename, stale or sibling generated tree, missing path, shadowing config) → escalate: "input_setup: <file> resolves from <path used> ahead of <path intended> - repoint the filelist, include path or config; no RTL was edited"
+- design_input_check FAIL (registration only: a module this run added is missing from a tool's source list) → rtl_coding (add the file to each list that misses it; edit no RTL; max 1×) `connectivity`
 - lint_check FAIL (rule check did not complete; cause in the input set, or not attributed to RTL this run wrote) → escalate: "input_setup: lint stopped before any rule ran - <evidence>; the RTL was not evaluated and no RTL was edited"
 - lint_check FAIL (rule check did not complete; parse error confined to RTL this run wrote, design_input_check PASS) → rtl_coding (counts toward the 5× below; `tool_error`, never `functional`)
 - lint_check FAIL (errors > 0, rule check completed) → rtl_coding        (max 5×) `functional`
+- lint_check FAIL (front-end check: converted RTL does not parse in the downstream tool) → rtl_coding (fix the source construct, never the converted file; counts toward the 5× above) `tool_error`
 - cdc_rdc_analysis FAIL (unwaived violations) → rtl_coding        (max 3×) `connectivity`
+- synth_check FAIL (parse or elaboration error in the synthesis front-end, e.g. a yosys syntax error on sv2v output) → rtl_coding (fix the source construct, then re-run the lint gate's front-end check; max 2×) `tool_error`
+- synth_check FAIL (black box or undefined module that resolves to first-party RTL) → rtl_coding (add the file to the synthesis source list; edit no RTL; max 1×) `connectivity`
+- synth_check FAIL (black box with no first-party RTL: missing library, macro or IP view) → escalate: "input_setup: <module> has no definition in the synthesis inputs - supply its library or stub view"
 - synth_check FAIL (WNS < −0.5 ns)           → rtl_coding        (max 2×) `timing`
 - synth_check FAIL (area > 120% estimate)    → module_planning   (max 1×) `power_area`
 - rtl_signoff FAIL (missing modules)         → module_planning   (max 1×) `spec_gap`
@@ -52,6 +57,8 @@ When invoking open-source tools, follow the execution hierarchy:
 - lint_errors: 0
 - cdc_violations_unwaived: 0
 - all_modules_implemented: true
+- modules_missing_from_source_lists: 0 (exemptions named with a reason; RTL Lint Gate item 9)
+- frontend_parse_errors: 0 wherever a downstream flow converts the RTL before synthesis (RTL Lint Gate item 8)
 
 ## Stage Agent Output Format
 Each stage must return:
@@ -73,14 +80,14 @@ Each stage must return:
 1. Read the rtl-design skill before each stage
 2. Enforce SystemVerilog coding standards from skill at every rtl_coding stage
 3. Escalate clearly if max iterations exceeded — show state and root cause (procedure: Stage Gating and Escalation, item 3)
-4. Output: RTL package (filelist.f, all .sv files, assertions, design-input report, lint/CDC reports)
+4. Output: RTL package (filelist.f, all .sv files, assertions, design-input report with source-list registration, lint/CDC reports, front-end check result)
 5. Read `<MEM>/rtl-design/knowledge.md` before the first stage. Write an experience record to `<MEM>/rtl-design/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
 6. When closing a claimed `fix_request`: set `status=fixed`, populate `rtl_response` (diff_summary, files_changed, fixed_at), append an entry to that fix_request's `history[]`. Use `constraint_ref=<fix_request.id>` in the top-level `history[]` entry. Do not modify any `fix_requests[]` entry not set to `claimed` by this run.
 7. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the Failure Classification & Retry Strategy table below; `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 8. Checkpoint gate (at `rtl_signoff` only, **unless** a `fix_request.id` was passed in the prompt — skip the gate in fix-request-servicing mode): before setting `rtl.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"rtl_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "rtl_signoff", "agent": "rtl-design-orchestrator", "reason": "checkpoint rtl_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: lint/CDC status, module count>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `rtl.signoff=true`. On re-invocation: if `"rtl_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 9. Constraint validation (at `module_planning`, skip in fix-request-servicing mode): read `design_state.constraints`. Required: `clock.clk_mhz`. If missing or `null`, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "module_planning", "agent": "rtl-design-orchestrator", "reason": "required constraint clock.clk_mhz missing from design_state.constraints", "fix_request_id": null, "last_summary": "clock.clk_mhz", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "clock.clk_mhz"`, and halt. For optional absent constraints (timing targets, area/power budgets), use schema defaults and include a fallback note in the stage `reason`. Tag `constraint_ref` in history entries when evaluating QoR against a constraint (e.g. `"timing.wns_ns_target"` at `synth_check`).
-10. Fix-request lint gate: in fix-request-servicing mode, run `lint_check` on the fix before closing the `fix_request` — the RTL Lint Gate below applies to fix output exactly as it does to first authoring, and rule 11 applies before it. Set `status=fixed` only when `lint_check` passes with 0 errors, and state the post-fix lint result (tool, command, error and warning counts) in `rtl_response.diff_summary`. If the fix cannot be made lint-clean within the `lint_check` loop-back cap, or the gate's regression, no-progress or intent-drift guard fires, leave the entry `claimed` and escalate; the pipeline-orchestrator marks a still-`claimed` entry abandoned. Never close a `fix_request` on a fix that silences the reported failure by changing behaviour the `fix_request` did not ask to change.
-11. Input-set gate: run `design_input_check` before the first `lint_check`, and again before any later `lint_check` if the filelist, an include path, a generated header tree or the tool's project/config file changed since it last passed — including in fix-request-servicing mode. A lint result is evidence about the RTL only if the tool read the intended files and its rule check completed. On `design_input_check` FAIL, or a `lint_check` whose rule check did not complete for a reason that is not a parse error in RTL this run wrote: edit no `.v`/`.sv` file, append the terminal `history[]` entry with `decision: "escalate"`, `failure_class: "input_setup"`, `retry_strategy: "escalate"`, `suggested_next_step: "escalate"` and a `reason` naming the file, the path the tool used, the path intended and the line to change; in fix-request-servicing mode leave the entry `claimed`. Never delete a port, signal or declaration to silence a duplicate-declaration or undeclared-identifier message before the input set has passed this gate.
+10. Fix-request lint gate: in fix-request-servicing mode, run `lint_check` on the fix before closing the `fix_request` — the RTL Lint Gate below applies to fix output exactly as it does to first authoring, and rule 11 applies before it. Set `status=fixed` only when `lint_check` passes with 0 errors — including the front-end check (RTL Lint Gate item 8) wherever a downstream flow converts the RTL, since a repair is the likeliest moment to introduce a construct the converter cannot lower — and state the post-fix lint and front-end results (tool, command, error and warning counts, exit status) in `rtl_response.diff_summary`. If the fix cannot be made lint-clean within the `lint_check` loop-back cap, or the gate's regression, no-progress or intent-drift guard fires, leave the entry `claimed` and escalate; the pipeline-orchestrator marks a still-`claimed` entry abandoned. Never close a `fix_request` on a fix that silences the reported failure by changing behaviour the `fix_request` did not ask to change.
+11. Input-set gate: run `design_input_check` before the first `lint_check`, and again before any later `lint_check` if the filelist, an include path, a generated header tree or the tool's project/config file changed since it last passed — including in fix-request-servicing mode. A lint result is evidence about the RTL only if the tool read the intended files and its rule check completed. On `design_input_check` FAIL — other than the registration-only case, where a module this run added is missing from a source list and the fix is adding it to that list — or a `lint_check` whose rule check did not complete for a reason that is not a parse error in RTL this run wrote: edit no `.v`/`.sv` file, append the terminal `history[]` entry with `decision: "escalate"`, `failure_class: "input_setup"`, `retry_strategy: "escalate"`, `suggested_next_step: "escalate"` and a `reason` naming the file, the path the tool used, the path intended and the line to change; in fix-request-servicing mode leave the entry `claimed`. Never delete a port, signal or declaration to silence a duplicate-declaration or undeclared-identifier message before the input set has passed this gate.
 
 <!-- BEGIN SHARED:failure-classification (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Failure Classification & Retry Strategy
@@ -285,7 +292,10 @@ and blocking assignments are correct there.
    for the files you touched. A file linted alone reports its submodules as unknown.
 4. **A stubbed module is not a bug in the file that instantiates it.** A library cell, hard
    macro, vendor primitive or black-boxed IP missing from the filelist leaves the nets it drives
-   looking undriven. Record those findings as informational and name the stub.
+   looking undriven. Record those findings as informational and name the stub and the library,
+   macro or IP it stands for. A stub is benign only if you can name that. An unknown module
+   that resolves to first-party RTL in this repository is not a stub: it is a missing filelist
+   entry (item 9).
 5. **Say what proved each finding.** Quote the tool's message and rule name for a tool-proven
    finding; label anything you reasoned without a tool run `UNVERIFIED`. A clean lint run proves
    nothing about CDC, reset sequencing, FSM reachability, protocol deadlock or arithmetic
@@ -304,11 +314,33 @@ and blocking assignments are correct there.
    first shadows the current one. Record `input_setup`, edit no RTL, and escalate with the
    paths. Only a parse error in a file this run wrote, with the input set checked, is yours to
    repair.
-8. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
-   runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM` as
-   warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
-   escalation. If it is unavailable, the items above stand on their own — it augments, never
-   replaces, this gate.
+8. **Lint does not prove the downstream front-end accepts the RTL.** Verilator, slang and the
+   simulation regression all read SystemVerilog natively. If any downstream flow converts this
+   RTL before synthesis — sv2v, Surelog/UHDM, a vendor SV-to-Verilog step — run that conversion
+   over the filelist and parse its output with the tool that will consume it, e.g.
+   `sv2v <files> > out.v && yosys -q -p 'read_verilog out.v; hierarchy -check -top <top>'`.
+   Report it as its own gate, the front-end check, with the command and its exit status. A
+   construct that is legal SystemVerilog and illegal in the target revision — a part-select on
+   a function-call result, `f(x)[N-1:0]`, is the canonical case — passes lint and every
+   simulation and fails only here, because nothing else reads the converted file. Fix such an
+   error in the source construct, never in the converted file. Read the item 4 stubs into the
+   consuming tool as black boxes first (`read_verilog -lib <stubs>`), so `hierarchy -check`
+   fails only on modules that are really missing. If no conversion tool is available, report
+   the gate NOT RUN.
+9. **A new module is not integrated until every tool's source list can see it.** Projects keep
+   separate source lists for simulation, lint, synthesis, PD and formal, often as Makefile
+   variables. When you add an RTL file, enumerate every source list that feeds a tool in this
+   project and confirm the file is in each, or state why it should not be. Converters and
+   synthesisers black-box a module missing from their list without an error, and the
+   simulation regression cannot notice because it reads a different list. Where the lists are
+   `.f` files, or can be dumped to one, run `check_design_inputs.py <filelist.f> --rtl-dir <rtl>
+   --list <name>=<file> ...` from `plugins/rtl-design/skills/rtl-design/`: it names each list
+   that misses a module on disk.
+10. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
+    runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM`
+    as warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
+    escalation. If it is unavailable, the items above stand on their own — it augments, never
+    replaces, this gate.
 <!-- END SHARED:rtl-lint-gate -->
 
 ## Memory

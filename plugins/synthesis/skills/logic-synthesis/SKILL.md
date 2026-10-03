@@ -163,7 +163,11 @@ When used inside OpenROAD Flow Scripts (ORFS) or LibreLane, the Yosys log appear
 ## Stage: netlist_qc
 
 ### Checks Required
-1. No black boxes (undefined modules) in netlist
+1. No black boxes (undefined modules) in netlist. A black box is an input-set defect, not a
+   compile result: if it resolves to first-party RTL, that file is missing from the synthesis
+   source list (sv2v and yosys black-box it without an error); otherwise a library, macro or
+   IP view is missing. Either way re-running the compile cannot fix it — name the module, the
+   file or view, and the list, and escalate as `input_setup`
 2. No combinational loops (`report_loop`)
 3. Scan chains intact (if DFT-enabled compile)
 4. Power/ground connections correct (tie cells, well ties)

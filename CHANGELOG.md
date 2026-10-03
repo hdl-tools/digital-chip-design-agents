@@ -1,5 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+### issues #126, #127: the RTL Lint Gate reaches the converted file and every source list
+
+#### Fixed
+
+- **#126 — legal SystemVerilog that sv2v cannot lower passed every gate.** A part-select on a
+  function-call result (`f(x)[N-1:0]`) passes Verilator, slang and the whole simulation
+  regression, but sv2v passes it through and yosys rejects the output. None of those gates reads
+  the converted file. New RTL Lint Gate item 8, a **front-end check**, applies to all five
+  RTL-authoring orchestrators: wherever a downstream flow converts the RTL (sv2v, Surelog/UHDM,
+  a vendor SV-to-Verilog step), run the conversion and parse its output with the consuming tool
+  (`yosys read_verilog; hierarchy -check`). Report it as its own gate. In rtl-design it is
+  `lint_check` rule 15, a sign-off criterion, and part of Behaviour Rule 10's fix-request gate.
+  `synth_check` gains a Loop-Back row for a parse/elaboration failure, distinct from the QoR
+  rows, and a rule to use the front-end the downstream flow uses. `memory/rtl-design/knowledge.md`
+  no longer recommends a Surelog-fronted `synth_check`, the one invocation that cannot catch
+  this, or parsing sv2v output with `iverilog`.
+- **#127 — a module missing from one tool's source list was black-boxed silently.** New RTL Lint
+  Gate item 9: a new module is not integrated until every source list (simulation, lint,
+  synthesis, PD, formal) can see it. Item 4's stub carve-out is narrowed. A stub is benign only
+  if you can name the library, macro or IP it stands for, and an unknown first-party module is
+  a missing filelist entry. The same rules reach rtl-design (`design_input_check` rule 8,
+  `lint_check` rule 8) and soc `top_integration` (rules 11–13, the per-IP checklist, Common
+  Integration Bugs, `integration_signoff`). rtl-design gets a registration-only
+  `design_input_check` row that edits a list, never RTL. Synthesis `netlist_qc` gets black-box
+  rows that escalate as `input_setup`, and a `compile_explore` row for a front-end parse error.
+
+#### Added
+
+- `check_design_inputs.py --rtl-dir DIR --list NAME=FILELIST [--exempt [LIST:]MODULE]`: walks
+  the first-party RTL and reports each module that is on disk but missing from one of the
+  lists. Each omission is an ERROR naming the list and the file. Testbenches are skipped and
+  `-y` library directories count as visible. A list kept in a Makefile variable can be dumped to
+  a file first.
+
 ## [1.9.0] — 2026-10-01
 
 Mostly correctness fixes to orchestrator rules, from the issues below. Highlights:

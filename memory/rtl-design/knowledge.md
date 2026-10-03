@@ -27,6 +27,17 @@
   wrappers prefer a user-override directory over the managed configuration. A stale override
   silently replaces the managed project file and every variable it would have set. Print the
   absolute path of the project file the tool actually read before trusting its result.
+- **Legal SystemVerilog that sv2v cannot lower breaks synthesis behind a green regression**: A
+  part-select on a function-call result (`strb_expand(pstrb)[N-1:0]`) passes Verilator, slang
+  and every simulation, but sv2v passes it through verbatim and yosys rejects the output with
+  `syntax error, unexpected '['`. Assign the call to a named signal and select from that. Only
+  parsing the converted file catches the class — the front-end check in `lint_check`.
+- **A module missing from one source list is black-boxed silently**: Simulation, lint,
+  synthesis, PD and formal usually read separate lists (often Makefile variables). Adding one
+  peripheral took seven list edits in one project; missing the PD list let sv2v black-box the
+  module with no error while the simulation regression stayed green. Run
+  `check_design_inputs.py --rtl-dir <rtl> --list <name>=<file> ...` after adding a module, and
+  never record an unknown first-party module as a stub.
 
 ## Successful Tool Flags
 
@@ -37,17 +48,21 @@
   Never add `--lint-only` to a slang run: it skips elaboration and silently drops inferred-latch
   and multiple-driver diagnostics, so a latch reports as clean. `-Wall` is a Verilator and
   Icarus flag, not a slang one — slang rejects it; use `-Weverything`.
-- `sv2v --top <module> <files> > out.v && iverilog -Wall out.v` — useful for catching
-  SystemVerilog elaboration issues in tools that don't support SV directly.
+- `sv2v --top <module> <files> > out.v && yosys -q -p 'read_verilog out.v; hierarchy -check -top <module>'`
+  — the front-end check. Required, not optional, wherever a downstream flow reads sv2v output:
+  it catches constructs that are legal SystemVerilog but not Verilog-2005, which no SV-native
+  lint or simulator sees. Parse with the tool the flow actually uses, not `iverilog`.
 
 ## PDK / Tool Quirks
 
 - **SpyGlass CDC vs JasperGold CDC**: SpyGlass CDC reports more false positives on Gray-encoded
   buses; JasperGold CDC gives fewer false positives but misses some structural CDC patterns.
   Use SpyGlass first to get full coverage, then waive false positives with documented rationale.
-- **Yosys synth_check with sky130**: `yosys -p "synth -top <top>; check"` on sky130 designs
-  requires Surelog for SystemVerilog elaboration — native Yosys SV support is incomplete for
-  complex parameter overrides.
+- **Yosys synth_check with sky130**: native Yosys SystemVerilog support is incomplete for
+  complex parameter overrides, so `yosys -p "synth -top <top>; check"` needs an SV front-end.
+  Use the one the downstream PD flow uses. If that flow is sv2v-fronted, run synth_check on sv2v
+  output: Surelog accepts SystemVerilog the sv2v → yosys path rejects, so a Surelog-fronted
+  synth_check passes RTL that breaks PD.
 
 ## Notes
 

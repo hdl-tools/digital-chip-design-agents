@@ -250,3 +250,108 @@ def test_generated_output_older_than_its_source_is_reported(checker, tmp_path):
     result = checker.run(str(filelist), root=str(root), cwd=str(root),
                          generated=[f"inc={source}"])
     assert result["status"] == "PASS", result["issues"]
+
+
+# --- issue #127: every tool's source list must see a new module ----------------
+# Adding one peripheral meant editing seven source lists. Missing the PD list let
+# sv2v black-box the module silently while the simulator, reading another list,
+# stayed green. The checker walks the RTL on disk and names each list that misses
+# a module.
+
+
+def soc(tmp_path: Path) -> Path:
+    root = tmp_path / "soc"
+    write(root / "rtl" / "soc_top.sv", "module soc_top; pwm u_pwm(); endmodule\n")
+    write(root / "rtl" / "periph" / "pwm.sv", "// pwm\nmodule pwm #(parameter N = 8) (); endmodule\n")
+    write(root / "rtl" / "periph" / "pwm_tb.sv", "module pwm_tb; endmodule\n")
+    write(root / "rtl" / "pkg.sv", "package soc_pkg; endpackage\n")
+    write(root / "sim.f", "rtl/soc_top.sv\nrtl/periph/pwm.sv\nrtl/pkg.sv\n")
+    return root
+
+
+def test_module_missing_from_one_list_fails_and_names_the_list(checker, tmp_path):
+    root = soc(tmp_path)
+    pd = write(root / "pd.f", "rtl/pkg.sv\nrtl/soc_top.sv\n")
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"],
+                         lists=[f"pd={pd}"])
+
+    assert result["status"] == "FAIL"
+    (miss,) = issues(result, "module_not_in_list")
+    assert miss["list"] == "pd" and miss["modules"] == ["pwm"]
+    assert miss["paths"] == [str(root / "rtl" / "periph" / "pwm.sv"), str(pd)]
+    reg = result["registration"]
+    assert reg["rtl_files"] == 2, "testbench and package-only files are not modules to register"
+    assert reg["lists"] == {"sim.f": str(root / "sim.f"), "pd": str(pd)}
+
+
+def test_every_list_complete_passes(checker, tmp_path):
+    root = soc(tmp_path)
+    pd = write(root / "pd.f", "rtl/soc_top.sv\nrtl/periph/pwm.sv\n")
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"],
+                         lists=[f"pd={pd}"])
+    assert result["status"] == "PASS", result["issues"]
+    assert result["registration"]["missing"] == []
+
+
+def test_primary_filelist_is_checked_too(checker, tmp_path):
+    root = soc(tmp_path)
+    write(root / "sim.f", "rtl/soc_top.sv\n")
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"])
+    assert result["status"] == "FAIL"
+    assert [i["list"] for i in issues(result, "module_not_in_list")] == ["sim.f"]
+
+
+def test_library_directory_makes_a_module_visible(checker, tmp_path):
+    root = soc(tmp_path)
+    pd = write(root / "pd.f", "-y rtl/periph\nrtl/soc_top.sv\n")
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"],
+                         lists=[f"pd={pd}"])
+    assert result["status"] == "PASS", result["issues"]
+
+
+def test_exempt_module_is_reported_not_failed(checker, tmp_path):
+    root = soc(tmp_path)
+    write(root / "rtl" / "sim_model.sv", "module sram_model; endmodule\n")
+    write(root / "sim.f", "rtl/soc_top.sv\nrtl/periph/pwm.sv\nrtl/sim_model.sv\n")
+    pd = write(root / "pd.f", "rtl/soc_top.sv\nrtl/periph/pwm.sv\n")
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"],
+                         lists=[f"pd={pd}"], exempt=["pd:sram_model"])
+    assert result["status"] == "PASS", result["issues"]
+    assert result["registration"]["exempt"][0]["modules"] == ["sram_model"]
+
+    # An exemption scoped to another list does not cover this one.
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"],
+                         lists=[f"pd={pd}"], exempt=["formal:sram_model"])
+    assert result["status"] == "FAIL"
+
+
+def test_commented_out_module_is_not_a_declaration(checker, tmp_path):
+    root = soc(tmp_path)
+    write(root / "rtl" / "old.sv", "/* module legacy_pwm;\nendmodule */\n// module x;\n")
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"])
+    assert result["status"] == "PASS", result["issues"]
+
+
+def test_missing_list_file_fails(checker, tmp_path):
+    root = soc(tmp_path)
+    result = checker.run(str(root / "sim.f"), cwd=str(root), rtl_dirs=["rtl"],
+                         lists=["pd=pd.f"])
+    assert result["status"] == "FAIL"
+    assert issues(result, "missing_filelist")[0]["list"] == "pd"
+
+
+def test_list_without_rtl_dir_is_a_usage_error(checker, tmp_path):
+    root = soc(tmp_path)
+    result = checker.run(str(root / "sim.f"), cwd=str(root), lists=["pd=sim.f"])
+    assert result["status"] == "FAIL"
+    assert issues(result, "bad_registration_argument")
+
+
+def test_registration_from_the_command_line(checker, tmp_path, capsys):
+    root = soc(tmp_path)
+    write(root / "pd.f", "rtl/soc_top.sv\n")
+    rc = checker.main([str(root / "sim.f"), "--cwd", str(root), "--rtl-dir", "rtl",
+                       "--list", "pd=pd.f"])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["registration"]["missing"][0]["modules"] == ["pwm"]
