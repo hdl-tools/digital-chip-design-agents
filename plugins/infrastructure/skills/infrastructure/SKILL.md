@@ -203,7 +203,13 @@ and returns it.
 The adapter is `plugins/infrastructure/tools/mcp-adapter.py`. Each server runs the one wrapper
 named by `--wrapper`, except `verilator`: `mode: "lint"` runs `wrap-verilator-lint.sh` from the
 same directory as the configured `wrap-verilator-sim.sh`, because the sim wrapper's first
-argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 11 wrapper scripts; `wrap-vcs-compile.sh` and `wrap-xrun-compile.sh` are invoked directly, not through MCP.
+argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 14 wrapper scripts.
+The other five are invoked directly, not through MCP: `wrap-vcs-compile.sh` and
+`wrap-xrun-compile.sh` (proprietary compiles), `wrap-urg.sh` (Synopsys URG coverage merge/report,
+parsed from `<report>/dashboard.txt`), `wrap-imc.sh` (Cadence IMC batch coverage merge/report,
+parsed from stdout) and `wrap-cocotb-results.sh`, which runs no tool at all: it sums one or more
+cocotb `results.xml` files, because the cocotb makefile's exit code is not a verdict (cocotb 1.9.2
+`make` was observed exiting 0 with failing tests under both VCS and Xcelium).
 
 ### Tier 2: Interactive session MCP servers (stateful, query-based)
 Use these when an agent iterates many times over an already-loaded design (e.g. ECO timing
@@ -827,7 +833,7 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
 ## Stage: wrapper_deployment
 
 ### Domain Rules
-1. Deploy all 11 wrapper scripts to `plugins/infrastructure/tools/`
+1. Deploy all 14 wrapper scripts to `plugins/infrastructure/tools/`
 2. Run `chmod +x` on every wrapper; if permission denied: FAIL and escalate with
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
@@ -836,8 +842,19 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
    run prints no design result, so it returns `status: "WARN"` with `verified: false` —
    that is the expected outcome and confirms the wrapper runs and emits valid JSON.
    `wrap-verilator-sim.sh` takes a simulation binary, not tool arguments, so it answers
-   `--version` / `--help` itself with the same `WARN`. A `FAIL` from this test therefore always
-   means a missing tool or a broken wrapper, never a mis-invocation
+   `--version` / `--help` itself with the same `WARN`. `wrap-cocotb-results.sh` runs no tool and
+   takes `results.xml` paths, so it answers `--version` / `--help` itself the same way. A `FAIL`
+   from this test therefore always means a missing tool or a broken wrapper, never a
+   mis-invocation. `wrap-imc.sh` FAILs with `tool not found: imc` on a host where Xcelium is
+   installed without IMC — measured on the reference host, whose Xcelium 24.03 tree carries
+   only `tools/bin/launch_rmi_imc.sh` and no `imc` binary; that is a missing tool, record it as
+   such
+7. Resolve every tool from a non-interactive `bash` (`command -v <tool>`, or the vendor
+   `$<VENDOR>_HOME/.../bin/<tool>` path), never from the user's interactive shell. A user alias
+   such as `alias vcs 'vcs -full64'` exists only in the interactive shell, so a command line
+   that worked by hand can fail in a wrapper or a makefile, and the reverse. Wrappers are bash
+   scripts and never see aliases; write the flag the alias added (`-full64`) explicitly into
+   the command line instead
 5. Never suppress the tool's original exit code
 6. Never report `PASS` without a result: a wrapper that finds nothing it recognises in the
    tool's output reports `WARN` with `verified: false`, even when the tool exited 0
@@ -879,10 +896,10 @@ wrapper prints nothing, prints something that is not JSON, or prints JSON withou
 wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
-- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 11)
+- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 14)
 
 ### Output Required
-- 11 executable wrapper scripts in `plugins/infrastructure/tools/`
+- 14 executable wrapper scripts in `plugins/infrastructure/tools/`
 
 ---
 
@@ -1037,7 +1054,7 @@ silent pass.
    against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
-3. Verify all 11 wrapper scripts exist and have executable bit set
+3. Verify all 14 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 tool-server snippets; `mcp-memory.json` is optional and its absence is not a FAIL) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
@@ -1105,7 +1122,7 @@ critical-path check.
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
-- [ ] All 11 wrappers deployed and executable
+- [ ] All 14 wrappers deployed and executable
 - [ ] Simulator compile smoke test run and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 tool-server MCP config snippets written with resolved absolute paths and printed
@@ -1148,7 +1165,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
       "path": ""
     }
   ],
-  "wrappers": { "expected": 11, "executable": 0, "missing": [] },
+  "wrappers": { "expected": 14, "executable": 0, "missing": [] },
   "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
