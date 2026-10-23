@@ -1,6 +1,6 @@
 {
   "name": "chip-design-fpga",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "FPGA emulation — ASIC-to-FPGA adaptation, partitioning, bring-up, SW validation",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

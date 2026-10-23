@@ -1,6 +1,6 @@
 {
   "name": "chip-design-compiler",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Compiler toolchain — LLVM/GCC backend, assembler, linker, runtime libs for custom ISA",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

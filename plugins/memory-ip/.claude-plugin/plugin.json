@@ -1,6 +1,6 @@
 {
   "name": "chip-design-memory-ip",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Memory IP design — SRAM/register-file/ROM macro selection, array architecture, redundancy and repair, view generation and QA",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

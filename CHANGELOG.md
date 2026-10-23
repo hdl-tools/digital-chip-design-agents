@@ -45,10 +45,13 @@ Xcelium with code coverage. `chip-design-verification` and `chip-design-infrastr
 - **Tools are resolved with `command -v` in a non-interactive bash**, never a user alias
   (`alias vcs 'vcs -full64'` was observed).
 - **The `environment_validation` simulator smoke test compiles and runs**, not just compiles.
-- **Verification Behaviour Rule 5**: an experience record is written at the end of every task
-  invocation, scoped single-stage tasks included, and a later invalidating result supersedes
-  the earlier one (`supersedes` field). Behaviour Rule 5 is per-agent, so the other 13
-  orchestrators keep the old wording.
+- **Experience-record rule, all 14 stage orchestrators** (verification plus architecture,
+  compiler, dft, firmware, formal, fpga, hls, memory-ip, pd, rtl-design, soc, sta, synthesis):
+  an experience record is written at the end of every task invocation, scoped single-stage
+  tasks included, and a later invalidating result supersedes the earlier one (`supersedes`
+  field in each record template). The rule is per-agent text, not a shared section, so a
+  parametrised contract test now guards every copy. The 13 plugins get a patch bump.
+  `meta` and `infrastructure` word their record rule differently and are unchanged.
 - **`verification-orchestrator` maxTurns 80 → 150**, with Behaviour Rule 13 making long
   regressions resumable through `run_state.md` instead of relying on the turn count.
 

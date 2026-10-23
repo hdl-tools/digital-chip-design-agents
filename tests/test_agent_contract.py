@@ -1500,10 +1500,21 @@ def test_verification_report_only_coverage_suppresses_loop_backs():
         assert clause in cov, f"coverage_analysis lacks {clause!r}"
 
 
-def test_verification_records_experience_for_every_task_invocation():
+# Orchestrators whose Behaviour Rules carry the per-run experience-record rule. meta and
+# infrastructure phrase their record rule differently and are not covered here.
+EXPERIENCE_RULE_AGENTS = [
+    p for p in AGENT_FILES
+    if p.parent.parent.name not in {"meta", "infrastructure"}
+]
+
+
+@pytest.mark.parametrize("path", EXPERIENCE_RULE_AGENTS, ids=_rel)
+def test_orchestrator_records_experience_for_every_task_invocation(path):
     """Agents read "whenever the flow terminates" as excluding scoped single-stage
     tasks and skipped the record."""
-    flat = _flat(_read(VERIF_AGENT))
+    text = _read(path)
+    flat = _flat(text)
+    assert "whenever the flow terminates" not in flat
     assert "at the end of **every task invocation**" in flat
     assert "scoped single-stage task" in flat
-    assert '"supersedes"' in _read(VERIF_AGENT)
+    assert '"supersedes": null' in text
