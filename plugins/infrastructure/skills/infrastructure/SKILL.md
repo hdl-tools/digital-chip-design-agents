@@ -800,7 +800,10 @@ module load cadence/xcelium/20.09
     it reads `$prompt`, which only an interactive csh defines. Any generated script or makefile
     recipe that sources it must first run `if (! $?prompt) set prompt=""`; prefer not activating
     at all and invoking `<project>/.venv/bin/python` (and `<project>/.venv/bin/cocotb-config`) by
-    absolute path, which needs no shell-specific activation
+    absolute path, which needs no shell-specific activation. The same scripts export a UTF-8
+    locale (`LANG`/`LC_ALL` = `C.UTF-8`, or `en_US.UTF-8` where `locale -a` lacks it): cocotb's
+    logging raises `UnicodeEncodeError` on a non-ASCII test docstring under the `C`/POSIX locale
+    (observed)
 
 ### QoR Metrics to Evaluate
 - `install_scripts_generated`: count of `install-<toolname>.sh` scripts written to

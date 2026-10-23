@@ -1486,7 +1486,10 @@ def test_verification_port_mode_is_a_defined_stage():
         assert heading in body, f"simulator_portability lacks {heading}"
     flat = _flat(body)
     for clause in ("cmp -s", "-pvalue+", "-defparam", "never from `make`'s exit code",
-                   "Negative control", "Skips must match the reference", "fix_request"):
+                   "Negative control", "Skips must match the reference", "fix_request",
+                   "BDDSTR", "Never set `EXTRA_ARGS` on the `make` command line",
+                   "-y <dir> +libext+.sv+.v", "9.2.2.4", "make -n -i", "COCOTB_RESULTS_FILE",
+                   "never count them as passed", "UTF-8"):
         assert clause in flat, f"simulator_portability lacks {clause!r}"
 
 

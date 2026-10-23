@@ -35,6 +35,23 @@ Xcelium with code coverage. `chip-design-verification` and `chip-design-infrastr
   `tool_installation` rules 11–12 (take the cocotb version from the CI line, check 1.x/2.x API
   idioms; guard `activate.csh` against `prompt: Undefined variable`).
 
+- **Findings from the real VCS/Xcelium port, folded into `simulator_portability`.**
+  - `xrun -defparam` ignores string parameters (`*W,BDDSTR`), so they go through a generated
+    `defparam` top module. VCS `-pvalue+` strings need one more level of escaping
+    (`PRM_ILLG`). Any parameter-override warning is a FAIL.
+  - Never put `EXTRA_ARGS` on the make command line for Xcelium.
+  - Map Verilator's `-I` to `-y`/`+libext+` as well, since `-I` also finds modules.
+  - 4-state `X` from undriven inputs or unwritten state is a TB defect.
+  - Use one VPI hierarchy-access helper.
+  - Verilator-accepted LRM violations (use before declaration, LRM 9.2.2.4 `ICPD`) are RTL
+    defects with `basis: traced`.
+  - Verilator-only tests are listed as NOT RUN against the pass floor.
+  - The `make -n` parity proof uses a stub when the reference simulator is absent.
+  - Each run gets its own results file, against rollup and concurrent-job collisions.
+  - Runs need a UTF-8 locale (also added to the infrastructure env-script rule).
+  - Long jobs are waited on with a background notification or one bounded wait per turn,
+    not by polling.
+
 #### Changed
 
 - **Python selection no longer takes `which python3`.** An interpreter inside an EDA vendor
