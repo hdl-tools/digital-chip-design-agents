@@ -517,7 +517,7 @@ way in every simulator.
 ### Collecting and Merging Code Coverage
 | Simulator | Compile | Run | Scope | Merge + report | Exclusions |
 |---|---|---|---|---|---|
-| VCS | `-cm line+cond+fsm+tgl+branch+assert -cm_dir <db>.vdb` | same `-cm` metrics, `-cm_dir <db>.vdb -cm_name <test>_<seed>` | `-cm_hier <file>` (`+tree <dut_top>` / `-tree <tb_wrapper>` / `-module <model>`) | `wrap-urg.sh -dir a.vdb b.vdb ... -dbname merged -report <dir> -format text` | `urg -elfile <file>.el` |
+| VCS | `-cm line+cond+fsm+tgl+branch+assert -cm_dir <db>.vdb` | same `-cm` metrics, `-cm_dir <db>.vdb -cm_name <test>_<seed>` | `-cm_hier <file>`: `+tree <dut_top>` / `-tree <tb_wrapper>` / `-module <model>`, or a leading `+filelist <rtl.f>` when there are many testbench tops (rule 5) | one top: `wrap-urg.sh -dir a.vdb b.vdb ... -dbname merged -report <dir> -format both`; databases from **different testbench tops**: add `-lca -flex_merge modules` (rule 6) | `urg -elfile <file>.el` |
 | Xcelium | `-coverage all` (or `-coverage b:e:f:t:u`) | `-covworkdir <dir> -covscope <scope> -covtest <test>_<seed> -covoverwrite` | `-covfile <file>.ccf` (`select_coverage -all -instance <dut_top>...`, `deselect_coverage` for TB/models) | `wrap-imc.sh -execcmd "merge <dir>/<scope>/* -out merged; load -run merged; report -summary -metrics overall"` | vRefine file (`.vRefine`) loaded in IMC before the report |
 | Verilator | `--coverage-line --coverage-toggle` (and `--coverage-user` for SVA cover) | writes `coverage.dat` per run (`+verilator+coverage+file+<test>.dat`) | `/*verilator coverage_off*/` … `coverage_on` or `--coverage-max-width` | `verilator_coverage --write-info merged.info a.dat b.dat ...` (lcov), `--annotate <dir>` | `--write` after filtering in the `.info`; record each filter |
 
@@ -542,6 +542,31 @@ for that simulator, never as 0 % and never as a coverage FAIL.
 4. **Exclusions are waivers.** Every exclusion-file entry carries the reason and is listed in the
    waiver file (approval per QoR below); an exclusion added to raise a number is a moved
    target (Stage Gating item 7)
+5. **Scope a many-top regression by file list, not by tree.** A cocotb regression usually has one
+   testbench top per suite, so `+tree <dut_top>` has to be repeated per build and still lets the
+   wrapper of every other build in. Give each build a `-cm_hier` file whose first rule is
+   `+filelist <the design files this build compiles>`: the first `+` rule turns the file into an
+   include list, so everything not listed (testbench wrappers, cocotb glue, simulation models) is
+   excluded at compile time. Generate the list from the build's own source list, not by hand
+6. **Merging databases from different testbench tops needs `urg -lca ... -flex_merge modules`.**
+   Plain `urg -dir a.vdb b.vdb ...` keeps the design of the **first** database as the base and
+   silently drops design that only the others contain; measured on VCS Y-2026.03, a two-database
+   merge lost a whole module from the report with no error or warning. `-flex_merge modules`
+   merges by module definition and is a limited-availability feature, so it needs `-lca`. Report
+   coverage per module definition from such a merge; the instance-hierarchy view is per
+   testbench and cannot be summed across tops
+7. **An all-`--` summary is not a result.** When the scope file excludes everything, or the
+   `-cm` flags did not reach the compile, `urg` still exits 0 and writes a dashboard whose every
+   metric is `--`. Treat that as NOT RUN and fix the instrumentation; `wrap-urg.sh` reports it as
+   an unverified WARN. Also check that the merged `Number of tests:` equals the number of
+   simulations that ran. Note that `urg -f <file>` does not accept `-dir` inside the file: pass
+   the databases on the command line or with `-dir` repeated
+8. **Hole counts do not carry over between simulators.** VCS counts each generate-loop iteration's
+   lines and branches separately (Verilator reports them once), and VCS honours neither Verilator
+   `/*verilator coverage_off*/` pragmas nor a Verilator-side waiver file: every arm waived there
+   reappears as a hole. Before comparing numbers or ranking holes, translate the existing waivers
+   into the simulator's exclusion format (`urg -elfile`, IMC vRefine), or list the re-surfaced
+   items separately as "waived on <reference simulator>" instead of as new holes
 
 ### Report-only mode
 When the user asks to **review** coverage holes rather than close them (`coverage_mode:

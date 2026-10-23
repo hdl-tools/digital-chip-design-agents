@@ -27,6 +27,15 @@ Xcelium with code coverage. `chip-design-verification` and `chip-design-infrastr
 - **Coverage mechanics** in `coverage_analysis`: VCS / Xcelium / Verilator command table, scope
   and exclusion rules, unique per-test database names, merge before report. Also a
   **report-only mode** that suppresses both coverage loop-backs and outputs a ranked hole list.
+- **Multi-top coverage merges** (from the VCS coverage run on the same regression): `coverage_analysis`
+  rules 5-8. A cocotb regression has one testbench top per suite, and plain `urg -dir a.vdb b.vdb`
+  keeps only the first database's design, silently dropping the rest (a whole module vanished from a
+  two-database merge), so the merge needs `urg -lca ... -flex_merge modules`. Scope each build with
+  a `-cm_hier` file led by `+filelist` of its design files. An all-`--` urg summary (urg exits 0)
+  is NOT RUN, and `wrap-urg.sh` now reports it as an unverified WARN instead of a PASS: it used to
+  treat the presence of a `SCORE` column as evidence even when its value was `--`. VCS counts
+  generate-loop lines per iteration and ignores Verilator coverage pragmas and waiver files, so
+  hole counts are not comparable across simulators until the waivers are translated.
 - **Regression license and resource rules**: a compile-and-run license smoke under a timeout
   (Xcelium's `-licqueue` hangs without a seat), a job bound of `min(cores, RAM / peak, seats)`,
   a `sim_build` free-space check, and background sharded runs checkpointed in `run_state.md`.

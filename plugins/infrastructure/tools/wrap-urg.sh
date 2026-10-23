@@ -83,14 +83,19 @@ summary["errors"] = len(errors)
 summary["warnings"] = len(warnings)
 summary["first_error_code"] = fail_m.group(1) if fail_m else None
 
-evidence = "score" in metrics
+evidence = any(v is not None for v in metrics.values())
+all_dashes = bool(metrics) and not evidence  # urg exits 0 even when nothing was instrumented
 
 if fail_m or exit_code != 0:
     status = "FAIL"
 elif not evidence:
     status = "WARN"
-    why = "stale dashboard.txt from an earlier run" if stale else \
-          f"no Total Coverage Summary in {dashboard} (pass -format text or both)"
+    if all_dashes:
+        why = "every metric is '--': nothing was instrumented (check -cm flags and the -cm_hier scope)"
+    elif stale:
+        why = "stale dashboard.txt from an earlier run"
+    else:
+        why = f"no Total Coverage Summary in {dashboard} (pass -format text or both)"
     warnings.insert(0, f"no recognisable result in tool output (exit 0): {why} - not verified; read raw_log")
 elif warnings or errors:
     status = "WARN"
