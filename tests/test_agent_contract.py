@@ -1462,3 +1462,48 @@ def test_python_env_type_enum_covers_venv_and_never_selects_bundled():
     assert "is never selected as `PYTHON_EXEC`" in flat
     assert "never fall back to a `bundled` one" in flat
     assert "python3.N" in flat, "Step B does not enumerate versioned interpreters"
+
+
+VERIF_AGENT = REPO_ROOT / "plugins" / "verification" / "agents" / "verification-orchestrator.md"
+VERIF_SKILL = (
+    REPO_ROOT / "plugins" / "verification" / "skills" / "functional-verification" / "SKILL.md"
+)
+
+
+def test_verification_port_mode_is_a_defined_stage():
+    """An existing testbench moved to a new simulator had no path: every stage assumed a
+    UVM testbench built from scratch. Port mode enters at `simulator_portability`, which
+    must be a real stage with the standard sections and the rules that make a port
+    measurable."""
+    agent = _read(VERIF_AGENT)
+    port_line = next(l for l in agent.split("## Stage Sequence", 1)[1].splitlines()
+                     if l.startswith("simulator_portability →"))
+    stages = _stage_sections(_read(VERIF_SKILL))
+    for stage in (s.strip() for s in port_line.split("→")):
+        assert stage in stages, f"port-mode stage {stage} has no skill section"
+    body = stages["simulator_portability"]
+    for heading in ("### QoR Metrics to Evaluate", "### Common Issues & Fixes", "### Output Required"):
+        assert heading in body, f"simulator_portability lacks {heading}"
+    flat = _flat(body)
+    for clause in ("cmp -s", "-pvalue+", "-defparam", "never from `make`'s exit code",
+                   "Negative control", "Skips must match the reference", "fix_request"):
+        assert clause in flat, f"simulator_portability lacks {clause!r}"
+
+
+def test_verification_report_only_coverage_suppresses_loop_backs():
+    agent = _flat(_read(VERIF_AGENT))
+    assert "report_only" in agent
+    assert "the two `coverage_analysis` loop-backs" in agent
+    cov = _flat(_stage_sections(_read(VERIF_SKILL))["coverage_analysis"])
+    for clause in ("Report-only mode", "-cm_name", "-covtest", "overwrite silently",
+                   "wrap-urg.sh", "wrap-imc.sh", "verilator_coverage"):
+        assert clause in cov, f"coverage_analysis lacks {clause!r}"
+
+
+def test_verification_records_experience_for_every_task_invocation():
+    """Agents read "whenever the flow terminates" as excluding scoped single-stage
+    tasks and skipped the record."""
+    flat = _flat(_read(VERIF_AGENT))
+    assert "at the end of **every task invocation**" in flat
+    assert "scoped single-stage task" in flat
+    assert '"supersedes"' in _read(VERIF_AGENT)
