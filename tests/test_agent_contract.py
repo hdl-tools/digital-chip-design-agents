@@ -1439,3 +1439,26 @@ def test_only_designated_domains_request_refinement():
         if path not in allowed and "refinement_needed" in _read(path)
     ]
     assert not offenders, f"refinement_needed referenced outside the designated agents: {offenders}"
+
+
+PYTHON_ENV_TYPE = re.compile(r'"type": "(module \| system \| custom[^"]*)"')
+
+
+def test_python_env_type_enum_covers_venv_and_never_selects_bundled():
+    """On the reference host the first python3 on PATH was Siemens Calibre's bundled
+    3.8.16. A selection rule that takes `which python3` installs cocotb into a vendor
+    tree. The type enum must offer `venv` everywhere it is written, and `bundled` only
+    as a rejected candidate, never as the selected interpreter's type."""
+    skill = _read(INFRA_SKILL)
+    candidates_enum = "module | system | custom | bundled"
+    assert f'"type": "{candidates_enum}"' in skill, "candidates[] lacks bundled"
+    enums = [e for e in PYTHON_ENV_TYPE.findall(skill) if e != candidates_enum]
+    assert len(enums) >= 2, f"python_env type enum not found in both schemas: {enums}"
+    for enum in enums:
+        values = {v.strip() for v in enum.split("|")}
+        assert "venv" in values, f"python_env type enum lacks venv: {values}"
+        assert "bundled" not in values, f"bundled offered as a selectable type: {values}"
+    flat = _flat(skill)
+    assert "is never selected as `PYTHON_EXEC`" in flat
+    assert "never fall back to a `bundled` one" in flat
+    assert "python3.N" in flat, "Step B does not enumerate versioned interpreters"
