@@ -1,7 +1,7 @@
 # Functional Verification Flow — Full Architecture Design
 ## Orchestrator + Stage Agents + Skills (UVM-Based)
 
-> **Purpose**: AI-driven functional verification flow using UVM. Covers testbench architecture, test planning, stimulus generation, coverage closure, assertion-based verification, and regression sign-off.
+> **Purpose**: AI-driven functional verification flow using UVM. Covers testbench architecture, test planning, stimulus generation, coverage closure, assertion-based verification, and regression sign-off — and, in port mode, bringing an existing testbench up on another simulator (VCS, Xcelium, Questa) and reviewing coverage holes without closing them.
 
 ---
 
@@ -36,7 +36,9 @@
     "microarch_doc":   "path/to/microarch.md",
     "interface_list":  ["AXI4", "APB", "custom_if"]
   },
+  "mode": "full | port | report_only_coverage",
   "stages": {
+    "simulator_portability": { "status": "pending", "output": {} },
     "tb_architecture":     { "status": "pending", "output": {} },
     "test_planning":       { "status": "pending", "output": {} },
     "uvm_tb_build":        { "status": "pending", "output": {} },
@@ -66,6 +68,22 @@
 tb_architecture → test_planning → uvm_tb_build → directed_tests → constrained_random → coverage_analysis → formal_assist → regression_signoff
 ```
 
+Port mode — an existing, passing testbench run on a simulator it does not yet run on — skips
+the stages that design and write a testbench:
+
+```text
+simulator_portability → coverage_analysis → regression_signoff
+```
+
+`simulator_portability` translates the reference simulator's flags into one `SIM`-gated make
+include (proving the reference simulator's `make -n` output byte-identical with `cmp -s`), keeps
+one `SIM_BUILD` per simulator, classifies every new compile error as RTL defect, testbench defect
+or tool dialect, root-causes every cross-simulator difference, runs a negative control per
+simulator, and takes every verdict from `results.xml` through `wrap-cocotb-results.sh` — never
+from `make`'s exit code. `coverage_analysis` can run in report-only mode, producing a ranked
+hole list instead of new tests. Long regressions run in background shards checkpointed in
+`run_state.md`, so a resumed session continues instead of restarting.
+
 Loop-back rules — the target stage, the iteration cap, and which failures escalate
 instead of looping — are in `## Loop-Back Rules` of [`verification-orchestrator.md`](../plugins/verification/agents/verification-orchestrator.md). That file is
 authoritative; this document does not restate them.
@@ -73,6 +91,11 @@ authoritative; this document does not restate them.
 ---
 
 ## 4. Skill File Specifications
+
+The sections below are the original design sketches. The authoritative rules, including the
+`simulator_portability` stage, the coverage tool command table (VCS `-cm`/`urg`, Xcelium
+`-coverage`/`imc`, Verilator `--coverage-*`/`verilator_coverage`) and the regression license and
+resource rules, are in [`functional-verification/SKILL.md`](../plugins/verification/skills/functional-verification/SKILL.md).
 
 ### 4.1 `sv-verif-tb-arch/SKILL.md`
 

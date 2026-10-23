@@ -1,6 +1,6 @@
 {
   "name": "chip-design-pd",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Physical design — floorplan, placement, CTS, routing, timing/power/area opt, sign-off",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

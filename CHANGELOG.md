@@ -2,6 +2,76 @@
 
 ## [Unreleased]
 
+### Commercial simulator portability: port an existing testbench to VCS/Xcelium, review coverage, trust no exit code
+
+From bringing a Verilator-only cocotb regression (~1,100 tests) up on Synopsys VCS and Cadence
+Xcelium with code coverage. `chip-design-verification` and `chip-design-infrastructure` plugins
+1.2.0 → 1.3.0.
+
+#### Added
+
+- **Wrappers `wrap-cocotb-results.sh`, `wrap-urg.sh`, `wrap-imc.sh`** (11 → 14 wrappers), invoked
+  directly like the compile wrappers. `wrap-cocotb-results.sh` runs no tool: it sums cocotb
+  `results.xml` files and FAILs on any failure/error, zero testcases, or a missing, empty,
+  unparsable or stale file, because cocotb 1.9.2's `make` exited 0 with failing tests on both VCS
+  and Xcelium. `wrap-urg.sh` parses `dashboard.txt` (layout measured on VCS Y-2026.03) and
+  rejects a stale one. `wrap-imc.sh` searches for `imc` off PATH (`$XCELIUM_HOME/tools/bin`, …)
+  and reports a clean tool-missing result where Xcelium ships without it, as on the reference host.
+- **Verification port mode and the `simulator_portability` stage**:
+  `simulator_portability → coverage_analysis → regression_signoff`. It covers cocotb `SIM` names
+  and makefile variables, a Verilator → VCS/Xcelium flag translation table, one `SIM`-gated
+  make include with a `make -n` + `cmp -s` proof that the reference simulator is unchanged,
+  per-simulator `SIM_BUILD`, LRM-strictness triage (an RTL defect goes to a `fix_request`, never
+  to a testbench workaround), root-caused semantics differences, a negative control per
+  simulator, staged scope, and skip sets matched by name.
+- **Coverage mechanics** in `coverage_analysis`: VCS / Xcelium / Verilator command table, scope
+  and exclusion rules, unique per-test database names, merge before report. Also a
+  **report-only mode** that suppresses both coverage loop-backs and outputs a ranked hole list.
+- **Regression license and resource rules**: a compile-and-run license smoke under a timeout
+  (Xcelium's `-licqueue` hangs without a seat), a job bound of `min(cores, RAM / peak, seats)`,
+  a `sim_build` free-space check, and background sharded runs checkpointed in `run_state.md`.
+- **Infrastructure**: `urg`/`imc` rows (role `coverage_report`) and a `coverage_reporting_gaps`
+  record; `environment_validation` rules 10–11 (`regression_resources` in `tool-manifest.json`);
+  `tool_installation` rules 11–12 (take the cocotb version from the CI line, check 1.x/2.x API
+  idioms; guard `activate.csh` against `prompt: Undefined variable`).
+
+- **Findings from the real VCS/Xcelium port, folded into `simulator_portability`.**
+  - `xrun -defparam` ignores string parameters (`*W,BDDSTR`), so they go through a generated
+    `defparam` top module. VCS `-pvalue+` strings need one more level of escaping
+    (`PRM_ILLG`). Any parameter-override warning is a FAIL.
+  - Never put `EXTRA_ARGS` on the make command line for Xcelium.
+  - Map Verilator's `-I` to `-y`/`+libext+` as well, since `-I` also finds modules.
+  - 4-state `X` from undriven inputs or unwritten state is a TB defect.
+  - Use one VPI hierarchy-access helper.
+  - Verilator-accepted LRM violations (use before declaration, LRM 9.2.2.4 `ICPD`) are RTL
+    defects with `basis: traced`.
+  - Verilator-only tests are listed as NOT RUN against the pass floor.
+  - The `make -n` parity proof uses a stub when the reference simulator is absent.
+  - Each run gets its own results file, against rollup and concurrent-job collisions.
+  - Runs need a UTF-8 locale (also added to the infrastructure env-script rule).
+  - Long jobs are waited on with a background notification or one bounded wait per turn,
+    not by polling.
+
+#### Changed
+
+- **Python selection no longer takes `which python3`.** An interpreter inside an EDA vendor
+  tree is classified `bundled` and never selected. On the reference host `python3` was Calibre's
+  3.8.16. The newest `python3.N` that meets the cocotb version's `Requires-Python` is chosen,
+  and a project-local venv is preferred. `python_env.type` gains `venv`; `bundled` appears only
+  in `candidates[]`.
+- **Tools are resolved with `command -v` in a non-interactive bash**, never a user alias
+  (`alias vcs 'vcs -full64'` was observed).
+- **The `environment_validation` simulator smoke test compiles and runs**, not just compiles.
+- **Experience-record rule, all 14 stage orchestrators** (verification plus architecture,
+  compiler, dft, firmware, formal, fpga, hls, memory-ip, pd, rtl-design, soc, sta, synthesis):
+  an experience record is written at the end of every task invocation, scoped single-stage
+  tasks included, and a later invalidating result supersedes the earlier one (`supersedes`
+  field in each record template). The rule is per-agent text, not a shared section, so a
+  parametrised contract test now guards every copy. The 13 plugins get a patch bump.
+  `meta` and `infrastructure` word their record rule differently and are unchanged.
+- **`verification-orchestrator` maxTurns 80 → 150**, with Behaviour Rule 13 making long
+  regressions resumable through `run_state.md` instead of relying on the turn count.
+
 ### issue #35: architecture candidates persist, and a downstream gap can send architecture back to refine them
 
 #### Added

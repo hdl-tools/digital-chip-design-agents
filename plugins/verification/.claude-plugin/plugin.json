@@ -1,6 +1,6 @@
 {
   "name": "chip-design-verification",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "UVM testbench, test planning, constrained random, coverage closure, regression",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

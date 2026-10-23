@@ -93,6 +93,8 @@ role to fill the field: a `null` cannot produce a false conflict.
 | Synopsys VCS | `vcs` | `rtl_simulator` | `synopsys` | `vcs -ID` — parse the `Compiler version` line only |
 | Cadence Xcelium | `xrun` (`xmsim`) | `rtl_simulator` | `cadence` | `xrun -version` — parse the `TOOL:<tab>xrun(64)<tab><version>` line |
 | Mentor QuestaSim | `vsim` (`questa`, `questasim`, `vlog`, `vcom`) | `rtl_simulator` | `siemens` | none — UNVERIFIED |
+| Synopsys URG | `urg` | `coverage_report` | `synopsys` | `urg -version` — parse the `URG Version` line |
+| Cadence IMC | `imc` | `coverage_report` | `cadence` | none — UNVERIFIED |
 | Synopsys Design Compiler | `dc_shell` (`dc_shell-t`) | `synthesis` | `synopsys` | `dc_shell -version` — parse the `dc_shell version` line |
 | Cadence Genus | `genus` | `synthesis` | `cadence` | `genus -version` — parse the `Program Name:` line |
 | Synopsys Fusion Compiler | `fc_shell` | `synthesis` | `synopsys` | none — UNVERIFIED |
@@ -149,6 +151,18 @@ did not resolve to a binary under `<root>/linux/<version>/bin/` on the reference
 all. Three of the exit-0 cases print no version line, which is exactly why rule 4's WARN
 conditions below treat "exits 0, no version line" as its own case rather than a pass.
 
+**`urg` and `imc` read the coverage databases their simulator writes, and nothing else.** `urg`
+ships in the VCS tree (`$VCS_HOME/bin/urg`); `urg -version` was measured on the reference host:
+exit 0 in under 1 s, `URG Version Y-2026.03`, no license checkout. `imc` is **not** reliably
+installed with Xcelium: it ships under `$XCELIUM_HOME/tools/bin` on some installs and with
+vManager/IMC on others, and is often off PATH even when `xrun` is on it. On the reference host
+the Xcelium 24.03 tree holds only `tools/bin/launch_rmi_imc.sh` and no `imc` binary anywhere,
+which is why `imc` has no measured probe. `tool_discovery` rule 4 searches for it off PATH and
+records a missing one as a coverage-reporting gap, not as a coverage failure.
+The two share the role `coverage_report` and are not substitutable: each reads only its own
+simulator's database (`.vdb` vs `cov_work/**/*.ucd`), so a VCS database cannot be reported by
+`imc`, nor an Xcelium one by `urg`.
+
 Note on Formality: the primary command is `fm_shell`. `formality` is the legacy GUI wrapper
 and is absent from recent installs, so it is listed as the alternate.
 
@@ -203,7 +217,13 @@ and returns it.
 The adapter is `plugins/infrastructure/tools/mcp-adapter.py`. Each server runs the one wrapper
 named by `--wrapper`, except `verilator`: `mode: "lint"` runs `wrap-verilator-lint.sh` from the
 same directory as the configured `wrap-verilator-sim.sh`, because the sim wrapper's first
-argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 11 wrapper scripts; `wrap-vcs-compile.sh` and `wrap-xrun-compile.sh` are invoked directly, not through MCP.
+argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 14 wrapper scripts.
+The other five are invoked directly, not through MCP: `wrap-vcs-compile.sh` and
+`wrap-xrun-compile.sh` (proprietary compiles), `wrap-urg.sh` (Synopsys URG coverage merge/report,
+parsed from `<report>/dashboard.txt`), `wrap-imc.sh` (Cadence IMC batch coverage merge/report,
+parsed from stdout) and `wrap-cocotb-results.sh`, which runs no tool at all: it sums one or more
+cocotb `results.xml` files, because the cocotb makefile's exit code is not a verdict (cocotb 1.9.2
+`make` was observed exiting 0 with failing tests under both VCS and Xcelium).
 
 ### Tier 2: Interactive session MCP servers (stateful, query-based)
 Use these when an agent iterates many times over an already-loaded design (e.g. ECO timing
@@ -261,38 +281,97 @@ before falling back to the wrapper or direct execution.
       falls through to the PATH interpreter here, but the WARN it owes is emitted by
       `module_discovery` and is not suppressed because this step recovered an interpreter.
 
-   **Step B — PATH-based fallback**:
-   e. Run `which python3` to get the interpreter path; store as `PYTHON_EXEC`.
-   f. If `which python3` fails or returns empty: record `python3` as `MISSING` in `tool-status.json` and FAIL immediately (required for all wrapper scripts and Python packages).
-   g. Classify the interpreter:
-      - `system` → `PYTHON_EXEC` == `/usr/bin/python3`
-      - `custom` → any other path (pyenv, conda, virtualenv, custom prefix, etc.)
+   **Step B — PATH-based fallback**. The first `python3` on PATH is a candidate, not the answer:
+   on an EDA host it is frequently an interpreter a vendor ships inside its own install tree.
+   Measured on the reference host: `command -v python3` resolved to Siemens Calibre's bundled
+   Python 3.8.16 (`/home/EDA/mentor/calibre2026/.../bin/python3`), shadowing `/usr/bin/python3`
+   (3.6), while `/usr/bin/python3.11` and `/usr/bin/python3.12` were the usable interpreters.
+   e. **Enumerate candidates** from a non-interactive `bash` (never `which` in the user's shell,
+      which also reports aliases): every `python3` and `python3.N` (`N` = 6..20) resolvable on PATH
+      (`command -v -a` per name, or a walk of each PATH directory), plus the same names in
+      `/usr/bin`, `/usr/local/bin` and `$HOME/.local/bin`. Resolve each with `realpath`, drop
+      duplicates, and record each candidate's `"$c" -c 'import sys; print(sys.version.split()[0])'`.
+      If no candidate exists at all: record `python3` as `MISSING` in `tool-status.json` and FAIL
+      immediately (required for all wrapper scripts and Python packages).
+   f. **Classify every candidate** (first match wins):
+      - `bundled` → the resolved path lies inside an EDA vendor install tree — a path segment
+        equal to `synopsys`, `cadence`, `mentor`, `siemens`, `ansys`, `xilinx` or `intel`
+        (case-insensitive), a path under `$VCS_HOME`, `$XCELIUM_HOME`, `$CALIBRE_HOME`,
+        `$MGC_HOME` or any other `$<VENDOR>_HOME`, or a directory that also holds a vendor tool
+        binary from the Proprietary table above. **A `bundled` interpreter is never selected as
+        `PYTHON_EXEC`** for cocotb, pip or a venv: it carries the vendor's pinned version and
+        site-packages, can be replaced by a tool upgrade, and installing into it modifies a
+        vendor tree. Record it in `python_env.candidates[]` with `"type": "bundled"` so the
+        rejection is visible
+      - `system` → under `/usr/bin` or `/usr/local/bin`
+      - `custom` → any other path (pyenv, conda, custom prefix)
+   g. **Pick the floor.** The floor is the `Requires-Python` of the cocotb version this project
+      will use (`tool_installation` rule 11 says how that version is chosen), read from the
+      package metadata (the PyPI JSON `info.requires_python`, or the `METADATA` of
+      `"$c" -m pip download cocotb==<v> --no-deps`), never assumed. Measured from PyPI on
+      2026-10-23: cocotb 1.8.x and 1.9.x declare `>=3.6`, 2.0.x `>=3.6.2`, 2.1.0 `>=3.9`. With no
+      cocotb requested, the floor is 3.8.
+   h. **Select** the newest non-`bundled` candidate whose version meets the floor, comparing
+      versions numerically per segment (3.12 > 3.9), never as text. Between a `system` and a
+      `custom` candidate of the same version, prefer `system`. Store it as `PYTHON_EXEC`. If no
+      non-`bundled` candidate meets the floor, record `python3` as `MISSING` and FAIL with the
+      candidate list — never fall back to a `bundled` one.
+   i. **Prefer a project-local venv** for cocotb and every other pip-installed package. If
+      `<project>/.venv/bin/python` (or the venv the project's own makefile names) already exists,
+      runs, meets the floor and its `base_exec` (`<venv>/pyvenv.cfg` `home`) is not `bundled`:
+      select it, set `PYTHON_EXEC` to it and `python_env.type = "venv"`, and record the base in
+      `python_env.base_exec`. Otherwise keep the interpreter from step h and set
+      `python_env.venv_planned: true`; `tool_installation` rule 6 generates the script that
+      creates the venv from it. This stage never creates one (rule 8). Never install into system
+      or user site-packages (`sudo pip`, `pip install --user`): every other project on the host
+      then inherits this project's pins.
 
    **Step C — Finalize**:
-   h. Set `PYTHON_BIN_DIR = $(dirname "$PYTHON_EXEC")` regardless of how `PYTHON_EXEC` was resolved.
-   i. Record under a top-level key `python_env` in `tool-status.json`:
+   j. Set `PYTHON_BIN_DIR = $(dirname "$PYTHON_EXEC")` regardless of how `PYTHON_EXEC` was resolved.
+   k. Record under a top-level key `python_env` in `tool-status.json`:
       ```json
       {
         "python_env": {
           "exec": "<absolute path>",
-          "type": "module | system | custom",
+          "type": "module | system | custom | venv",
           "bin_dir": "<absolute dir>",
-          "module_name": "<module name, or null if not module-based>"
+          "module_name": "<module name, or null if not module-based>",
+          "base_exec": "<interpreter the venv was created from, or null>",
+          "floor": "<minimum Python version the selection had to meet>",
+          "venv_planned": false,
+          "candidates": [
+            { "path": "<resolved path>", "version": "3.8.16", "type": "module | system | custom | bundled" }
+          ]
         }
       }
       ```
-   j. Capture `"$PYTHON_EXEC" --version` and store it as a regular entry in the `tools` array (with `"tool": "python3"`, `"command": "python3"`, `"status": "FOUND"`, `"version": "<output>"`, `"path": "<PYTHON_EXEC>"`). This makes `python3` visible to `module_discovery` for module-status upgrades (`FOUND_PREFER_MODULE`).
+      `python_env.type` values: `module` (Step A), `system` / `custom` (Step B, no venv), `venv`
+      (Step B i). `bundled` appears **only** in `candidates[].type` — a bundled interpreter is
+      never the selected one, so `python_env.type` is never `bundled`.
+   l. Capture `"$PYTHON_EXEC" --version` and store it as a regular entry in the `tools` array (with `"tool": "python3"`, `"command": "python3"`, `"status": "FOUND"`, `"version": "<output>"`, `"path": "<PYTHON_EXEC>"`). This makes `python3` visible to `module_discovery` for module-status upgrades (`FOUND_PREFER_MODULE`).
 
 3. **Exception — Python packages**:
    - **cocotb**: detection depends on the Python interpreter type determined in rule 2:
-     - If `python_env.type == "custom"` or `"module"`: check `"$PYTHON_BIN_DIR/cocotb-config" --version` first; if that exits zero, record FOUND with the returned version string. Only if absent or non-zero, fall back to `cocotb-config --version` (PATH-based).
+     - If `python_env.type` is `"custom"`, `"module"` or `"venv"`: check `"$PYTHON_BIN_DIR/cocotb-config" --version` first; if that exits zero, record FOUND with the returned version string. Only if absent or non-zero, fall back to `cocotb-config --version` (PATH-based).
      - If `python_env.type == "system"`: use `cocotb-config --version` (PATH-based) only.
      - Report MISSING if all attempted checks fail.
    - **openlane**: run `"$PYTHON_EXEC" -m pip show openlane 2>/dev/null`; if exit code 0 and `Name: openlane` appears in output, record FOUND and extract the `Version:` field; otherwise MISSING.
-   - **uv**: if `python_env.type == "custom"` or `"module"`: check `"$PYTHON_BIN_DIR/uv" --version` first; fall back to `uv --version` (PATH). If `python_env.type == "system"`: use `uv --version` only.
-4. **Proprietary tools**: check PATH using `which <primary-executable>` (primary and
-   alternate names are in the Proprietary table above); never attempt install; record as
-   `PROPRIETARY_ONLY` if found, `MISSING` otherwise. For a tool found in PATH that has a
+   - **uv**: if `python_env.type` is `"custom"`, `"module"` or `"venv"`: check `"$PYTHON_BIN_DIR/uv" --version` first; fall back to `uv --version` (PATH). If `python_env.type == "system"`: use `uv --version` only.
+4. **Proprietary tools**: check PATH using `command -v <primary-executable>` in a non-interactive
+   `bash` (primary and alternate names are in the Proprietary table above) — never `which` in the
+   user's login shell, which reports a user alias such as `alias vcs 'vcs -full64'` as if it were
+   the tool; record the resolved binary (`$VCS_HOME/linux64/bin/vcs`), not the alias. Never
+   attempt install; record as `PROPRIETARY_ONLY` if found, `MISSING` otherwise.
+   `imc` is searched beyond PATH, in the order `wrap-imc.sh` uses: `$IMC_HOME/bin`,
+   `$XCELIUM_HOME/tools/bin`, `$XCELIUM_HOME/bin`, `$XCELIUM_HOME/tools.lnx86/bin`, the same three
+   under the install root of `command -v xrun`, then `$VMANAGER_HOME/bin`; a binary found there is
+   `PROPRIETARY_ONLY` with that `path` (`tools/bin/launch_rmi_imc.sh` is not `imc`). Where a
+   simulator is found but its coverage reporter is not — `xrun` without `imc`, `vcs` without
+   `urg` — append `{ "simulator": "<command>", "missing_tool": "<command>", "consequence":
+   "coverage databases can be collected but not merged or reported" }` to the top-level
+   `coverage_reporting_gaps` list in `tool-status.json` and emit a WARN with that text. This is a
+   **coverage-reporting gap, not a coverage FAIL**: simulation and coverage collection still work,
+   and the gap only blocks a coverage number for that simulator. For a tool found in PATH that has a
    version probe in that table, run the probe with a 60 s timeout, parse the documented
    line, and store the parsed string in `version`. Do not use a short timeout: a Cadence
    Common UI tool starts a full shell to answer `-version` and takes tens of seconds on a
@@ -332,7 +411,8 @@ recorded here: `environment_validation` rule 7 computes it and declares it.
 
 ### Output Required
 - `tool-status.json` — contains two top-level keys:
-  - `python_env`: `{ "exec": "", "type": "module|system|custom", "bin_dir": "", "module_name": "" }` — populated by rule 2
+  - `python_env`: `{ "exec": "", "type": "module|system|custom|venv", "bin_dir": "", "module_name": "", "base_exec": null, "floor": "", "candidates": [] }` — populated by rule 2; `candidates[].type` may also be `bundled`
+  - `coverage_reporting_gaps`: `[{ "simulator": "", "missing_tool": "", "consequence": "" }]` — populated by rule 4; `[]` when every found simulator has its reporter
   - `tools`: array of `{ "tool": "", "command": "", "status": "FOUND|MISSING|PROPRIETARY_ONLY", "version": "", "path": "", "role": null, "dialect": null }`
 
 `role` and `dialect` are always present on every entry — a string from the tables above,
@@ -508,6 +588,8 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 | `dc_shell` | `design-compiler`, `synopsys/dc`, `dc_shell` |
 | `innovus` | `innovus`, `cadence/innovus`, `cadence-innovus` |
 | `vsim` | `questa`, `questasim`, `mentor/questa` |
+| `urg` | `vcs`, `synopsys-vcs`, `synopsys/vcs` |
+| `imc` | `imc`, `vmanager`, `xcelium`, `cadence/xcelium` |
 | `pt_shell` | `primetime`, `synopsys/pt`, `pt_shell` |
 | `fm_shell` | `formality`, `synopsys/formality`, `fm_shell` |
 | `genus` | `genus`, `cadence-genus`, `cadence/genus` |
@@ -679,7 +761,13 @@ module load cadence/xcelium/20.09
     PYTHON_EXEC="<value of python_env.exec>"
     # Verify this is the intended interpreter before running
     ```
-    Use `"$PYTHON_EXEC" -m pip install <package>` as the install command. Never use bare `pip install` when `python_env.type` is `"custom"` or `"module"`.
+    Use `"$PYTHON_EXEC" -m pip install <package>` as the install command. Never use bare `pip install` when `python_env.type` is `"custom"`, `"module"` or `"venv"`, and never `pip install --user` or `sudo pip`.
+    Where `python_env.venv_planned` is `true`, generate `install-missing-tools/install-python-venv.sh`
+    instead of installing into the base interpreter: it runs `"<python_env.exec>" -m venv <project>/.venv`
+    (or `uv venv --python "<python_env.exec>" <project>/.venv`), appends `.venv/` to the project's
+    `.gitignore` if absent, installs the Python packages with `<project>/.venv/bin/python -m pip install`,
+    and ends by printing the new interpreter path, which `tool_discovery` then selects as
+    `python_env.type = "venv"` on the re-run. Like every install script it is generated, never run.
 7. Proprietary tools: no script generated — record a note in the sign-off summary only
 8. Modulefile format: always TCL classic (no file extension); always generate modulefiles
    unconditionally — a modulefile that may need adapting is more useful than none. Which case
@@ -694,12 +782,34 @@ module load cadence/xcelium/20.09
      Do not emit the `$MODULEPATH` line as the instruction
    - `none`: say there is no module system to register with yet; the `$MODULEPATH` line
      applies once Environment Modules is installed
-10. Write all `install-<toolname>.sh` scripts to the `install-missing-tools/` directory; create the directory if it does not exist; do **not** create the directory or any scripts if no tools are `MISSING`
+10. Write all `install-<toolname>.sh` scripts to the `install-missing-tools/` directory; create the directory if it does not exist; do **not** create the directory or any scripts if no tools are `MISSING` and no venv is planned
+11. **Pick the cocotb version from what runs the tests, then check it against the testbench.**
+    Read the CI workflow that actually runs the regression (`.github/workflows/*.yml`,
+    `.gitlab-ci.yml`, `Jenkinsfile`) and take the cocotb constraint from its install line. A lock
+    or requirements file (`uv.lock`, `poetry.lock`, `requirements*.txt`) that disagrees with that
+    line is reported as a WARN naming both, never silently preferred: measured on the target
+    project, `uv.lock` pinned cocotb 2.0.1 while CI installed `cocotb>=1.8.0,<2.0`, and the
+    testbench used the 1.x API. Then grep the testbench for API generation before writing the
+    pin: `units=` (Timer/Clock), `cocotb.fork`, `TestFactory`, `cocotb.result.TestFailure` are 1.x
+    idioms removed or deprecated in 2.x; `unit=` and `COCOTB_TEST_MODULES` are 2.x. A testbench
+    whose idioms contradict the chosen version is an `input_setup` WARN with both the version and
+    the matching lines, not something to resolve by editing the testbench. The chosen version
+    sets the Python floor in `tool_discovery` rule 2 Step B g
+12. **Environment scripts must work from csh/tcsh too.** A venv's `activate.csh` aborts in a
+    non-interactive csh with `prompt: Undefined variable` (measured on the target host), because
+    it reads `$prompt`, which only an interactive csh defines. Any generated script or makefile
+    recipe that sources it must first run `if (! $?prompt) set prompt=""`; prefer not activating
+    at all and invoking `<project>/.venv/bin/python` (and `<project>/.venv/bin/cocotb-config`) by
+    absolute path, which needs no shell-specific activation. The same scripts export a UTF-8
+    locale (`LANG`/`LC_ALL` = `C.UTF-8`, or `en_US.UTF-8` where `locale -a` lacks it): cocotb's
+    logging raises `UnicodeEncodeError` on a non-ASCII test docstring under the `C`/POSIX locale
+    (observed)
 
 ### QoR Metrics to Evaluate
 - `install_scripts_generated`: count of `install-<toolname>.sh` scripts written to
-  `install-missing-tools/` — one per `MISSING` tool, so it equals `tools_missing`; `0` when
-  nothing is missing
+  `install-missing-tools/` — one per `MISSING` tool, plus one `install-python-venv.sh` when
+  `python_env.venv_planned` is `true`; so it equals `tools_missing` (+1 for a planned venv), and
+  is `0` when nothing is missing and no venv is planned
 
 ### Common Issues & Fixes
 
@@ -827,7 +937,7 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
 ## Stage: wrapper_deployment
 
 ### Domain Rules
-1. Deploy all 11 wrapper scripts to `plugins/infrastructure/tools/`
+1. Deploy all 14 wrapper scripts to `plugins/infrastructure/tools/`
 2. Run `chmod +x` on every wrapper; if permission denied: FAIL and escalate with
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
@@ -836,8 +946,19 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
    run prints no design result, so it returns `status: "WARN"` with `verified: false` —
    that is the expected outcome and confirms the wrapper runs and emits valid JSON.
    `wrap-verilator-sim.sh` takes a simulation binary, not tool arguments, so it answers
-   `--version` / `--help` itself with the same `WARN`. A `FAIL` from this test therefore always
-   means a missing tool or a broken wrapper, never a mis-invocation
+   `--version` / `--help` itself with the same `WARN`. `wrap-cocotb-results.sh` runs no tool and
+   takes `results.xml` paths, so it answers `--version` / `--help` itself the same way. A `FAIL`
+   from this test therefore always means a missing tool or a broken wrapper, never a
+   mis-invocation. `wrap-imc.sh` FAILs with `tool not found: imc` on a host where Xcelium is
+   installed without IMC — measured on the reference host, whose Xcelium 24.03 tree carries
+   only `tools/bin/launch_rmi_imc.sh` and no `imc` binary; that is a missing tool, record it as
+   such
+7. Resolve every tool from a non-interactive `bash` (`command -v <tool>`, or the vendor
+   `$<VENDOR>_HOME/.../bin/<tool>` path), never from the user's interactive shell. A user alias
+   such as `alias vcs 'vcs -full64'` exists only in the interactive shell, so a command line
+   that worked by hand can fail in a wrapper or a makefile, and the reverse. Wrappers are bash
+   scripts and never see aliases; write the flag the alias added (`-full64`) explicitly into
+   the command line instead
 5. Never suppress the tool's original exit code
 6. Never report `PASS` without a result: a wrapper that finds nothing it recognises in the
    tool's output reports `WARN` with `verified: false`, even when the tool exited 0
@@ -879,10 +1000,10 @@ wrapper prints nothing, prints something that is not JSON, or prints JSON withou
 wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
-- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 11)
+- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 14)
 
 ### Output Required
-- 11 executable wrapper scripts in `plugins/infrastructure/tools/`
+- 14 executable wrapper scripts in `plugins/infrastructure/tools/`
 
 ---
 
@@ -1010,18 +1131,22 @@ silent pass.
 1. **Python environment check** — before any other check: read `python_env` from `tool-status.json`:
    - If `python_env.type == "module"`: run `which python3` to verify the module is still loaded. If it fails, FAIL immediately with: `"Python environment not active — source load-modules.sh (module: <python_env.module_name>) and re-run environment_validation."`
    - If `python_env.type == "custom"` or `"system"`: run `which python3` and verify the path matches `python_env.exec`; emit WARN if it differs.
+   - If `python_env.type == "venv"`: verify `python_env.exec` exists and runs, and that it is the
+     interpreter the regression's makefile or script will invoke (cocotb resolves Python from the
+     environment that runs `make`); a `python3` on PATH that is not the venv's is a WARN naming
+     both paths. FAIL if `python_env.exec` no longer exists.
 2. Re-run tool presence checks using **exactly** the detection `tool_discovery` rules 2–3 perform —
    including their PATH fallbacks, and including their `python_env.type` branches. A stage that
    detects the same tool by a different method will disagree with `tool_discovery` on real installs,
    and the disagreement is silent:
    - `openlane`: `"$PYTHON_EXEC" -m pip show openlane` — unchanged, rule 3 has no fallback for it
-   - `cocotb`, `uv`: where `python_env.type` is `custom` or `module`, try
+   - `cocotb`, `uv`: where `python_env.type` is `custom`, `module` or `venv`, try
      `"$PYTHON_BIN_DIR/<tool>"` first and **fall back to the PATH command**; where it is `system`,
      use the PATH command only — rule 3 never builds a `$PYTHON_BIN_DIR` probe in that case, so
      neither may this rule.
 
    Record for each package which path resolved it, as `resolved_via` in `tool-manifest.json`. Where
-   a package resolved **via the PATH fallback** while `python_env.type` is `custom` or `module`,
+   a package resolved **via the PATH fallback** while `python_env.type` is `custom`, `module` or `venv`,
    emit a WARN — the tool exists, so this is never an absence:
    - description: `"<tool> resolved on PATH at <path>, outside the active Python environment's bin dir (<python_env.bin_dir>) — it may target a different interpreter than <python_env.exec>"`
    - fix: `"confirm <tool> operates on the intended interpreter, or reinstall it into the active environment with \"$PYTHON_EXEC\" -m pip install <tool>"`
@@ -1037,7 +1162,7 @@ silent pass.
    against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
-3. Verify all 11 wrapper scripts exist and have executable bit set
+3. Verify all 14 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 tool-server snippets; `mcp-memory.json` is optional and its absence is not a FAIL) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
@@ -1063,37 +1188,69 @@ silent pass.
    least one proprietary tool in the group keeps the WARN rare enough to be read; two
    open-source simulators are on nearly every host.
 8. If any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
-9. **Simulator compile smoke test (opt-in)** — gated by `design_state.pipeline_config.simulator_smoke_test`
+9. **Simulator compile-and-run smoke test (opt-in)** — gated by `design_state.pipeline_config.simulator_smoke_test`
    (boolean; absent or `false` is the default). Compiling consumes a license seat that
    `tool_discovery`/`tool_installation` never touch, so this never runs unless explicitly enabled.
    - **Disabled (default):** emit WARN — description `"simulator invocation not verified"`, fix
      `"set design_state.pipeline_config.simulator_smoke_test = true to compile-check detected
      simulators"`. Never FAIL for this.
    - **Enabled:** for every `tool-status.json` entry whose `role` is `rtl_simulator` and status is
-     `FOUND` or `FOUND_PREFER_MODULE`, compile a 3-line placeholder module
-     (`module adice_smoke_test; endmodule`) through that tool's wrapper — `wrap-vcs-compile.sh` for
-     `vcs`, `wrap-xrun-compile.sh` for `xrun`, `wrap-verilator-lint.sh` for `verilator`. `vsim` and
+     `FOUND` or `FOUND_PREFER_MODULE`, compile the one-line smoke module below through that tool's
+     wrapper and run it — `wrap-vcs-compile.sh` for `vcs`, `wrap-xrun-compile.sh` for `xrun`,
+     `wrap-verilator-lint.sh` for `verilator` (lint only: Verilator needs no license, so it is
+     not run). `vsim` and
      `iverilog` have no wrapper: record `UNVERIFIED` with no command, same as an unprobed
      proprietary tool. Read the wrapper's own `status`, never the exit code alone — the reason
      this check exists at all: `innovus -version`, `vsim -version` and `voltus -version` all exit
      0 on this host while reporting an expired license, a missing shared library, or a platform
      install error.
-     - `status: "FAIL"` → FAIL this stage: the tool cannot compile a trivial module.
+     - `status: "FAIL"`, or the run step exits non-zero or never prints `SMOKE PASSED` → FAIL this
+       stage: the tool cannot compile or run a trivial module.
      - `status: "WARN"`, `verified: false`, with a license-queue or timeout signal in `warnings`
        → WARN, not FAIL, so a license-starved site can still sign off.
      - `status: "PASS"`, or `"WARN"` with `verified: true` → smoke test passed.
-   Record each probed simulator as `{tool, status, verified}` under
-   `simulator_smoke_test.results` in `tool-manifest.json`.
-10. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result
+   - **Compile and run, under a timeout.** A version probe (`vcs -ID`, `xrun -version`) checks
+     out no license, and a compile alone checks out only the compile license: VCS checks out a
+     separate runtime feature when `simv` starts. So the smoke module prints a marker —
+     `module adice_smoke_test; initial begin $display("SMOKE PASSED"); $finish; end endmodule` —
+     and the probe runs it: for `vcs`, compile through `wrap-vcs-compile.sh`, then run `./simv`
+     and require `SMOKE PASSED` in its output; for `xrun`, one `wrap-xrun-compile.sh` invocation
+     compiles, elaborates and simulates, so require `SMOKE PASSED` in its `raw_log`. Run every
+     step under `timeout 300` in a non-interactive `bash`. **A license queue hangs rather than
+     fails**: Xcelium launched by cocotb passes `-licqueue`, so with no free seat the job waits
+     indefinitely — measured on the target host. A `timeout` expiry is recorded as the
+     license-queue/timeout WARN above, never left running
+   Record each probed simulator as `{tool, status, verified, ran}` under
+   `simulator_smoke_test.results` in `tool-manifest.json`; `ran` is `true` only where the run
+   step printed `SMOKE PASSED`.
+10. **Bound regression parallelism before any regression launches** — where a simulator smoke test
+    ran (rule 9), compute and record `regression_resources.max_parallel_jobs` as
+    `min(cores, floor(free_RAM_GB / per_job_peak_GB), license_seats)`, recording each term:
+    `cores` from `nproc`; `free_RAM_GB` from `MemAvailable` in `/proc/meminfo`; `per_job_peak_GB`
+    from the peak RSS of the smoke run (`/usr/bin/time -v` `Maximum resident set size`) scaled
+    by the user's estimate for the real design, or the user's stated figure — never a guess
+    left unrecorded; `license_seats` as free seats from `lmstat -a -c <license file>` (Synopsys
+    `VCSRuntime_Net`/Cadence `Xcelium_Single_Core` feature lines: issued minus in use) or the
+    user's stated number. A term that cannot be measured is recorded `null` with the reason, and
+    the bound then uses only the measured terms plus a WARN. Domain orchestrators read this value
+    and never exceed it
+11. **Check the build and results filesystem** — for the directory the regression will use as
+    `SIM_BUILD` (and the coverage database directory), record the filesystem and its free space
+    (`df -P <dir>`) as `regression_resources.sim_build_dir` / `sim_build_free_GB`. WARN when free
+    space is below `max_parallel_jobs × per-job build size` measured from the smoke run's build
+    directory (`du -s`), or below 10 GB where that is unknown, and name a filesystem with more free
+    space when one is visible (a `/nobackup`- or scratch-style mount). A regression that fills its
+    disk fails tests in ways that look like simulator crashes
+12. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result, parallel-job bound and its limiting term, sim_build free space, coverage-reporting gaps
 
 ### QoR Metrics to Evaluate
 - `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
   differing `dialect` values where at least one is `PROPRIETARY_ONLY` — computed by rule 7.
   WARN only; it never blocks sign-off
-- `simulator_smoke_tests_run`: count of `rtl_simulator`-role tools actually compile-checked by
-  rule 9 when `pipeline_config.simulator_smoke_test` is enabled; `0` when disabled or none were
-  `FOUND`. A per-tool compile FAIL is reported through rule 9's stage FAIL path, not through
-  this count.
+- `simulator_smoke_tests_run`: count of `rtl_simulator`-role tools actually compile-and-run
+  checked by rule 9 when `pipeline_config.simulator_smoke_test` is enabled; `0` when disabled or
+  none were `FOUND`. A per-tool compile or run FAIL is reported through rule 9's stage FAIL path,
+  not through this count.
 
 The rest of this stage's verdict is in `tool-manifest.json` (Output Required) rather than in
 QoR counts: Python env liveness, wrapper executable bits, MCP file presence and the
@@ -1105,8 +1262,10 @@ critical-path check.
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
-- [ ] All 11 wrappers deployed and executable
-- [ ] Simulator compile smoke test run and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
+- [ ] All 14 wrappers deployed and executable
+- [ ] Simulator compile-and-run smoke test run under a timeout and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
+- [ ] Where the smoke test ran: `regression_resources.max_parallel_jobs` recorded with each term, and sim_build free space checked
+- [ ] Every coverage-reporting gap from `tool-status.json` repeated in the summary
 - [ ] `mcp-adapter.py` and `mcp-session-adapter.py` present in `plugins/infrastructure/tools/`
 - [ ] All 10 tool-server MCP config snippets written with resolved absolute paths and printed
 - [ ] No critical-path tools with status `MISSING` or `MISSING_LOAD_MODULE`
@@ -1136,7 +1295,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
   "host": "",
   "tool_status_source": "tool-status.json",
   "python_env_live": {
-    "type": "module | system | custom",
+    "type": "module | system | custom | venv",
     "exec_expected": "",
     "exec_actual": "",
     "matches": false
@@ -1148,12 +1307,22 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
       "path": ""
     }
   ],
-  "wrappers": { "expected": 11, "executable": 0, "missing": [] },
+  "wrappers": { "expected": 14, "executable": 0, "missing": [] },
   "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
   ],
   "simulator_smoke_test": { "enabled": false, "results": [] },
+  "regression_resources": {
+    "cores": null,
+    "free_ram_gb": null,
+    "per_job_peak_gb": null,
+    "license_seats": null,
+    "max_parallel_jobs": null,
+    "limiting_term": null,
+    "sim_build_dir": null,
+    "sim_build_free_gb": null
+  },
   "critical_path": { "required": ["yosys", "verilator", "openroad", "sta"], "missing": [] },
   "signoff": false
 }
@@ -1162,6 +1331,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
 `python_packages[].resolved_via` is the record behind rule 2's WARN: it is what makes "found, but
 outside the active environment" auditable after the run instead of print-only. `dialect_conflicts`
 lists the members per role, not just the count rule 7 reports, so the conflict can be read back
-without re-deriving it. `simulator_smoke_test.results` is a list of `{tool, status, verified}` —
+without re-deriving it. `regression_resources` holds rules 10–11's measurements, each term `null` with a reason where it
+could not be measured. `simulator_smoke_test.results` is a list of `{tool, status, verified, ran}` —
 one entry per `rtl_simulator`-role tool rule 9 probed — so a license-queue WARN is distinguishable
 from a tool that was never probed because the gate was disabled.

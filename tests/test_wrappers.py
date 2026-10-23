@@ -49,6 +49,7 @@ WRAPPERS = {
     "verilator-sim": (None, "TEST PASSED\n", []),
     "vcs-compile": ("vcs", "CPU time: 12.3 seconds to compile\n", ["-full64", "top.sv"]),
     "xrun-compile": ("xrun", "xrun: compile complete\n", ["top.sv"]),
+    "imc": ("imc", "Overall average grade: 78.50%\n", ["-execcmd", "report -summary"]),
 }
 
 
@@ -140,7 +141,7 @@ def test_nonzero_exit_fails_and_is_propagated(tmp_path, name):
     assert out["status"] == "FAIL"
 
 
-@pytest.mark.parametrize("name", sorted(set(WRAPPERS) - {"verilator-sim", "vcs-compile", "xrun-compile"}))
+@pytest.mark.parametrize("name", sorted(set(WRAPPERS) - {"verilator-sim", "vcs-compile", "xrun-compile", "imc"}))
 def test_error_line_with_exit_0_fails(tmp_path, name):
     _, out = run_wrapper(tmp_path, name, WRAPPERS[name][1] + "ERROR: bad thing\n")
     assert out["status"] == "FAIL"
@@ -285,7 +286,8 @@ def test_lint_missing_tool_fails(tmp_path):
 def test_every_wrapper_script_is_exercised_here():
     """A wrapper added to the tools directory without tests would ship unchecked."""
     on_disk = {p.name for p in TOOLS_DIR.glob("wrap-*.sh")}
-    tested = {f"wrap-{name}.sh" for name in WRAPPERS} | {"wrap-verilator-lint.sh"}
+    tested = {f"wrap-{name}.sh" for name in WRAPPERS} | {
+        "wrap-verilator-lint.sh", "wrap-urg.sh", "wrap-cocotb-results.sh"}
     assert on_disk == tested
 
 
@@ -301,7 +303,9 @@ def test_klayout_counts_violations_from_the_log(tmp_path):
     assert out["verified"] is True
 
 
-@pytest.mark.parametrize("name", sorted(set(WRAPPERS) - {"verilator-sim"}))
+# imc is also searched for outside PATH; its missing-tool case is tested below
+# with a controlled environment.
+@pytest.mark.parametrize("name", sorted(set(WRAPPERS) - {"verilator-sim", "imc"}))
 def test_missing_tool_fails(tmp_path, name):
     tool = WRAPPERS[name][0]
     if shutil.which(tool):
@@ -314,4 +318,301 @@ def test_missing_tool_fails(tmp_path, name):
     out = json.loads(proc.stdout)
     assert proc.returncode == 1
     assert out["status"] == "FAIL"
+    assert out["verified"] is False
+
+
+# --- wrap-imc.sh -------------------------------------------------------------
+# imc is often installed off PATH (under $XCELIUM_HOME/tools/bin) or not at all.
+
+def _minimal_env(tmp_path: Path, **extra):
+    """An environment whose PATH holds only the system dirs bash/python3 need."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("XCELIUM_HOME", "IMC_HOME", "VMANAGER_HOME", "VCS_HOME")}
+    py_dir = os.path.dirname(shutil.which("python3"))
+    env["PATH"] = os.pathsep.join([str(tmp_path / "empty"), py_dir, "/usr/bin", "/bin"])
+    (tmp_path / "empty").mkdir(exist_ok=True)
+    env.update(extra)
+    return env
+
+
+def test_imc_missing_reports_tool_not_found_with_search_list(tmp_path):
+    if any(shutil.which(t, path="/usr/bin:/bin") for t in ("imc", "xrun")):
+        pytest.skip("imc or xrun in a system dir")
+    xh = tmp_path / "xcelium"
+    (xh / "tools" / "bin").mkdir(parents=True)
+    # A launcher script that is not imc must not be mistaken for it.
+    launcher = xh / "tools" / "bin" / "launch_rmi_imc.sh"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    rc, out = run_script(tmp_path, "wrap-imc.sh", ["-execcmd", "report -summary"],
+                         _minimal_env(tmp_path, XCELIUM_HOME=xh.as_posix()))
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["verified"] is False
+    assert "tool not found: imc" in out["errors"][0]
+    assert "can be collected but not merged or reported" in out["errors"][0]
+    assert (xh / "tools" / "bin").as_posix() in out["summary"]["searched"]
+
+
+def test_imc_is_found_under_xcelium_home_when_not_on_path(tmp_path):
+    xh = tmp_path / "xcelium"
+    bin_dir = xh / "tools" / "bin"
+    bin_dir.mkdir(parents=True)
+    fake = bin_dir / "imc"
+    fake.write_bytes(FAKE_TOOL)
+    fake.chmod(0o755)
+    log = tmp_path / "fake.log"
+    log.write_text("Overall average grade: 78.50%\nBlock average grade: 90%\n", encoding="utf-8")
+    env = _minimal_env(tmp_path, XCELIUM_HOME=xh.as_posix(), FAKE_TOOL_LOG=log.as_posix(),
+                       FAKE_TOOL_ARGV=(tmp_path / "fake.argv").as_posix())
+    rc, out = run_script(tmp_path, "wrap-imc.sh", ["-execcmd", "report -summary"], env)
+    assert rc == 0
+    assert out["status"] == "PASS"
+    assert out["summary"]["tool_path"] == fake.as_posix()
+    assert out["summary"]["metrics"] == {"overall": 78.5, "block": 90.0}
+    argv = (tmp_path / "fake.argv").read_text(encoding="utf-8").splitlines()
+    assert argv == ["-batch", "-execcmd", "report -summary"]
+
+
+def test_imc_parses_a_summary_table(tmp_path):
+    table = ("Name   Overall   Block    Expression  Toggle   FSM\n"
+             "-----------------------------------------------------\n"
+             "top    81.20%    95.00%   70.10%      60.00%   88.88%\n")
+    _, out = run_wrapper(tmp_path, "imc", table)
+    assert out["status"] == "PASS"
+    assert out["summary"]["column_mapping"] == "table"
+    assert out["summary"]["metrics"] == {
+        "overall": 81.2, "block": 95.0, "expression": 70.1, "toggle": 60.0, "fsm": 88.88}
+
+
+def test_imc_cadence_error_code_fails(tmp_path):
+    _, out = run_wrapper(tmp_path, "imc", "*E,NOFILE: cannot open merged\n")
+    assert out["status"] == "FAIL"
+    assert out["summary"]["first_error_code"] == "NOFILE"
+
+
+# --- wrap-urg.sh -------------------------------------------------------------
+# urg's summary is read from <report>/dashboard.txt, not stdout. This layout was
+# measured on VCS Y-2026.03 (`urg -dir cov.vdb -report rpt -format text`).
+
+DASHBOARD = (
+    "Dashboard\n\nDate: Fri Oct 23 21:05:36 2026\n\nUser: u\n\nVersion: Y-2026.03\n"
+    "Command line: urg -dir cov.vdb -dbname merged -report rpt -format text \n\n"
+    "Number of tests: 3\n\n"
+    "-------------------------------------------------------------------------------\n"
+    "Total Coverage Summary \n"
+    "SCORE  LINE   COND   TOGGLE FSM    BRANCH ASSERT \n"
+    " 65.24  85.71 --      50.00 --      60.00 100.00 \n\n"
+)
+
+FAKE_URG = (
+    b'#!/usr/bin/env bash\n'
+    b'printf "%s\\n" "$@" > "$FAKE_TOOL_ARGV"\n'
+    b'cat "$FAKE_TOOL_LOG" 2>/dev/null\n'
+    b'if [[ -n "${FAKE_DASHBOARD:-}" ]]; then mkdir -p "$FAKE_REPORT";'
+    b' cp "$FAKE_DASHBOARD" "$FAKE_REPORT/dashboard.txt"; fi\n'
+    b'exit "${FAKE_TOOL_RC:-0}"\n'
+)
+
+
+def run_urg(tmp_path: Path, dashboard, stdout="Note-[URG-RDG] Report directory generated\n",
+            rc=0, args=("-dir", "cov.vdb", "-report", "rpt", "-format", "text")):
+    fake, env = fake_tool_env(tmp_path, "urg", stdout, rc)
+    fake.write_bytes(FAKE_URG)
+    report = "urgReport"
+    if "-report" in args:
+        report = args[list(args).index("-report") + 1]
+    env["FAKE_REPORT"] = (tmp_path / report).as_posix()
+    if dashboard is not None:
+        dash = tmp_path / "dash.src"
+        dash.write_text(dashboard, encoding="utf-8")
+        env["FAKE_DASHBOARD"] = dash.as_posix()
+    return run_script(tmp_path, "wrap-urg.sh", list(args), env)
+
+
+def test_urg_parses_the_dashboard(tmp_path):
+    rc, out = run_urg(tmp_path, DASHBOARD)
+    assert rc == 0
+    assert out["status"] == "PASS"
+    assert out["verified"] is True
+    assert out["summary"]["tests"] == 3
+    assert out["summary"]["metrics"] == {
+        "score": 65.24, "line": 85.71, "cond": None, "toggle": 50.0,
+        "fsm": None, "branch": 60.0, "assert": 100.0}
+
+
+def test_urg_default_report_dir_is_urgreport(tmp_path):
+    _, out = run_urg(tmp_path, DASHBOARD, args=("-dir", "cov.vdb", "-format", "text"))
+    assert out["status"] == "PASS"
+    assert out["summary"]["report_dir"].endswith("urgReport")
+
+
+def test_urg_without_text_dashboard_is_not_a_pass(tmp_path):
+    rc, out = run_urg(tmp_path, None)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert UNVERIFIED in out["warnings"][0]
+
+
+def test_urg_stale_dashboard_is_not_a_result(tmp_path):
+    report = tmp_path / "rpt"
+    report.mkdir()
+    old = report / "dashboard.txt"
+    old.write_text(DASHBOARD, encoding="utf-8")
+    os.utime(old, (1_000_000_000, 1_000_000_000))
+    _, out = run_urg(tmp_path, None)
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert "stale" in out["warnings"][0]
+
+
+def test_urg_error_marker_fails_and_exit_code_propagates(tmp_path):
+    rc, out = run_urg(tmp_path, None, stdout="Error-[URG-ND] No source data\n", rc=1)
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["summary"]["first_error_code"] == "URG-ND"
+
+
+def test_urg_warning_is_a_verified_warn(tmp_path):
+    _, out = run_urg(tmp_path, DASHBOARD,
+                     stdout="Warning-[UCAPI-SNF] Shape Not Found\n")
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+
+
+def test_urg_missing_tool_fails(tmp_path):
+    if shutil.which("urg", path="/usr/bin:/bin"):
+        pytest.skip("urg in a system dir")
+    rc, out = run_script(tmp_path, "wrap-urg.sh", ["-dir", "x.vdb"], _minimal_env(tmp_path))
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["verified"] is False
+    assert "tool not found: urg" in out["errors"][0]
+
+
+# --- wrap-cocotb-results.sh --------------------------------------------------
+# Runs no tool: the cocotb makefile has exited 0 with failing tests (cocotb 1.9.2,
+# observed on VCS and Xcelium), so results.xml is the verdict.
+
+def junit(*cases):
+    body = "".join(
+        f'<testcase name="{name}" classname="tests.mod">{child}</testcase>'
+        for name, child in cases
+    )
+    return f'<testsuites name="results"><testsuite name="all">{body}</testsuite></testsuites>'
+
+
+def run_results(tmp_path: Path, *args):
+    return run_script(tmp_path, "wrap-cocotb-results.sh", [str(a) for a in args])
+
+
+def write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_results_all_pass(tmp_path):
+    f = write(tmp_path / "results.xml", junit(("a", ""), ("b", ""), ("c", "<skipped/>")))
+    rc, out = run_results(tmp_path, f)
+    assert rc == 0
+    assert out["status"] == "PASS"
+    assert out["verified"] is True
+    s = out["summary"]
+    assert (s["tests"], s["passed"], s["failures"], s["errors"], s["skipped"]) == (3, 2, 0, 0, 1)
+    assert s["skipped_tests"] == ["tests.mod.c"]
+
+
+def test_results_failure_fails_even_though_make_would_exit_0(tmp_path):
+    f = write(tmp_path / "results.xml", junit(("a", ""), ("b", '<failure message="x"/>')))
+    rc, out = run_results(tmp_path, f)
+    assert rc == 1
+    assert out["exit_code"] == 1
+    assert out["status"] == "FAIL"
+    assert out["summary"]["failures"] == 1
+    assert "FAILED: tests.mod.b" in out["errors"]
+
+
+def test_results_error_element_fails(tmp_path):
+    f = write(tmp_path / "results.xml", junit(("a", "<error/>")))
+    rc, out = run_results(tmp_path, f)
+    assert rc == 1
+    assert out["summary"]["errors"] == 1
+
+
+def test_results_missing_file_fails(tmp_path):
+    rc, out = run_results(tmp_path, tmp_path / "results.xml")
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert "results file not found" in out["errors"][0]
+
+
+def test_results_empty_file_fails(tmp_path):
+    f = write(tmp_path / "results.xml", "")
+    rc, out = run_results(tmp_path, f)
+    assert rc == 1
+    assert "empty" in out["errors"][0]
+
+
+def test_results_unparsable_file_fails(tmp_path):
+    f = write(tmp_path / "results.xml", "<testsuites><testsuite>")
+    rc, out = run_results(tmp_path, f)
+    assert rc == 1
+    assert "unparsable" in out["errors"][0]
+
+
+def test_results_no_testcase_fails(tmp_path):
+    f = write(tmp_path / "results.xml", junit())
+    rc, out = run_results(tmp_path, f)
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert "no testcase" in out["errors"][-1]
+
+
+def test_results_all_skipped_is_not_a_pass(tmp_path):
+    f = write(tmp_path / "results.xml", junit(("a", "<skipped/>")))
+    rc, out = run_results(tmp_path, f)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert UNVERIFIED in out["warnings"][0]
+
+
+def test_results_directories_are_searched_and_summed(tmp_path):
+    write(tmp_path / "sim_build_vcs" / "suite_a" / "results.xml", junit(("a", ""), ("b", "")))
+    write(tmp_path / "sim_build_vcs" / "suite_b" / "results.xml", junit(("c", "")))
+    rc, out = run_results(tmp_path, tmp_path / "sim_build_vcs")
+    assert rc == 0
+    assert out["summary"]["files"] == 2
+    assert out["summary"]["tests"] == 3
+
+
+def test_results_directory_without_results_fails(tmp_path):
+    (tmp_path / "empty_dir").mkdir()
+    rc, out = run_results(tmp_path, tmp_path / "empty_dir")
+    assert rc == 1
+    assert "no results.xml under directory" in out["errors"][0]
+
+
+def test_results_stale_file_fails_with_newer_than(tmp_path):
+    f = write(tmp_path / "results.xml", junit(("a", "")))
+    os.utime(f, (1_000_000_000, 1_000_000_000))
+    stamp = write(tmp_path / "run.stamp", "")
+    rc, out = run_results(tmp_path, "--newer-than", stamp, f)
+    assert rc == 1
+    assert "stale" in out["errors"][0]
+
+
+def test_results_no_argument_fails(tmp_path):
+    rc, out = run_results(tmp_path)
+    assert rc == 1
+    assert out["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("flag", ["--version", "--help"])
+def test_results_version_run_is_not_a_pass(tmp_path, flag):
+    rc, out = run_results(tmp_path, flag)
+    assert rc == 0
+    assert out["status"] == "WARN"
     assert out["verified"] is False

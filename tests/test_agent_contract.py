@@ -1439,3 +1439,85 @@ def test_only_designated_domains_request_refinement():
         if path not in allowed and "refinement_needed" in _read(path)
     ]
     assert not offenders, f"refinement_needed referenced outside the designated agents: {offenders}"
+
+
+PYTHON_ENV_TYPE = re.compile(r'"type": "(module \| system \| custom[^"]*)"')
+
+
+def test_python_env_type_enum_covers_venv_and_never_selects_bundled():
+    """On the reference host the first python3 on PATH was Siemens Calibre's bundled
+    3.8.16. A selection rule that takes `which python3` installs cocotb into a vendor
+    tree. The type enum must offer `venv` everywhere it is written, and `bundled` only
+    as a rejected candidate, never as the selected interpreter's type."""
+    skill = _read(INFRA_SKILL)
+    candidates_enum = "module | system | custom | bundled"
+    assert f'"type": "{candidates_enum}"' in skill, "candidates[] lacks bundled"
+    enums = [e for e in PYTHON_ENV_TYPE.findall(skill) if e != candidates_enum]
+    assert len(enums) >= 2, f"python_env type enum not found in both schemas: {enums}"
+    for enum in enums:
+        values = {v.strip() for v in enum.split("|")}
+        assert "venv" in values, f"python_env type enum lacks venv: {values}"
+        assert "bundled" not in values, f"bundled offered as a selectable type: {values}"
+    flat = _flat(skill)
+    assert "is never selected as `PYTHON_EXEC`" in flat
+    assert "never fall back to a `bundled` one" in flat
+    assert "python3.N" in flat, "Step B does not enumerate versioned interpreters"
+
+
+VERIF_AGENT = REPO_ROOT / "plugins" / "verification" / "agents" / "verification-orchestrator.md"
+VERIF_SKILL = (
+    REPO_ROOT / "plugins" / "verification" / "skills" / "functional-verification" / "SKILL.md"
+)
+
+
+def test_verification_port_mode_is_a_defined_stage():
+    """An existing testbench moved to a new simulator had no path: every stage assumed a
+    UVM testbench built from scratch. Port mode enters at `simulator_portability`, which
+    must be a real stage with the standard sections and the rules that make a port
+    measurable."""
+    agent = _read(VERIF_AGENT)
+    port_line = next(l for l in agent.split("## Stage Sequence", 1)[1].splitlines()
+                     if l.startswith("simulator_portability →"))
+    stages = _stage_sections(_read(VERIF_SKILL))
+    for stage in (s.strip() for s in port_line.split("→")):
+        assert stage in stages, f"port-mode stage {stage} has no skill section"
+    body = stages["simulator_portability"]
+    for heading in ("### QoR Metrics to Evaluate", "### Common Issues & Fixes", "### Output Required"):
+        assert heading in body, f"simulator_portability lacks {heading}"
+    flat = _flat(body)
+    for clause in ("cmp -s", "-pvalue+", "-defparam", "never from `make`'s exit code",
+                   "Negative control", "Skips must match the reference", "fix_request",
+                   "BDDSTR", "Never set `EXTRA_ARGS` on the `make` command line",
+                   "-y <dir> +libext+.sv+.v", "9.2.2.4", "make -n -i", "COCOTB_RESULTS_FILE",
+                   "never count them as passed", "UTF-8"):
+        assert clause in flat, f"simulator_portability lacks {clause!r}"
+
+
+def test_verification_report_only_coverage_suppresses_loop_backs():
+    agent = _flat(_read(VERIF_AGENT))
+    assert "report_only" in agent
+    assert "the two `coverage_analysis` loop-backs" in agent
+    cov = _flat(_stage_sections(_read(VERIF_SKILL))["coverage_analysis"])
+    for clause in ("Report-only mode", "-cm_name", "-covtest", "overwrite silently",
+                   "wrap-urg.sh", "wrap-imc.sh", "verilator_coverage"):
+        assert clause in cov, f"coverage_analysis lacks {clause!r}"
+
+
+# Orchestrators whose Behaviour Rules carry the per-run experience-record rule. meta and
+# infrastructure phrase their record rule differently and are not covered here.
+EXPERIENCE_RULE_AGENTS = [
+    p for p in AGENT_FILES
+    if p.parent.parent.name not in {"meta", "infrastructure"}
+]
+
+
+@pytest.mark.parametrize("path", EXPERIENCE_RULE_AGENTS, ids=_rel)
+def test_orchestrator_records_experience_for_every_task_invocation(path):
+    """Agents read "whenever the flow terminates" as excluding scoped single-stage
+    tasks and skipped the record."""
+    text = _read(path)
+    flat = _flat(text)
+    assert "whenever the flow terminates" not in flat
+    assert "at the end of **every task invocation**" in flat
+    assert "scoped single-stage task" in flat
+    assert '"supersedes": null' in text

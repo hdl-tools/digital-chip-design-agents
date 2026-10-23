@@ -1,6 +1,6 @@
 {
   "name": "chip-design-sta",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Static timing analysis — multi-corner analysis, exception review, ECO guidance",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

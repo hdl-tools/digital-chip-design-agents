@@ -1,6 +1,6 @@
 {
   "name": "chip-design-synthesis",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Logic synthesis — SDC constraints, compile optimization, netlist QC and LEC",
   "author": { "name": "chuanseng-ng", "url": "https://github.com/chuanseng-ng" },
   "homepage": "https://github.com/hdl-tools/digital-chip-design-agents",

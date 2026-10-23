@@ -42,12 +42,12 @@ Infrastructure keeps its state in files in the working directory. Each file has 
 
 | File | Written by | Read by | What it is |
 |---|---|---|---|
-| `tool-status.json` | `tool_discovery`, updated in place by `module_discovery` | every later stage | The **only** per-tool record: `tool`/`command` (always the executable name, never the product name), `status`, `version`, `path`, `role`, `dialect`, module fields, and `python_env` |
+| `tool-status.json` | `tool_discovery`, updated in place by `module_discovery` | every later stage | The **only** per-tool record: `tool`/`command` (always the executable name, never the product name), `status`, `version`, `path`, `role`, `dialect`, module fields, `python_env`, and `coverage_reporting_gaps` |
 | `module-status.json` | `module_discovery` | `tool_installation`, `environment_validation` | Which module system exists (`module_system`) and whether its listing can be trusted (`module_listing`) — two independent facts |
 | `load-modules.sh` | `module_discovery`, only when some tool qualifies | the user | `module load` lines with the selected versions |
-| `install-missing-tools/install-<tool>.sh` | `tool_installation` | the user | One script per `MISSING` tool. **Never executed by the flow** |
+| `install-missing-tools/install-<tool>.sh` | `tool_installation` | the user | One script per `MISSING` tool, plus `install-python-venv.sh` when a project venv is planned. **Never executed by the flow** |
 | `plugins/infrastructure/mcp/mcp-*.json` | `mcp_configuration` | the user, who pastes them into `.claude/settings.json` | MCP configs with resolved absolute paths |
-| `tool-manifest.json` | `environment_validation` | the user, a later re-run | A validation **receipt**: what the stage measured (Python env liveness, wrapper bits, MCP presence, dialect conflicts, verdict). It references `tool-status.json` rather than copying it |
+| `tool-manifest.json` | `environment_validation` | the user, a later re-run | A validation **receipt**: what the stage measured (Python env liveness, wrapper bits, MCP presence, dialect conflicts, simulator compile-and-run smoke, regression job bound and `sim_build` free space, verdict). It references `tool-status.json` rather than copying it |
 | `design_state.json` | the orchestrator, at session end | the pipeline | `environment.{tools_validated, pdk_installed, signoff}` and a `history[]` entry |
 
 The schemas are in each stage's **Output Required** in the skill.
@@ -71,9 +71,15 @@ authoritative; this document does not restate them.
 Each stage's rules are in the skill under `## Stage: <name>`.
 
 - **`tool_discovery`.** Probes every open-source and proprietary tool and records the active
-  Python environment (`module`, `custom` or `system`). Each entry carries a `role` (what the tool
-  does) and a `dialect` (whose command-line vocabulary it speaks). Proprietary tools are detected
-  and version-probed, never installed.
+  Python environment (`module`, `system`, `custom` or `venv`). The first `python3` on PATH is only
+  a candidate: an interpreter inside an EDA vendor tree is classified `bundled` and never
+  selected (on the reference host `python3` was Calibre's bundled 3.8.16), and the newest
+  `python3.N` meeting the cocotb version's `Requires-Python` wins, preferably through a
+  project-local venv. Each entry carries a `role` (what the tool does) and a `dialect` (whose
+  command-line vocabulary it speaks). Proprietary tools are resolved with `command -v` in a
+  non-interactive bash (never a user alias), detected and version-probed, never installed; a
+  simulator found without its coverage reporter (`xrun` without `imc`) is recorded as a
+  coverage-reporting gap.
 - **`module_discovery`.** Classifies the module system, proves the listing can be obtained by
   walking an invocation ladder, and maps module-only tools back into `tool-status.json`
   (`FOUND_PREFER_MODULE`, `MISSING_LOAD_MODULE`). An unlistable module system is a WARN, and it
@@ -81,16 +87,24 @@ Each stage's rules are in the skill under `## Stage: <name>`.
   never checked.
 - **`tool_installation`.** Generates one install script per `MISSING` tool, with TCL modulefiles,
   using the detected OS and package manager. Python packages install through
-  `python_env.exec -m pip`. It never runs anything, so a `MISSING` status can only change after
-  the user runs a script.
+  `python_env.exec -m pip`, or into a project venv created by `install-python-venv.sh`; the
+  cocotb version comes from the CI line that runs the tests, checked against the testbench's
+  1.x/2.x API idioms. It never runs anything, so a `MISSING` status can only change after the
+  user runs a script.
 - **`wrapper_deployment`.** Makes the wrappers executable and smoke-tests each with `--version`.
   The expected answer is `WARN` with `verified: false`: the wrapper ran and emitted valid JSON,
-  but there was no design result.
+  but there was no design result. Besides the MCP-backed wrappers there are five invoked
+  directly: `wrap-vcs-compile.sh`, `wrap-xrun-compile.sh`, `wrap-urg.sh`, `wrap-imc.sh` (coverage
+  merge/report) and `wrap-cocotb-results.sh`, which runs no tool and turns cocotb
+  `results.xml` files into the verdict, since cocotb's `make` can exit 0 with failing tests.
 - **`mcp_configuration`.** Writes the MCP configs with resolved paths and prints them. It never
   edits `.claude/settings.json`; registering the servers is the user's step.
 - **`environment_validation`.** Re-runs detection exactly as `tool_discovery` does, and checks that
   the Python environment is still live, that the wrappers are executable and that the MCP files
   are present. It reports same-role/different-dialect coexistence and writes `tool-manifest.json`.
+  When the opt-in simulator smoke test is enabled, it compiles **and runs** a trivial module under
+  a timeout (a license queue hangs rather than fails), then records the regression job bound
+  `min(cores, RAM / per-job peak, license seats)` and the free space where `SIM_BUILD` will live.
   A missing critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) escalates rather than
   looping, because no stage of this flow can install it.
 
