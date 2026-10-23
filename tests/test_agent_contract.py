@@ -1499,7 +1499,9 @@ def test_verification_report_only_coverage_suppresses_loop_backs():
     assert "the two `coverage_analysis` loop-backs" in agent
     cov = _flat(_stage_sections(_read(VERIF_SKILL))["coverage_analysis"])
     for clause in ("Report-only mode", "-cm_name", "-covtest", "overwrite silently",
-                   "wrap-urg.sh", "wrap-imc.sh", "verilator_coverage"):
+                   "wrap-urg.sh", "wrap-imc.sh", "verilator_coverage",
+                   "-flex_merge modules", "+filelist", "every metric is `--`",
+                   "generate-loop iteration"):
         assert clause in cov, f"coverage_analysis lacks {clause!r}"
 
 

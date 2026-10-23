@@ -455,6 +455,17 @@ def test_urg_without_text_dashboard_is_not_a_pass(tmp_path):
     assert UNVERIFIED in out["warnings"][0]
 
 
+def test_urg_all_dash_summary_is_not_a_pass(tmp_path):
+    """urg exits 0 with every metric '--' when the scope excluded the whole design."""
+    dash = DASHBOARD.replace(" 65.24  85.71 --      50.00 --      60.00 100.00 ",
+                             " --     --     --     --     --     --     --     ")
+    rc, out = run_urg(tmp_path, dash)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert "nothing was instrumented" in out["warnings"][0]
+
+
 def test_urg_stale_dashboard_is_not_a_result(tmp_path):
     report = tmp_path / "rpt"
     report.mkdir()
