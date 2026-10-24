@@ -1523,3 +1523,19 @@ def test_orchestrator_records_experience_for_every_task_invocation(path):
     assert "at the end of **every task invocation**" in flat
     assert "scoped single-stage task" in flat
     assert '"supersedes": null' in text
+
+
+@pytest.mark.parametrize("path", AGENT_FILES, ids=_rel)
+def test_rtl_lint_gate_runs_the_ci_tool_version_on_what_ci_lints(path):
+    """A comment named Verilator 5.036; CI ran 5.048, whose new PROCASSINIT failed the -Wall
+    lint of a behavioural SRAM model the gate had exempted as simulation-only."""
+    if path.parent.parent.name not in RTL_AUTHORING_AGENTS:
+        return
+    flat = _flat(_read(path))
+    for clause in (
+        "Lint with the tool version CI runs, on everything CI lints",
+        "not from a comment or README that names a version",
+        "a CI lint target compiles is gated like RTL",
+        "report the gate NOT RUN with the version you could not run",
+    ):
+        assert clause in flat, f"{_rel(path)}: RTL Lint Gate lacks {clause!r}"

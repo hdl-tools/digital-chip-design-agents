@@ -27,6 +27,20 @@ Xcelium with code coverage. `chip-design-verification` and `chip-design-infrastr
 - **Coverage mechanics** in `coverage_analysis`: VCS / Xcelium / Verilator command table, scope
   and exclusion rules, unique per-test database names, merge before report. Also a
   **report-only mode** that suppresses both coverage loop-backs and outputs a ranked hole list.
+- **`dft-orchestrator` maxTurns 50 → 150, `rtl-design-orchestrator` 60 → 120.** Measured caps hit
+  on single scoped tasks: a Tessent scan-insertion + ATPG flow on a ~1,900-flop SoC fabric stopped
+  at 50 turns with no report; three RTL fix tasks (each a small edit plus lint and three-simulator
+  regression) stopped at 60. Both orchestrators already carry the Long-Running Jobs section, so a
+  task that still runs out checkpoints and resumes; the higher cap stops a scoped task being cut off
+  before its report.
+- **RTL Lint Gate item 10: lint with the tool version CI runs, on everything CI lints**
+  (rtl-design, fpga, soc, memory-ip, hls orchestrators; `simulator_portability` rule 5 points at
+  it). A CI comment named Verilator 5.036 while CI ran 5.048, whose new `PROCASSINIT` warning
+  failed the `-Wall` lint of a behavioural SRAM model that the gate had exempted as
+  simulation-only. The version now comes from the CI log or lockfile; a testbench or model that a
+  CI lint target compiles is gated like RTL; an unavailable version is built locally or reported
+  NOT RUN; power-up values use an `initial` block (not a declaration initialiser, not on an
+  `always_ff` target).
 - **Multi-top coverage merges** (from the VCS coverage run on the same regression): `coverage_analysis`
   rules 5-8. A cocotb regression has one testbench top per suite, and plain `urg -dir a.vdb b.vdb`
   keeps only the first database's design, silently dropping the rest (a whole module vanished from a
