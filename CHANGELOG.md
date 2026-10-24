@@ -27,6 +27,14 @@ Xcelium with code coverage. `chip-design-verification` and `chip-design-infrastr
 - **Coverage mechanics** in `coverage_analysis`: VCS / Xcelium / Verilator command table, scope
   and exclusion rules, unique per-test database names, merge before report. Also a
   **report-only mode** that suppresses both coverage loop-backs and outputs a ranked hole list.
+- **RTL Lint Gate item 10: lint with the tool version CI runs, on everything CI lints**
+  (rtl-design, fpga, soc, memory-ip, hls orchestrators; `simulator_portability` rule 5 points at
+  it). A CI comment named Verilator 5.036 while CI ran 5.048, whose new `PROCASSINIT` warning
+  failed the `-Wall` lint of a behavioural SRAM model that the gate had exempted as
+  simulation-only. The version now comes from the CI log or lockfile; a testbench or model that a
+  CI lint target compiles is gated like RTL; an unavailable version is built locally or reported
+  NOT RUN; power-up values use an `initial` block (not a declaration initialiser, not on an
+  `always_ff` target).
 - **Multi-top coverage merges** (from the VCS coverage run on the same regression): `coverage_analysis`
   rules 5-8. A cocotb regression has one testbench top per suite, and plain `urg -dir a.vdb b.vdb`
   keeps only the first database's design, silently dropping the rest (a whole module vanished from a

@@ -144,7 +144,10 @@ compared against.
    same name first on `PATH` (Verilator's build recipe runs `make -C` even under `-n`), and
    normalise make's own `Makefile:NNN:` line numbers in its warnings (`sed -E
    's/(Makefile[^:]*):[0-9]+:/\1:N:/'`) in both captures before `cmp`; say in the output that the
-   proof used a stub
+   proof used a stub. Parity of the command lines is not parity of the result: before handing a
+   port back, run the reference simulator's lint and regression at the version CI executes (read it
+   from the CI log or lockfile, not a comment). A testbench or model edit made for the new simulator
+   can fail a lint rule that only a newer reference release has (`PROCASSINIT` in Verilator 5.048)
 6. **One `SIM_BUILD` per simulator** (`sim_build_vcs`, `sim_build_xcelium`), set inside the
    `SIM`-guarded branches so the reference simulator keeps its existing directory (rule 5). A
    shared directory lets one simulator's stale objects or `results.xml` be read as the other's

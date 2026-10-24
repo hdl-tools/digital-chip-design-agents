@@ -306,7 +306,8 @@ Applies to every report you make: a stage result, an escalation, and the final s
 Applies to every synthesisable RTL file this orchestrator writes, modifies or generates —
 including edits made on a loop-back or while servicing a `fix_request`. Testbenches
 (`*_tb.sv`, `tb_*.sv`) and simulation-only behavioural models are exempt: `initial`, `#delay`
-and blocking assignments are correct there.
+and blocking assignments are correct there. Item 10 still applies to any of them that a CI lint
+target compiles.
 
 1. **Lint before the file leaves the stage.** RTL that has not been linted since its last edit
    is NOT RUN under the Reporting Contract, however small the edit.
@@ -362,7 +363,19 @@ and blocking assignments are correct there.
    `.f` files, or can be dumped to one, run `check_design_inputs.py <filelist.f> --rtl-dir <rtl>
    --list <name>=<file> ...` from `plugins/rtl-design/skills/rtl-design/`: it names each list
    that misses a module on disk.
-10. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
+10. **Lint with the tool version CI runs, on everything CI lints.** Take the version from what
+    CI actually executes: its job log (`verilator --version`), lockfile (`flake.lock`, a pinned
+    container or download script), not from a comment or README that names a version, which goes
+    stale. A newer release adds warnings, so a clean run on an older local build proves nothing
+    about the gate. Measured: a comment said Verilator 5.036, CI ran 5.048, and 5.048's new
+    `PROCASSINIT` (a declaration initialiser on a variable an `always` block also writes) failed
+    `-Wall` lint gates that 5.036 passed. Item 1's exemption ends where CI's lint targets begin:
+    a testbench wrapper or behavioural memory model that a CI lint target compiles is gated like
+    RTL. Where that version is not installed, build or fetch it (an in-tree build is enough), or
+    report the gate NOT RUN with the version you could not run. For a power-up value on a
+    procedurally written variable use an `initial` block, not a declaration initialiser, and not
+    on an `always_ff` target (IEEE 1800 9.2.2.4; VCS `ICPD`).
+11. **Optional — `hdl-rtl-skill`.** If its `rtl-lint` script is available, use it as the slang
     runner: it applies items 2–4. Treat its `BLOCKER` and `HIGH` findings as errors, `MEDIUM`
     as warnings, `LOW` and `INFO` as informational, and its `MANUAL_REVIEW_REQUIRED` as an
     escalation. If it is unavailable, the items above stand on their own — it augments, never
