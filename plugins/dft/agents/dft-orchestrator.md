@@ -6,7 +6,7 @@ description: >
   strategy, inserting scan, generating test patterns, or verifying testability.
 model: sonnet
 effort: high
-maxTurns: 50
+maxTurns: 150
 skills:
   - digital-chip-design-agents:dft
 ---
