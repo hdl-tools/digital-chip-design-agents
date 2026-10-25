@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### SpyGlass and Tessent: prove a static check ran, and carry the Tessent flows
+
+From adding SpyGlass lint/CDC/RDC, a Tessent scan + ATPG flow, and a Tessent MemoryBIST
+evaluation to an SoC on the same host. Each run exited 0 at some point while checking nothing.
+
+#### Added
+
+- **rtl-design `cdc_rdc_analysis` rules 7–9.** A CDC/RDC run counts only once a negative-control
+  design (an unsynchronised crossing, the same crossing synchronised, a cross-domain async reset)
+  is flagged; otherwise the stage is NOT RUN. Measured: SpyGlass `cdc_verify_struct` exited 0
+  with every crossing rule skipped (`Ac_license01`, feature `cdc_adv_checker` absent on a
+  server listing `Advanced_CDC`). Logs are read for skipped rules and licence failures.
+- **rtl-design `lint_check` rule 16.** A black-boxed first-party module has unknown findings,
+  not zero. SpyGlass black-boxes any module with a `string` or `real` parameter, which removed
+  the SoC top; the fix is a line-count-preserving analysis copy, never an RTL edit.
+- **dft skill, Tool Notes: Siemens Tessent.** The context-based scan insertion + ATPG flow
+  (the legacy `add_scan_groups` path inserted nothing and exited clean), the LibComp →
+  `.tcelllib` cell-library build, `dft_cell_selection` curation, the MemoryBIST flow, TCD
+  traps, and batch hazards (`< /dev/null`, `-replace`, stale TSDB).
+- **dft skill rules.** `atpg` 6–8: a pattern-subset simulation is reported as a subset, the
+  pattern testbench must fail a broken-scan-link netlist, and models derived from one source
+  are not independent checks. `bist_insertion` 6–8: per-fault-class detection against an
+  independent golden model, full address space (`reduced_address_count` off), like-for-like
+  comparison with an in-house MBIST. `scan_insertion` 10: demoting a Scan DRC rule is allowed
+  only for flops an architecture decision keeps off the chains.
+- **dft-orchestrator Behaviour Rule 10** points at those fail-capable checks.
+- **Seed knowledge** (`memory/dft`, `memory/rtl-design`): Tessent 2025.4, SpyGlass
+  X-2025.06 (`mthresh`, licence feature) and Cadence HAL (`-NOHALSYNTH`) quirks.
+
+#### Changed
+
+- **dft `dft_architecture` rule 2.** A chain count the project's DFT architecture fixes wins;
+  √(flip-flops) is a fallback only when nothing is specified.
+- **Absent `knowledge.md` is reported, all 15 orchestrators but infrastructure.** With
+  `CHIP_DESIGN_MEMORY_ROOT` pointing at a project `memory/`, nothing ran the resolver, so the
+  root was never seeded and agents silently ran without the curated knowledge. They still
+  proceed, but now say so in the experience record and name `memory_root.py --init`.
+
 ### Commercial simulator portability: port an existing testbench to VCS/Xcelium, review coverage, trust no exit code
 
 From bringing a Verilator-only cocotb regression (~1,100 tests) up on Synopsys VCS and Cadence

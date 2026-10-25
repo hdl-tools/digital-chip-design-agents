@@ -354,7 +354,7 @@ skill's "Memory Root Resolution" section.
 ### Read (session start)
 Before beginning `floorplan`, read the following if they exist:
 - `<MEM>/pd/knowledge.md` — known failure patterns, tool flags, PDK quirks.
-  Incorporate into all stage decisions. If absent, proceed without it.
+  Incorporate into all stage decisions. If absent, proceed without it, and say so in the experience record's `notes`: an absent file usually means the memory root was never seeded with the curated knowledge, which `memory_root.py --init` copies in without overwriting.
 - `<MEM>/pd/run_state.md` — if present, a prior run was interrupted; use the
   `run_id` and `last_stage` fields to resume correctly.
 

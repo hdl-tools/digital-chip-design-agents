@@ -323,6 +323,13 @@ only outputs are a report and a PASS or FAIL.
     case; assign the result to a named signal and select from that — passes lint and the whole
     regression and fails only here. Fix the source construct, never the converted file. No
     conversion tool available: report the gate NOT RUN
+16. A module the tool black-boxed got zero rules. Read the tool's elaboration or black-box
+    summary on every run, and treat a first-party module in it the way rule 12 treats an
+    aborted run: its findings are unknown, not zero. SpyGlass black-boxes any module with a
+    `string`-typed or `real` parameter (SYNTH_5260 / SYNTH_5247, reported as
+    `UnsynthesizedDU`), which silently removes a whole SoC top from the run. Feed the tool a
+    copy that retypes those parameters for analysis only, with the line count unchanged so
+    report line numbers still match the RTL. Never edit the RTL to satisfy the lint tool
 
 ### QoR Metrics to Evaluate
 - Rule check completed: must be true — an aborted run has no ERROR count
@@ -353,6 +360,19 @@ only outputs are a report and a PASS or FAIL.
    instead is an `UNVERIFIED` `cdc` (or `reset`) claim — append one entry per crossing to the
    unverified-claims list in this stage, naming the synchroniser you relied on. Downstream
    formal and verification can then check each one
+7. Prove the crossing rules ran. A CDC or RDC tool can exit 0 and write a plausible report
+   with its crossing rules skipped. Before trusting a run, analyse a small negative-control
+   design with one unsynchronised crossing, the same crossing through a 2-FF synchroniser, and
+   one flop of clock A driving the async reset of a flop of clock B. The run counts only if
+   the tool flags the bad crossing and the bad reset and spares the synchronised one. If the
+   control is not flagged, the stage is NOT RUN (rule 6), whatever the design's own report says
+8. Read the log for rules reported as not run, and for licence checkout failures. A CDC goal
+   can request a licence feature other than the product names the licence server lists
+   (SpyGlass `cdc_verify_struct` / `rdc_verify_struct` request `cdc_adv_checker`, absent on a
+   server that lists `Advanced_CDC` and `Advanced_RDC`, and log `Ac_license01`). Name the
+   missing feature and the skipped rules in the report; the stage is NOT RUN
+9. Lint rule 16 applies here too: a module black-boxed by the CDC tool has had none of its
+   crossings checked
 
 ### RDC Rules
 1. All reset domains explicitly defined in constraints
@@ -361,6 +381,7 @@ only outputs are a report and a PASS or FAIL.
 4. Retention registers: correct UPF annotation
 
 ### QoR Metrics to Evaluate
+- Negative control flagged (rule 7): must be true, or the stage is NOT RUN
 - CDC violations (unwaived): 0
 - RDC violations (unwaived): 0
 - All clock domains verified in tool constraints

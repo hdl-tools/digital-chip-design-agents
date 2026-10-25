@@ -1539,3 +1539,63 @@ def test_rtl_lint_gate_runs_the_ci_tool_version_on_what_ci_lints(path):
         "report the gate NOT RUN with the version you could not run",
     ):
         assert clause in flat, f"{_rel(path)}: RTL Lint Gate lacks {clause!r}"
+
+
+DFT_SKILL = REPO_ROOT / "plugins" / "dft" / "skills" / "dft" / "SKILL.md"
+
+
+def test_cdc_stage_proves_the_crossing_rules_ran():
+    """SpyGlass cdc_verify_struct exited 0 with a clean-looking report while every crossing
+    rule was skipped for a missing licence feature (cdc_adv_checker); only a negative-control
+    design exposed it. String/real parameters also black-boxed the SoC top silently."""
+    flat = _flat(_read(RTL_SKILL))
+    for clause in (
+        "Prove the crossing rules ran",
+        "If the control is not flagged, the stage is NOT RUN",
+        "Negative control flagged (rule 7): must be true",
+        "request a licence feature other than the product names the licence server lists",
+        "A module the tool black-boxed got zero rules",
+        "`string`-typed or `real` parameter",
+        "Never edit the RTL to satisfy the lint tool",
+    ):
+        assert clause in flat, f"rtl-design skill lacks {clause!r}"
+
+
+def test_dft_skill_carries_tessent_flow_and_fail_capable_checks():
+    """A Tessent scan/ATPG run and a Tessent MBIST run each had to rediscover the tool flow;
+    the legacy scan path inserted nothing while exiting clean, and the skill's chain-count
+    rule contradicted the project's architecture doc."""
+    flat = _flat(_read(DFT_SKILL))
+    for clause in (
+        "## Tool Notes: Siemens Tessent",
+        "set_context dft -scan -no_rtl -design_id gate",
+        "set_context patterns -scan",
+        "import_scan_mode",
+        "< /dev/null",
+        "LibComp",
+        "dft_cell_selection",
+        "create_dft_specification",
+        "reduced_address_count",
+        "a chain count the project's DFT architecture fixes",
+        "Prove the pattern testbench can fail",
+        "Prove detection per fault class, not by a passing run",
+        "Demoting a Scan DRC rule from error to warning",
+    ):
+        assert clause in flat, f"dft skill lacks {clause!r}"
+    agent = _flat(_read(DFT_AGENT))
+    assert "A DFT check passes only once it has been shown able to fail" in agent
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in AGENT_FILES if p.name.endswith("-orchestrator.md")
+     and p.parent.parent.name != "infrastructure"],
+    ids=_rel,
+)
+def test_absent_knowledge_file_is_reported_not_silently_skipped(path):
+    """With CHIP_DESIGN_MEMORY_ROOT pointing at a project memory/ the resolver never ran, so
+    dft/knowledge.md was never seeded and the agent proceeded without the curated knowledge,
+    saying nothing."""
+    flat = _flat(_read(path))
+    assert "say so in the experience record's `notes`" in flat, _rel(path)
+    assert "memory_root.py --init" in flat, _rel(path)

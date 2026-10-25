@@ -54,7 +54,8 @@ chip meets quality targets (fault coverage and DPPM).
 ### Proprietary
 - **Synopsys TetraMAX ATPG** (`tmax`, dialect `synopsys`) — pattern generation, fault simulation, and compression
 - **Cadence Modus Test** (`modus`, dialect `cadence`) — ATPG, scan DRC, and diagnosis
-- **Siemens Tessent** (`tessent`, dialect `siemens`) — full DFT suite: scan, ATPG, MBIST, IJTAG
+- **Siemens Tessent** (`tessent`, dialect `siemens`) — full DFT suite: scan, ATPG, MBIST, IJTAG.
+  See Tool Notes: Siemens Tessent below for the flow and its traps
 
 ---
 
@@ -62,7 +63,10 @@ chip meets quality targets (fault coverage and DPPM).
 
 ### Domain Rules
 1. Scan architecture: full-scan preferred for ASIC; capture all sequential elements
-2. Scan chain count: √(total flip-flops) as rule of thumb; balance test time vs routing
+2. Scan chain count: a chain count the project's DFT architecture fixes (a scan-port budget, a
+   tester channel count, a decision record) wins. √(total flip-flops) is a fallback rule of
+   thumb only when nothing is specified; balance test time vs routing. Record which source the
+   count came from
 3. Chain length balance: ±5% of target length across all chains
 4. Compression: EDT/OPMISR for designs > 1M FFs to reduce ATE test time
 5. MBIST: one controller per memory group (same width/depth class)
@@ -132,6 +136,11 @@ one that needs an RTL change is handed back to the RTL flow — do not edit the 
 9. A fix must not trade coverage for a clean report: do not clear a Scan DRC error by
    excluding the offending flops from scan, or raise ATPG coverage by reclassifying faults as
    untestable, unless the exclusion is justified and recorded
+10. The same holds for rule severities. Demoting a Scan DRC rule from error to warning so the
+    tool will leave setup mode is allowed only for flops an architecture decision deliberately
+    keeps off the chains (a TAP-clocked domain, a BIST controller). Name the decision, the rule
+    IDs, and the instance count in the DRC report; any other instance the demoted rule hides is
+    an open finding
 
 ### Scan DRC Rules (all must pass before ATPG)
 - No clock signals feeding into scan data path
@@ -168,7 +177,14 @@ one that needs an RTL change is handed back to the RTL flow — do not edit the 
 3. Untestable faults: classify as Redundant or ATPG-Untestable; document all
 4. Pattern compression: use compressed patterns for EDT designs
 5. At-speed patterns: verify capture timing with STA before signing off
-6. Good-machine simulation: run all patterns on RTL or gate sim — 0 failures allowed
+6. Good-machine simulation: run all patterns on RTL or gate sim — 0 failures allowed. A run
+   of a pattern subset is reported as that subset (`20 of 1574`), never as the full set
+7. Prove the pattern testbench can fail: re-run it once on a netlist with one scan link broken
+   (or one pattern bit flipped) and confirm it reports mismatches. A testbench that passes the
+   broken netlist too has compared nothing, and its good-machine PASS is unverified
+8. When the cell models used for ATPG and for pattern simulation are both derived from the same
+   source (Verilog generated from a Liberty file because the vendor models are unavailable),
+   say so: the two checks then share any misreading of that source and are not independent
 
 ### QoR Metrics to Evaluate
 - SAF coverage: ≥ `design_state.constraints.dft.saf_coverage_pct`% (default: 99%)
@@ -191,6 +207,18 @@ one that needs an RTL change is handed back to the RTL flow — do not edit the 
 3. Memory isolation: memories disconnected from logic during BIST
 4. Power: verify IR drop with all memories running BIST simultaneously
 5. Access: via JTAG TAP or dedicated BIST port
+6. Prove detection per fault class, not by a passing run. Inject each fault class the
+   algorithm claims (stuck-at per bit and per address bit, transition, coupling, write-mask /
+   byte-enable stuck, address decoder) into the memory simulation model, and check every run
+   against an independent golden model of the expected verdict. Report detected/injected per
+   class. A BIST that passes the fault-free memory proves only that it does not false-fail
+7. Run fault proofs on the full address space. Generated MBIST patterns often default to a
+   reduced address count to cut simulation time (Tessent: `reduced_address_count` on); a
+   fault proof run that way misses faults outside the reduced range
+8. When comparing a tool-generated MBIST against an existing in-house one, compare on the same
+   memories and fault list: faults detected per class, test cycles per algorithm, and area.
+   Count cycles the same way for both: a tool controller can test each logical port as a
+   separate pass, which multiplies its cycle count for a multi-port memory
 
 ### LBIST Rules (if required)
 1. STUMPS architecture: PRPG + MISR + scan chains
@@ -250,6 +278,68 @@ one that needs an RTL change is handed back to the RTL flow — do not edit the 
 - Final test pattern files
 - BSDL file
 - DFT netlist (input to PD)
+
+---
+
+## Tool Notes: Siemens Tessent
+
+Tessent's modern flow is context-based. The legacy `add_scan_groups` / `add_scan_chains` dofile
+path can run to completion and insert nothing, so check the inserted-cell count, not the exit
+status. Measured on Tessent 2025.4.
+
+### Running it
+- Batch: `tessent -shell -dofile <f>.do -log <f>.log -replace < /dev/null`. Without
+  `< /dev/null` the shell waits on stdin after an aborted dofile and the job hangs. Without
+  `-replace` an old log survives and reads like a result. Confirm the log's timestamp is this run's
+- Remove the TSDB output directory before each scan-insertion run; a stale TSDB is read back
+- Check that each option is accepted by the installed version before relying on it
+  (2025.4 rejects `add_processors -number`)
+- Treat licensed library files (algorithm libraries, `share/UsageExamples`) as read-only
+  reference; copy what you adapt into the project
+
+### Cell library (scan insertion and ATPG)
+- `read_liberty` supplies cell attributes only. Cell behaviour comes from Verilog models
+  compiled with LibComp (`libcomp <models.v> -dofile ... < /dev/null`) into an `.atpglib`;
+  read that with `read_cell_library`, add `read_liberty`, and save both with
+  `write_cell_library ... -include_created_dft_cell_selections` to a `.tcelllib` that the
+  scan and patterns contexts read. Fail the step on any `// Error` line in the LibComp log
+- Write the models with gate primitives. A bare `assign y = a;` buffer is modelled as a wire,
+  and the cell then fails the tool's buffer check
+- Curate the `dft_cell_selection`. The auto-generated one can pick special-purpose cells (for
+  sky130, `lpflow_*` low-power cells). A buffer, inverter, 2:1 mux and lockup latch must be
+  named explicitly
+
+### Scan insertion and ATPG
+1. `set_context dft -scan -no_rtl -design_id gate`, `read_cell_library <.tcelllib>`, read the
+   netlist, `set_current_design`, define clocks, `set_scan_enable`, then
+   `set_system_mode analysis` (scan DRC runs here)
+2. `add_scan_mode <name> -chain_count N -si_connections [get_ports ...] -so_connections
+   [get_ports ...]` to bind chains to existing scan ports, then `analyze_scan_chains`,
+   `insert_test_logic`, `write_design -tsdb`. If port binding fails and a script falls back
+   to tool-created ports, report it: the chains no longer use the architecture's ports
+3. ATPG in a fresh session: `set_context patterns -scan`, `read_design <design> -design_id gate`,
+   `import_scan_mode <name>`, then pattern generation per fault model
+- When flops are deliberately left off the chains (scan_insertion rule 10), the S1/S2 scan
+  rules fail on them and DRC will not leave setup mode until those rules are demoted. Record
+  the demotion with its justification
+
+### MemoryBIST
+1. `set_context dft -rtl -design_id rtl1`; read the RTL and a memory library of TCD
+   (`tcd_memory`) descriptions, one per memory macro
+2. `check_design_rules`, `create_dft_specification`, edit it with `set_config_value` if needed,
+   `process_dft_specification`
+3. `extract_icl`, `create_patterns_specification`, `process_patterns_specification`
+4. `run_testbench_simulations -simulator vcs` (or the simulator in use)
+- Algorithm definitions and sample flows ship with the install
+  (`lib/tools/etv/membistipg_algos/`, `share/UsageExamples/*.tgz`); read them before writing a TCD
+- TCD traps: `LogicalPorts` lists read, write, then read-write ports in that order
+  (`[nR][nW][nRW]`); without column address bits, `BitGrouping` is forced and cannot be set
+- `DFT_C1-1`: every memory clock must trace from a primary input. A hand-instantiated library
+  clock cell (a clock gate) is a black box to the trace unless its model is read
+- Read the memory macro interface-only for insertion; reading its behavioural model as well
+  gives a duplicate module in simulation
+- Fault proofs: bist_insertion rules 6–7. Pass the injected fault by plusarg, and keep each
+  fault's run in its own simulation directory so results cannot mix
 
 ---
 

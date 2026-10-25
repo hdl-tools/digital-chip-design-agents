@@ -63,6 +63,17 @@
   Use the one the downstream PD flow uses. If that flow is sv2v-fronted, run synth_check on sv2v
   output: Surelog accepts SystemVerilog the sv2v → yosys path rejects, so a Surelog-fronted
   synth_check passes RTL that breaks PD.
+- **SpyGlass on a large SoC (X-2025.06)**: arrays above 4096 bits abort synthesis of the module
+  at the default memory threshold; `set_option mthresh 65536` (or the largest array width) keeps
+  a boot ROM or SRAM-controller array in the run. Modules with `string` / `real` parameters are
+  black-boxed (lint_check rule 16). Read the verdict from `moresimple.rpt`, never the exit code.
+- **SpyGlass CDC/RDC licence**: `cdc_verify_struct` and `rdc_verify_struct` check out
+  `cdc_adv_checker`. A server listing `checker`, `adv_checker`, `Advanced_CDC` and
+  `Advanced_RDC` but not that feature runs the setup goals and skips every crossing rule
+  (`Ac_license01`), so a 0-violation result is vacuous (cdc_rdc_analysis rules 7-8).
+- **Cadence HAL**: `hal -sv` with its synthesizability engine stalled for more than 5 minutes
+  on a 40-line design (suspected licence wait). `-NOHALSYNTH` runs the lint and structural
+  rules without it; record that the synthesis-based rules were off.
 
 ## Notes
 
