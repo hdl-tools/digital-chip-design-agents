@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+### Commercial RTL→GDS scaffolding: PD/signoff wrappers, extraction and IR stages, fair comparison
+
+Scaffolding for bringing commercial flows (DC/Genus/FC, Innovus/ICC2, StarRC/Quantus,
+PrimeTime/PrimePower, RedHawk, Formality/Conformal) up on an open PDK and comparing them with
+OpenROAD/LibreLane. Measured tool notes follow after the real runs; anything not measured is
+marked as such. `chip-design-infrastructure` 1.3.0 → 1.4.0; `chip-design-pd`, `chip-design-sta`,
+`chip-design-formal`, `chip-design-synthesis` 1.2.1 → 1.3.0.
+
+#### Added
+
+- **11 wrappers** (14 → 25): `wrap-dc.sh`, `wrap-genus.sh`, `wrap-innovus.sh`, `wrap-icc2.sh`
+  (`WRAP_ICC2_TOOL=fc_shell`), `wrap-pt.sh`, `wrap-starrc.sh`, `wrap-fm.sh`, `wrap-lec.sh`,
+  `wrap-redhawk.sh` (`WRAP_REDHAWK_TOOL=totem`), `wrap-magic.sh`, `wrap-netgen.sh`, same contract
+  as the others. Message prefixes are line-anchored (Synopsys `Error:`/`Warning:` with codes,
+  Cadence `**ERROR:`/`**WARN:`, Conformal `// Error:`) so `0 error(s)` is not an error.
+  Formality `FAILED`/`INCONCLUSIVE`, Conformal `Non-equivalent`/`Abort` points and netgen
+  `Netlists do not match` fail at exit 0; `wrap-starrc.sh` judges the SPEF the command file names
+  (fresh, `*SPEF` header, `*D_NET` entries), not the log. Result markers are the documented
+  formats, **not yet parsed from real logs**. They answer `--version` without starting the tool.
+- **pd `extraction` and `ir_em` stages** (`… routing → extraction → timing_optimization … →
+  ir_em → signoff`), an annotation-coverage gate, PG-shape check before IR, and
+  `## PDK Enablement` (`.lib`→`.db` per corner incl. macros, NDM from the tech LEF, MMMC,
+  authored ITF/ICT → `nxtgrd`/`qrcTech` correlated against OpenRCX/Magic, RedHawk tech, open
+  Magic/KLayout/Netgen decks). Innovus and ICC2/FC Tool Notes are command outlines.
+- **sta Fair Cross-Tool Comparison rule**: same SDC (md5), extractor + tech, STA engine and
+  activity assumptions for every compared flow; native reports labelled `native`. PrimeTime
+  multi-corner / PrimePower outline; unannotated parasitics fail as `input_setup`.
+- **formal**: Formality and Conformal in `lec_run`, and a mutated-netlist negative control before
+  an EQUIVALENT verdict counts.
+- **synthesis**: DC topographical, Genus (`read_mmmc`, `read_physical`, `syn_*`) and FC
+  (`compile_fusion`) outlines.
+- **infrastructure**: rows for `lc_shell`, `icc2_lm_shell`, `grdgenxo`, `quantus`, `Techgen`,
+  `joules`, `redhawk`, `totem`, `calibre`, `pvs`, `magic`, `netgen`; measured version probes on a
+  second host (Innovus 123 s, PrimeTime ≈120 s → probe budget 60 → 180 s, run in a process group
+  because a launcher's `*_exec` child survives `timeout` holding a licence); ≤ 16 GB hosts run one
+  heavy PD/STA tool at a time (`environment_validation` rule 12).
+- **QoR trends**: `power_mw`, `runtime_s`, `peak_rss_gb` (and pd `hold_wns_ns`, `tns_ns`,
+  `util_pct`, `wirelength_um`) for pd/sta/synthesis.
+
+#### Changed
+
+- `conformal` → `lec` and `starrc` → `StarXtract` (neither old name is a binary). Tempus and Voltus
+  are optional rows (absent on some hosts; use PrimeTime/PrimePower and RedHawk).
+- pd agent sign-off criteria now include IR drop, EM, power and density, matching the skill.
+- Comparison runs (`pipeline_config.comparison_run`) may omit area/power targets in synthesis and
+  pd: recorded as "comparison run, no target" instead of escalating.
+- maxTurns: synthesis 40 → 100, pd 100 → 150.
+- pd/sta/synthesis skills use the resolved `<MEM>` memory root, not literal `memory/`.
+
+#### Fixed
+
+- `memory/formal/knowledge.md`: `sby --depth/--vacuity/--multiclock` are not CLI flags (depth and
+  multiclock are `.sby` `[options]`; vacuity is checked with cover); `jg -allow_empty_cex` removed
+  (absent from the JasperGold 2024.12 console binary and help).
+- `memory/synthesis/knowledge.md`: `compile_ultra` was attributed to Genus and Fusion Compiler; it
+  is Design Compiler's.
+
 ### SpyGlass and Tessent: prove a static check ran, and carry the Tessent flows
 
 From adding SpyGlass lint/CDC/RDC, a Tessent scan + ATPG flow, and a Tessent MemoryBIST
