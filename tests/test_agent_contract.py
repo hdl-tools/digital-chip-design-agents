@@ -1658,3 +1658,17 @@ def test_sta_carries_fair_cross_tool_comparison_and_annotation_gate():
     agent = _flat(_read(STA_AGENT))
     assert "**Fair Cross-Tool Comparison**" in agent
     assert any("unannotated" in r and "`input_setup`" in r for r in _loop_back_rows(_read(STA_AGENT)))
+
+
+FORMAL_SKILL = REPO_ROOT / "plugins" / "formal" / "skills" / "formal-verification" / "SKILL.md"
+
+
+def test_formal_lec_names_commercial_tools_and_requires_a_negative_control():
+    skill = _flat(_read(FORMAL_SKILL))
+    for clause in ("(`fm_shell`, dialect `synopsys`)", "(`lec`, dialect `cadence`)",
+                   "Negative control before trusting EQUIVALENT", "`Verification SUCCEEDED`"):
+        assert clause in skill, f"formal skill lacks {clause!r}"
+    knowledge = _read(REPO_ROOT / "memory" / "formal" / "knowledge.md")
+    # depth/multiclock are .sby [options], not sby command-line flags.
+    assert not re.search(r"`sby [^`]*--(?:depth|vacuity|multiclock)", knowledge)
+    assert "`jg -allow_empty_cex`" not in knowledge.replace("recommended `jg -allow_empty_cex`", "")
