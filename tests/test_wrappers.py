@@ -50,6 +50,20 @@ WRAPPERS = {
     "vcs-compile": ("vcs", "CPU time: 12.3 seconds to compile\n", ["-full64", "top.sv"]),
     "xrun-compile": ("xrun", "xrun: compile complete\n", ["top.sv"]),
     "imc": ("imc", "Overall average grade: 78.50%\n", ["-execcmd", "report -summary"]),
+    # Commercial and open PD/signoff wrappers. Their result markers are the documented
+    # report formats, not yet parsed from a real log on the reference host.
+    "dc": ("dc_shell", "Total cell area:            1234.500000\n", ["-f", "synth.tcl"]),
+    "genus": ("genus", "Timing slack :     125ps\n", ["-batch", "-files", "synth.tcl"]),
+    "innovus": ("innovus", "|     WNS (ns):| 0.042 |\n", ["-batch", "-files", "route.tcl"]),
+    "icc2": ("icc2_shell", "  slack (MET)                                0.0420\n", ["-f", "route.tcl"]),
+    "pt": ("pt_shell", "  slack (MET)                                0.0420\n", ["-f", "sta.tcl"]),
+    "fm": ("fm_shell", "Verification SUCCEEDED\n", ["-f", "lec.tcl"]),
+    "lec": ("lec", "Compared points      PO     DFF    Total\n"
+                   "Equivalent           10     20     30\n", ["-nogui", "-dofile", "lec.do"]),
+    "redhawk": ("redhawk", "WRAP_RESULT worst_ir_drop_pct=2.5\n", ["-f", "run.tcl"]),
+    "magic": ("magic", "Total DRC errors found: 0\n", ["-dnull", "-noconsole", "drc.tcl"]),
+    "netgen": ("netgen", "Circuits match uniquely.\n",
+               ["-batch", "lvs", "a top", "b top", "setup.tcl", "comp.out"]),
 }
 
 
@@ -287,7 +301,8 @@ def test_every_wrapper_script_is_exercised_here():
     """A wrapper added to the tools directory without tests would ship unchecked."""
     on_disk = {p.name for p in TOOLS_DIR.glob("wrap-*.sh")}
     tested = {f"wrap-{name}.sh" for name in WRAPPERS} | {
-        "wrap-verilator-lint.sh", "wrap-urg.sh", "wrap-cocotb-results.sh"}
+        "wrap-verilator-lint.sh", "wrap-urg.sh", "wrap-cocotb-results.sh",
+        "wrap-starrc.sh"}
     assert on_disk == tested
 
 
@@ -627,3 +642,233 @@ def test_results_version_run_is_not_a_pass(tmp_path, flag):
     assert rc == 0
     assert out["status"] == "WARN"
     assert out["verified"] is False
+
+
+# --- commercial / open PD signoff wrappers: tool-specific verdicts -------------
+
+def test_dc_captures_synopsys_error_code_and_fails(tmp_path):
+    log = "Total cell area: 10.0\nError: Can't find design 'top'. (UID-341)\n"
+    _, out = run_wrapper(tmp_path, "dc", log)
+    assert out["status"] == "FAIL"
+    assert out["summary"]["first_error_code"] == "UID-341"
+
+
+def test_dc_counts_synopsys_warnings_by_code(tmp_path):
+    log = ("Total cell area: 10.0\n"
+           "Warning: Design 'top' has '2' unresolved references. (LINK-5)\n"
+           "Warning: Design 'top' has '2' unresolved references. (LINK-5)\n")
+    _, out = run_wrapper(tmp_path, "dc", log)
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+    assert out["summary"]["warnings_by_code"] == {"LINK-5": 2}
+
+
+def test_summary_lines_mentioning_errors_are_not_errors(tmp_path):
+    """Innovus ends every log with a message summary; it must not read as an error."""
+    log = ("|     WNS (ns):| 0.042 |\n"
+           "*** Message Summary: 0 warning(s), 0 error(s)\n")
+    _, out = run_wrapper(tmp_path, "innovus", log)
+    assert out["status"] == "PASS"
+
+
+def test_innovus_cadence_error_fails(tmp_path):
+    _, out = run_wrapper(tmp_path, "innovus",
+                         "|     WNS (ns):| 0.042 |\n**ERROR: (IMPSYT-6000): No design loaded\n")
+    assert out["status"] == "FAIL"
+    assert out["summary"]["first_error_code"] == "IMPSYT-6000"
+
+
+def test_innovus_drc_violations_are_a_verified_warn(tmp_path):
+    _, out = run_wrapper(tmp_path, "innovus", "Total Violations : 7 Viols.\n")
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+    assert out["summary"]["drc_total"] == 7
+
+
+def test_pt_reports_worst_slack_and_power(tmp_path):
+    log = ("  slack (VIOLATED)        -0.1200\n  slack (MET)        0.3000\n"
+           "  Total Power            =   1.23e-03   (100.00%)\n")
+    _, out = run_wrapper(tmp_path, "pt", log)
+    assert out["status"] == "PASS"
+    assert out["summary"]["worst_slack"] == -0.12
+    assert out["summary"]["total_power"] == 1.23e-03
+
+
+def test_icc2_routing_drcs_are_a_verified_warn(tmp_path):
+    _, out = run_wrapper(tmp_path, "icc2", "Total number of DRCs = 12\n")
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+    assert out["summary"]["drc_total"] == 12
+
+
+def test_icc2_wrapper_runs_fusion_compiler_when_asked(tmp_path):
+    _, env = fake_tool_env(tmp_path, "fc_shell", WRAPPERS["icc2"][1])
+    env["WRAP_ICC2_TOOL"] = "fc_shell"
+    _, out = run_script(tmp_path, "wrap-icc2.sh", ["-f", "x.tcl"], env)
+    assert out["status"] == "PASS"
+
+
+@pytest.mark.parametrize("verdict", ["FAILED", "INCONCLUSIVE"])
+def test_formality_failed_or_inconclusive_verdict_fails_at_exit_0(tmp_path, verdict):
+    rc, out = run_wrapper(tmp_path, "fm", f"Verification {verdict}\n")
+    assert rc == 0
+    assert out["status"] == "FAIL"
+    assert out["summary"]["verdict"] == verdict
+
+
+def test_conformal_non_equivalent_points_fail_at_exit_0(tmp_path):
+    log = ("Compared points      PO     DFF    Total\n"
+           "Equivalent           10     19     29\n"
+           "Non-equivalent       0      1      1\n")
+    rc, out = run_wrapper(tmp_path, "lec", log)
+    assert rc == 0
+    assert out["status"] == "FAIL"
+    assert out["summary"]["non_equivalent"] == 1
+
+
+def test_conformal_aborted_points_are_not_a_pass(tmp_path):
+    log = ("Compared points      PO     DFF    Total\n"
+           "Equivalent           10     19     29\n"
+           "Abort                0      1      1\n")
+    _, out = run_wrapper(tmp_path, "lec", log)
+    assert out["status"] == "FAIL"
+    assert out["summary"]["aborted"] == 1
+
+
+def test_conformal_comment_prefixed_error_fails(tmp_path):
+    _, out = run_wrapper(tmp_path, "lec", WRAPPERS["lec"][1] + "// Error: Unknown command\n")
+    assert out["status"] == "FAIL"
+
+
+def test_magic_drc_count_is_a_verified_warn(tmp_path):
+    _, out = run_wrapper(tmp_path, "magic", "Total DRC errors found: 42\n")
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+    assert out["summary"]["drc_total"] == 42
+
+
+def test_netgen_mismatch_fails_at_exit_0(tmp_path):
+    rc, out = run_wrapper(tmp_path, "netgen", "Netlists do not match.\n")
+    assert rc == 0
+    assert out["status"] == "FAIL"
+    assert out["summary"]["verdict"] == "mismatch"
+
+
+def test_netgen_reads_the_lvs_report_file_this_run_wrote(tmp_path):
+    fake, env = fake_tool_env(tmp_path, "netgen", "")
+    fake.write_bytes(FAKE_TOOL.replace(
+        b'exit', b'printf "Final result: Circuits match uniquely.\\n" > comp.out\nexit', 1))
+    _, out = run_script(tmp_path, "wrap-netgen.sh", WRAPPERS["netgen"][2], env)
+    assert out["status"] == "PASS"
+    assert out["summary"]["report_file"].endswith("comp.out")
+
+
+def test_netgen_stale_report_file_is_not_a_result(tmp_path):
+    old = tmp_path / "comp.out"
+    old.write_text("Circuits match uniquely.\n", encoding="utf-8")
+    os.utime(old, (1_000_000_000, 1_000_000_000))
+    _, out = run_wrapper(tmp_path, "netgen", NOISE)
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+
+
+def test_netgen_property_errors_make_a_match_a_warn(tmp_path):
+    _, out = run_wrapper(tmp_path, "netgen",
+                         "Circuits match uniquely.\nProperty errors were found.\n")
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+
+
+def test_redhawk_without_a_result_line_is_unverified(tmp_path):
+    _, out = run_wrapper(tmp_path, "redhawk", "Static IR analysis done\n")
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+
+
+# --- wrap-starrc.sh ----------------------------------------------------------
+# The result is the parasitics file the command file names, not the log, so this
+# wrapper is not in WRAPPERS: a fake tool that only prints a log cannot pass it.
+
+FAKE_STARRC = (
+    b'#!/usr/bin/env bash\n'
+    b'cat "$FAKE_TOOL_LOG" 2>/dev/null\n'
+    b'if [[ -n "${FAKE_SPEF:-}" ]]; then cp "$FAKE_SPEF" "$FAKE_OUT"; fi\n'
+    b'exit "${FAKE_TOOL_RC:-0}"\n'
+)
+SPEF = '*SPEF "IEEE 1481-1998"\n*DESIGN "top"\n*D_NET n1 0.1\n*END\n*D_NET n2 0.2\n*END\n'
+
+
+def run_starrc(tmp_path: Path, spef, log="", rc=0):
+    fake, env = fake_tool_env(tmp_path, "StarXtract", log, rc)
+    fake.write_bytes(FAKE_STARRC)
+    out_file = tmp_path / "top.spef"
+    env["FAKE_OUT"] = out_file.as_posix()
+    if spef is not None:
+        src = tmp_path / "src.spef"
+        src.write_text(spef, encoding="utf-8")
+        env["FAKE_SPEF"] = src.as_posix()
+    cmd_file = tmp_path / "star_cmd"
+    cmd_file.write_text(
+        f"BLOCK: top\nNETLIST_FORMAT: SPEF\nNETLIST_FILE: {out_file.as_posix()}\n",
+        encoding="utf-8")
+    return run_script(tmp_path, "wrap-starrc.sh", [cmd_file.as_posix()], env)
+
+
+def test_starrc_fresh_spef_passes_and_counts_nets(tmp_path):
+    rc, out = run_starrc(tmp_path, SPEF)
+    assert rc == 0
+    assert out["status"] == "PASS"
+    assert out["verified"] is True
+    assert out["summary"]["d_nets"] == 2
+
+
+def test_starrc_exit_0_without_spef_is_not_a_pass(tmp_path):
+    rc, out = run_starrc(tmp_path, None)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert UNVERIFIED in out["warnings"][0]
+    assert "was not written" in out["summary"]["no_result_reason"]
+
+
+def test_starrc_stale_spef_is_not_a_result(tmp_path):
+    old = tmp_path / "top.spef"
+    old.write_text(SPEF, encoding="utf-8")
+    os.utime(old, (1_000_000_000, 1_000_000_000))
+    _, out = run_starrc(tmp_path, None)
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert "stale" in out["summary"]["no_result_reason"]
+
+
+def test_starrc_spef_with_no_nets_is_not_a_result(tmp_path):
+    _, out = run_starrc(tmp_path, '*SPEF "IEEE 1481-1998"\n*DESIGN "top"\n')
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+
+
+def test_starrc_error_line_fails(tmp_path):
+    _, out = run_starrc(tmp_path, SPEF, log="ERROR: layer map entry missing\n")
+    assert out["status"] == "FAIL"
+
+
+def test_starrc_warning_is_a_verified_warn(tmp_path):
+    _, out = run_starrc(tmp_path, SPEF, log=WARNING_LINE)
+    assert out["status"] == "WARN"
+    assert out["verified"] is True
+
+
+def test_starrc_nonzero_exit_propagates(tmp_path):
+    rc, out = run_starrc(tmp_path, SPEF, rc=2)
+    assert rc == 2
+    assert out["status"] == "FAIL"
+
+
+def test_starrc_missing_tool_fails(tmp_path):
+    if shutil.which("StarXtract", path="/usr/bin:/bin"):
+        pytest.skip("StarXtract in a system dir")
+    rc, out = run_script(tmp_path, "wrap-starrc.sh", ["star_cmd"], _minimal_env(tmp_path))
+    assert rc == 1
+    assert out["status"] == "FAIL"
+    assert out["verified"] is False
+    assert "tool not found: StarXtract" in out["errors"][0]

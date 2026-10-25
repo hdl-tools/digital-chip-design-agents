@@ -46,6 +46,8 @@ complete environment before any domain orchestrator begins work.
 - **OpenROAD** (`openroad`) — RTL-to-GDS flow
 - **LibreLane / OpenLane2** (`openlane`) — open-source ASIC flow
 - **KLayout** (`klayout`) — GDS/OASIS viewer and DRC engine
+- **Magic** (`magic`) — layout editor, DRC and extraction (Sky130 sign-off DRC)
+- **Netgen** (`netgen`) — LVS netlist comparison (Sky130 sign-off LVS)
 - **OpenSTA** (`sta`) — gate-level static timing analysis
 - **SymbiYosys** (`sby`) — formal hardware verification
 - **gem5** (`gem5`) — full-system micro-architectural simulator
@@ -77,6 +79,8 @@ valid for the other.
 | `sta` | `sta` | `opensta` |
 | `sby` | `formal` | `symbiyosys` |
 | `klayout` | `drc_lvs` | `klayout` |
+| `magic` | `drc_lvs` | `magic` |
+| `netgen` | `drc_lvs` | `netgen` |
 | `bambu-hls` | `hls` | `bambu` |
 | `gem5` | `arch_simulator` | `gem5` |
 | `nextpnr` | `fpga_pnr` | `nextpnr` |
@@ -98,12 +102,14 @@ role to fill the field: a `null` cannot produce a false conflict.
 | Synopsys Design Compiler | `dc_shell` (`dc_shell-t`) | `synthesis` | `synopsys` | `dc_shell -version` — parse the `dc_shell version` line |
 | Cadence Genus | `genus` | `synthesis` | `cadence` | `genus -version` — parse the `Program Name:` line |
 | Synopsys Fusion Compiler | `fc_shell` | `synthesis` | `synopsys` | none — UNVERIFIED |
+| Synopsys Library Compiler | `lc_shell` | `library_prep` | `synopsys` | `lc_shell -version` — parse the `lc_shell version` line |
 | Cadence Innovus | `innovus` | `physical_design` | `cadence` | none — UNVERIFIED |
 | Synopsys IC Compiler 2 | `icc2_shell` | `physical_design` | `synopsys` | none — UNVERIFIED |
+| Synopsys IC Compiler II Library Manager | `icc2_lm_shell` | `library_prep` | `synopsys` | none — UNVERIFIED |
 | Synopsys PrimeTime | `pt_shell` (`pt_shell64`) | `sta` | `synopsys` | `pt_shell -version` — parse the `pt_shell version` line |
-| Cadence Tempus | `tempus` | `sta` | `cadence` | none — UNVERIFIED |
+| Cadence Tempus | `tempus` | `sta` | `cadence` | none — UNVERIFIED (optional; absent on some hosts — use PrimeTime) |
 | Synopsys Formality | `fm_shell` (`formality`) | `lec` | `synopsys` | `fm_shell -version` — parse the `Formality (R) Version` line |
-| Cadence Conformal | `conformal` | `lec` | `cadence` | none — UNVERIFIED |
+| Cadence Conformal LEC | `lec` | `lec` | `cadence` | none — UNVERIFIED |
 | Cadence JasperGold | `jg` | `formal` | `cadence` | none — UNVERIFIED |
 | Synopsys VC Formal | `vcf` | `formal` | `synopsys` | none — UNVERIFIED |
 | Siemens Questa Formal | `qformal` | `formal` | `siemens` | none — UNVERIFIED |
@@ -120,12 +126,43 @@ role to fill the field: a `null` cannot produce a false conflict.
 | ARM Artisan | `artisan` | `mem_compiler` | `arm` | none — UNVERIFIED |
 | Synopsys SiliconSmart | `siliconsmart` | `characterisation` | `synopsys` | none — UNVERIFIED |
 | Cadence Liberate | `liberate` | `characterisation` | `cadence` | none — UNVERIFIED |
-| Synopsys StarRC | `starrc` | `extraction` | `synopsys` | none — UNVERIFIED |
-| Cadence Voltus | `voltus` | `power_analysis` | `cadence` | none — UNVERIFIED |
+| Synopsys StarRC | `StarXtract` | `extraction` | `synopsys` | none — UNVERIFIED |
+| Synopsys StarRC grdgenxo | `grdgenxo` | `extraction_tech` | `synopsys` | `grdgenxo -v` — parse the `Version` line of the StarRC banner |
+| Cadence Quantus | `quantus` | `extraction` | `cadence` | `quantus -version` — parse the `Version        :` line |
+| Cadence Quantus Techgen | `Techgen` | `extraction_tech` | `cadence` | `Techgen -version` — parse the `Version        :` line |
+| Cadence Voltus | `voltus` | `power_analysis` | `cadence` | none — UNVERIFIED (optional; absent on some hosts — use RedHawk for IR/EM, PrimePower for power) |
+| Cadence Joules | `joules` | `power_analysis` | `cadence` | none — UNVERIFIED |
+| Ansys RedHawk | `redhawk` | `ir_em` | `ansys` | none — UNVERIFIED |
+| Ansys Totem | `totem` | `ir_em` | `ansys` | none — UNVERIFIED |
+| Siemens Calibre | `calibre` | `drc_lvs` | `siemens` | none — UNVERIFIED |
+| Cadence Pegasus/PVS | `pvs` | `drc_lvs` | `cadence` | none — UNVERIFIED |
 | Arm Compiler 6 | `armcc` | `embedded_compiler` | `arm` | none — UNVERIFIED |
 | SEGGER J-Link GDB Server | `JLinkGDBServer` | `debug_probe` | `segger` | none — UNVERIFIED |
 | Lauterbach TRACE32 | `t32marm` | `debug_probe` | `lauterbach` | none — UNVERIFIED |
 | Arm Development Studio | `armds` | `debug_probe` | `arm` | none — UNVERIFIED |
+
+**Commercial PD/signoff rows added for the open-PDK comparison work (measured 2026-10-25 on a
+second EDA host, load average ~10, `timeout 60`, stdin `/dev/null`, each process group killed
+afterwards).** `lc_shell -version` (exit 0, 30 s, `lc_shell version X-2025.06`), `grdgenxo -v`
+(exit 0, 4 s, StarRC banner `Version X-2025.06-SP1`), `quantus -version` (exit 0, 32 s,
+`Version        : 23.1.1-p051`), `Techgen -version` (exit 0, 2 s, same `Version` line) and
+`fm_shell -version` (exit 0, 38 s) printed their lines and are recorded above. **On that host
+`dc_shell -version` printed `dc_shell version    -  X-2025.06-SP3` but exited 1** — parse the
+line, do not gate on the exit code. `StarXtract -v` printed `Version: X-2025.06-SP1` and also
+exited 1, so it stays UNVERIFIED until a clean probe is found. `icc2_shell`, `icc2_lm_shell`,
+`fc_shell`, `pt_shell`, `genus`, `innovus` and `joules` with `-version` printed nothing within
+60 s under that load and stay as recorded. **A vendor launcher is a shell script that execs a
+child (`pt_shell` → `pt_shell_exec`); `timeout` kills only the script and the child survives
+holding a licence.** Run every probe in its own process group (`setsid`) and kill the group
+(`kill -- -<pgid>`) on timeout, then confirm with `ps` that no `*_exec` child remains.
+
+**Two command fixes.** Cadence Conformal's batch command is `lec` (the product was listed as
+`conformal`, which is not a binary), and StarRC's is `StarXtract` (`starrc` is not a binary);
+both resolve under their install `bin/` on the second host. `tempus`, `voltus`, `icv` and
+`redhawk_sc` are absent there: Tempus and Voltus are kept as optional rows, and a flow that
+needs signoff STA, power or IR/EM uses PrimeTime / PrimePower and RedHawk/Totem instead.
+`magic` and `netgen` are commonly not on the host PATH at all but inside the LibreLane container
+image; detect them there when the flow runs LibreLane.
 
 **`vcs -ID` also prints a FLEXlm host ID.** Parse and store the `Compiler version`
 value only — never write the host ID into `tool-status.json`.
@@ -177,7 +214,14 @@ dialect-conflict WARN today:
   `role` in `tool-status.json`, and each already does its primary job elsewhere.
 - `mem_compiler` holds only `artisan`. Synopsys's memory compiler shares a binary with
   `siliconsmart`, which is recorded under `characterisation` — the job that binary performs.
-- `extraction` holds only `starrc`. No skill in this repo names a second extraction tool.
+- `extraction` holds `StarXtract` (synopsys) and `quantus` (cadence): two dialects, and their
+  tech files (`nxtgrd` vs `qrcTech`) are not interchangeable either. `extraction_tech` holds the
+  two tech-file generators, `grdgenxo` and `Techgen`, kept apart from the extractors because they
+  run once per PDK, not once per design.
+- `library_prep` holds `lc_shell` and `icc2_lm_shell`, both synopsys: `.lib`→`.db` and the NDM
+  reference library. The Cadence flows read `.lib`/LEF directly and need no peer.
+- `ir_em` holds `redhawk` and `totem` (ansys). Voltus would be its cadence peer but is filed under
+  `power_analysis`, the job it is used for here.
 - `power_analysis` has three single-command peers plus three commandless ones (below); none
   of `voltus`, `primepower`, `joules`, or `powerpro` has a second same-dialect alternative.
 - `embedded_compiler` holds only `armcc` with a command; Green Hills and IAR are its
@@ -189,8 +233,9 @@ Synopsys Platform Architect (`arch_simulator`/`synopsys`), ARM Performance Model
 (`arch_simulator`/`arm`), Cadence Virtual System Platform (`arch_simulator`/`cadence`),
 Green Hills MULTI (`embedded_compiler`/`greenhills`), IAR Embedded Workbench
 (`embedded_compiler`/`iar`), Synopsys Synplify (`synthesis`/`synopsys`), Siemens Aprisa
-(`physical_design`/`siemens`), Synopsys PrimePower, Cadence Joules RTL, and Siemens Questa
-PowerPro (all `power_analysis`), Synopsys VC Static (`lint_cdc`/`synopsys`). A command name
+(`physical_design`/`siemens`), Synopsys PrimePower (it runs inside `pt_shell`, so detecting
+PrimeTime is detecting it) and Siemens Questa PowerPro (both `power_analysis`; Cadence Joules
+now has its `joules` row above), Synopsys VC Static (`lint_cdc`/`synopsys`). A command name
 is not guessed here any more than a probe flag is above; each is instead given its `role`
 and `dialect` at the point of use in its domain skill.
 
@@ -217,13 +262,27 @@ and returns it.
 The adapter is `plugins/infrastructure/tools/mcp-adapter.py`. Each server runs the one wrapper
 named by `--wrapper`, except `verilator`: `mode: "lint"` runs `wrap-verilator-lint.sh` from the
 same directory as the configured `wrap-verilator-sim.sh`, because the sim wrapper's first
-argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 14 wrapper scripts.
+argument is a compiled simulation binary. The 8 batch servers therefore use 9 of the 25 wrapper scripts.
 The other five are invoked directly, not through MCP: `wrap-vcs-compile.sh` and
 `wrap-xrun-compile.sh` (proprietary compiles), `wrap-urg.sh` (Synopsys URG coverage merge/report,
 parsed from `<report>/dashboard.txt`), `wrap-imc.sh` (Cadence IMC batch coverage merge/report,
 parsed from stdout) and `wrap-cocotb-results.sh`, which runs no tool at all: it sums one or more
 cocotb `results.xml` files, because the cocotb makefile's exit code is not a verdict (cocotb 1.9.2
 `make` was observed exiting 0 with failing tests under both VCS and Xcelium).
+
+Eleven PD/signoff wrappers are also invoked directly, never through MCP, because each run is
+long and leaves its real result in report files: `wrap-dc.sh`, `wrap-genus.sh` (synthesis),
+`wrap-innovus.sh`, `wrap-icc2.sh` (`WRAP_ICC2_TOOL=fc_shell` for Fusion Compiler) (place and
+route), `wrap-pt.sh` (PrimeTime STA and PrimePower), `wrap-starrc.sh` (StarRC; the result is the
+`NETLIST_FILE:` the command file names, which must be fresh and non-empty), `wrap-fm.sh`,
+`wrap-lec.sh` (Formality / Conformal equivalence; an inconclusive or aborted compare fails),
+`wrap-redhawk.sh` (`WRAP_REDHAWK_TOOL=totem`; recognises only a `WRAP_RESULT
+worst_ir_drop_pct=<v>` line the run script prints after reading its own report),
+`wrap-magic.sh` (`Total DRC errors found: N`) and `wrap-netgen.sh` (`Circuits match uniquely`,
+also read from the LVS output file). Their result markers are the documented report formats and
+were **not yet parsed from real logs**; a measured-notes change follows the first real runs.
+Each refuses to start its tool with no arguments and gives it `/dev/null` as stdin, so a
+vendor shell cannot sit waiting for interactive input.
 
 ### Tier 2: Interactive session MCP servers (stateful, query-based)
 Use these when an agent iterates many times over an already-loaded design (e.g. ECO timing
@@ -596,7 +655,7 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 | `fc_shell` | `fusion-compiler`, `synopsys/fc`, `fc_shell` |
 | `icc2_shell` | `ic-compiler`, `icc2`, `synopsys/icc2` |
 | `tempus` | `tempus`, `cadence-tempus`, `cadence/tempus` |
-| `conformal` | `conformal`, `cadence-conformal`, `cadence/conformal` |
+| `lec` | `conformal`, `cadence-conformal`, `cadence/conformal` |
 | `jg` | `jaspergold`, `cadence-jg`, `cadence/jg` |
 | `vcf` | `vc-formal`, `vcf`, `synopsys/vcf` |
 | `qformal` | `questa-formal`, `qformal`, `mentor/qformal` |
@@ -613,7 +672,19 @@ user's login shell, but a user re-running by hand may be in either `bash` or `tc
 | `artisan` | `artisan`, `arm-artisan`, `arm/artisan` |
 | `siliconsmart` | `siliconsmart`, `synopsys/siliconsmart` |
 | `liberate` | `liberate`, `cadence-liberate`, `cadence/liberate` |
-| `starrc` | `starrc`, `synopsys-starrc`, `synopsys/starrc` |
+| `StarXtract` | `starrc`, `synopsys-starrc`, `synopsys/starrc` |
+| `grdgenxo` | `starrc`, `synopsys-starrc`, `synopsys/starrc` |
+| `quantus` | `quantus`, `cadence-quantus`, `cadence/quantus` |
+| `Techgen` | `quantus`, `cadence-quantus`, `cadence/quantus` |
+| `lc_shell` | `library-compiler`, `synopsys/lc`, `lc_shell` |
+| `icc2_lm_shell` | `ic-compiler`, `icc2`, `synopsys/icc2`, `fusion-compiler` |
+| `joules` | `joules`, `cadence-joules`, `cadence/joules` |
+| `redhawk` | `redhawk`, `ansys/redhawk` |
+| `totem` | `totem`, `ansys/totem` |
+| `calibre` | `calibre`, `mentor/calibre`, `siemens/calibre` |
+| `pvs` | `pvs`, `pegasus`, `cadence/pvs` |
+| `magic` | `magic` |
+| `netgen` | `netgen` |
 | `voltus` | `voltus`, `cadence-voltus`, `cadence/voltus` |
 | `armcc` | `armcc`, `arm-compiler`, `arm/armcc` |
 | `JLinkGDBServer` | `jlink`, `segger`, `segger/jlink` |
@@ -937,7 +1008,7 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
 ## Stage: wrapper_deployment
 
 ### Domain Rules
-1. Deploy all 14 wrapper scripts to `plugins/infrastructure/tools/`
+1. Deploy all 25 wrapper scripts to `plugins/infrastructure/tools/`
 2. Run `chmod +x` on every wrapper; if permission denied: FAIL and escalate with
    `sudo chmod +x` instructions
 3. Every wrapper must emit JSON conforming to the schema below regardless of exit code
@@ -1000,10 +1071,10 @@ wrapper prints nothing, prints something that is not JSON, or prints JSON withou
 wrapper itself produced no result.
 
 ### QoR Metrics to Evaluate
-- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 14)
+- `wrappers_deployed`: count of wrapper scripts with executable bit set (target: 25)
 
 ### Output Required
-- 14 executable wrapper scripts in `plugins/infrastructure/tools/`
+- 25 executable wrapper scripts in `plugins/infrastructure/tools/`
 
 ---
 
@@ -1162,7 +1233,7 @@ silent pass.
    against `tool-manifest.json`: that is this stage's own output, so on any run there is nothing to
    compare against. This stage reads `tool-status.json` and does not write it; a disagreement is a
    WARN, never a status downgrade.
-3. Verify all 14 wrapper scripts exist and have executable bit set
+3. Verify all 25 wrapper scripts exist and have executable bit set
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 tool-server snippets; `mcp-memory.json` is optional and its absence is not a FAIL) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (`yosys`, `verilator`, `openroad`, `sta`) is still `MISSING`.
    Escalate — do not loop back to `tool_installation`: that stage only *generates*
@@ -1241,7 +1312,16 @@ silent pass.
     directory (`du -s`), or below 10 GB where that is unknown, and name a filesystem with more free
     space when one is visible (a `/nobackup`- or scratch-style mount). A regression that fills its
     disk fails tests in ways that look like simulator crashes
-12. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result, parallel-job bound and its limiting term, sim_build free space, coverage-reporting gaps
+12. **One heavy PD/STA job at a time on a small host.** Record `MemTotal` from `/proc/meminfo`
+    as `regression_resources.host_ram_gb`. On a host with **≤ 16 GB**, emit a WARN that heavy
+    physical-design and signoff tools (`innovus`, `icc2_shell`, `fc_shell`, `genus`,
+    `dc_shell -topographical_mode`, `pt_shell` multi-scenario, `StarXtract`, `quantus`,
+    `redhawk`, `calibre`, KLayout DRC, an OpenROAD/LibreLane flow) must run **one at a time**;
+    domain orchestrators read `regression_resources.max_heavy_pd_jobs` (`1` there, otherwise
+    `floor(free_RAM_GB / 16)` with a minimum of 1 unless the user states a measured peak RSS) and
+    never launch two together. A second heavy job on such a host gets OOM-killed mid-run, and the
+    killed run looks like a tool crash
+13. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured, simulator smoke test result, parallel-job bound and its limiting term, sim_build free space, coverage-reporting gaps
 
 ### QoR Metrics to Evaluate
 - `dialect_conflicts`: count of **roles** (not pairs) held by detected tools of two or more
@@ -1262,7 +1342,7 @@ critical-path check.
 - [ ] `install-<toolname>.sh` scripts generated for all MISSING tools in `install-missing-tools/` (auto-run is user's choice)
 - [ ] `load-modules.sh` generated if any module-available tools found (auto-run is user's choice)
 - [ ] `tool-manifest.json` written by this stage, matching the schema in Output Required
-- [ ] All 14 wrappers deployed and executable
+- [ ] All 25 wrappers deployed and executable
 - [ ] Simulator compile-and-run smoke test run under a timeout and recorded, or explicitly WARNed as unverified (gated by `design_state.pipeline_config.simulator_smoke_test`)
 - [ ] Where the smoke test ran: `regression_resources.max_parallel_jobs` recorded with each term, and sim_build free space checked
 - [ ] Every coverage-reporting gap from `tool-status.json` repeated in the summary
@@ -1307,7 +1387,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
       "path": ""
     }
   ],
-  "wrappers": { "expected": 14, "executable": 0, "missing": [] },
+  "wrappers": { "expected": 25, "executable": 0, "missing": [] },
   "mcp": { "snippets_expected": 10, "snippets_present": 0, "adapters_present": false, "missing": [] },
   "dialect_conflicts": [
     { "role": "", "members": [ { "tool": "", "dialect": "" } ] }
@@ -1321,7 +1401,9 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
     "max_parallel_jobs": null,
     "limiting_term": null,
     "sim_build_dir": null,
-    "sim_build_free_gb": null
+    "sim_build_free_gb": null,
+    "host_ram_gb": null,
+    "max_heavy_pd_jobs": null
   },
   "critical_path": { "required": ["yosys", "verilator", "openroad", "sta"], "missing": [] },
   "signoff": false
@@ -1331,7 +1413,7 @@ executable bits, MCP artifact presence, the computed dialect-conflict set, and t
 `python_packages[].resolved_via` is the record behind rule 2's WARN: it is what makes "found, but
 outside the active environment" auditable after the run instead of print-only. `dialect_conflicts`
 lists the members per role, not just the count rule 7 reports, so the conflict can be read back
-without re-deriving it. `regression_resources` holds rules 10–11's measurements, each term `null` with a reason where it
+without re-deriving it. `regression_resources` holds rules 10–12's measurements, each term `null` with a reason where it
 could not be measured. `simulator_smoke_test.results` is a list of `{tool, status, verified, ran}` —
 one entry per `rtl_simulator`-role tool rule 9 probed — so a license-queue WARN is distinguishable
 from a tool that was never probed because the gate was disabled.
