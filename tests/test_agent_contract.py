@@ -1599,3 +1599,38 @@ def test_absent_knowledge_file_is_reported_not_silently_skipped(path):
     flat = _flat(_read(path))
     assert "say so in the experience record's `notes`" in flat, _rel(path)
     assert "memory_root.py --init" in flat, _rel(path)
+
+
+PD_SKILL = REPO_ROOT / "plugins" / "pd" / "skills" / "physical-design" / "SKILL.md"
+PD_AGENT = REPO_ROOT / "plugins" / "pd" / "agents" / "physical-design-orchestrator.md"
+
+
+def test_pd_flow_carries_extraction_ir_and_commercial_enablement():
+    """Commercial RTL->GDS flows on an open PDK had no extraction or IR stage, no way to
+    build the views the PDK does not ship, and sign-off criteria in the agent that
+    omitted the IR drop the skill required."""
+    stages = _stage_sequence(_read(PD_AGENT))
+    assert stages.index("routing") < stages.index("extraction") < stages.index("signoff")
+    assert "ir_em" in stages and stages.index("ir_em") < stages.index("signoff")
+    skill = _flat(_read(PD_SKILL))
+    for clause in (
+        "## Stage: extraction",
+        "## Stage: ir_em",
+        "## PDK Enablement",
+        "## Tool Notes: Cadence Innovus",
+        "## Tool Notes: Synopsys ICC2 / Fusion Compiler",
+        "outline — measured notes pending",
+        "including every macro's `.lib`",
+        "`grdgenxo` → `nxtgrd`",
+        "`Techgen` → `qrcTech`",
+        "Correlate",
+        "`indicative`",
+        "Magic and KLayout for DRC, Netgen for LVS",
+        "`pd.spef` (a list",
+    ):
+        assert clause.lower() in skill.lower(), f"pd skill lacks {clause!r}"
+    assert "`memory/pd/" not in _read(PD_SKILL)
+    agent = _flat(_read(PD_AGENT))
+    for clause in ("ir_drop_pct:", "em_violations: 0", "power_mw:", '"spef": [',
+                   "comparison run, no target"):
+        assert clause in agent, f"pd agent lacks {clause!r}"
