@@ -120,3 +120,16 @@ def test_main_reports_trend_and_regression(tmp_path, fixtures_dir):
     assert res.returncode == 0, res.stderr
     # wns_ns trends 0.05 -> -0.02 -> -0.35 (higher-is-better): a regression.
     assert "REGRESSION" in res.stdout
+
+
+def test_pd_sta_synthesis_trend_power_runtime_and_memory(qor_trends):
+    """A tool-vs-tool comparison reads power, runtime and peak memory per flow; a field
+    missing from NUMERIC_METRICS is silently dropped from every trend."""
+    for dom in ("pd", "sta", "synthesis"):
+        for field in ("power_mw", "runtime_s", "peak_rss_gb"):
+            assert field in qor_trends.NUMERIC_METRICS[dom], (dom, field)
+    for field in ("hold_wns_ns", "tns_ns", "util_pct", "wirelength_um"):
+        assert field in qor_trends.NUMERIC_METRICS["pd"], field
+    # Lower is better for cost metrics; slack metrics stay higher-is-better.
+    assert not {"power_mw", "runtime_s", "peak_rss_gb", "wirelength_um"} & qor_trends.HIGHER_IS_BETTER
+    assert {"hold_wns_ns", "tns_ns"} <= qor_trends.HIGHER_IS_BETTER

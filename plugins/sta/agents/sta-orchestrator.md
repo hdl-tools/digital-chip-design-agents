@@ -376,7 +376,10 @@ After signoff (or on escalation/abandon), upsert (create or replace by `run_id`)
     "setup_wns_ns": "<value>",
     "hold_wns_ns": "<value>",
     "tns_ns": "<value>",
-    "failing_paths": "<value>"
+    "failing_paths": "<value>",
+    "power_mw": "<value or null>",
+    "runtime_s": "<value or null>",
+    "peak_rss_gb": "<value or null>"
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],

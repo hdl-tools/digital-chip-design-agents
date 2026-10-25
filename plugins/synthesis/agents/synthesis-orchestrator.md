@@ -365,7 +365,11 @@ After signoff (or on escalation/abandon), upsert (create or replace by `run_id`)
     "wns_ns": "<value>",
     "cells": "<value>",
     "area_um2": "<value>",
-    "lec_unmatched": "<value>"
+    "lec_unmatched": "<value>",
+    "tns_ns": "<value or null>",
+    "power_mw": "<value or null>",
+    "runtime_s": "<value or null>",
+    "peak_rss_gb": "<value or null>"
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],

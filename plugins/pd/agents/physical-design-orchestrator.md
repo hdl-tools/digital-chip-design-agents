@@ -419,7 +419,14 @@ After every stage completes, upsert (create or replace by `run_id`) one JSON lin
     "wns_ns": "<value>",
     "drc_violations": "<value>",
     "lvs_errors": "<value>",
-    "gds_area_um2": "<value>"
+    "gds_area_um2": "<value>",
+    "hold_wns_ns": "<value or null>",
+    "tns_ns": "<value or null>",
+    "power_mw": "<value or null>",
+    "util_pct": "<value or null>",
+    "wirelength_um": "<value or null>",
+    "runtime_s": "<value or null>",
+    "peak_rss_gb": "<value or null>"
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
