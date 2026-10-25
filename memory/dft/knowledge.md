@@ -30,6 +30,17 @@
   boundaries that block chain stitching, but significantly increases runtime on large designs.
   Flatten selectively at the scan boundary level.
 
+- **Tessent 2025.4 (measured)**: the legacy `add_scan_groups` / `add_scan_chains` path ran clean
+  and inserted nothing; use the context flow in the dft skill's Tool Notes. `tessent -shell`
+  hangs on stdin after an aborted dofile unless run with `< /dev/null`; without `-replace` the
+  previous log survives and looks like a result. `add_processors -number` is rejected.
+- **Tessent cell library for sky130_fd_sc_hd**: Liberty alone gives no cell behaviour. Generate
+  Verilog models (gate primitives, not bare `assign`), compile with LibComp, and curate the
+  `dft_cell_selection`: the auto-generated one picked `lpflow_*` cells.
+- **Tessent MemoryBIST**: generated patterns default to `reduced_address_count` on; turn it off
+  for fault-injection proofs. The controller tests each logical port in its own pass, so its
+  cycle count for a 1RW1R macro is not comparable to a single-pass in-house March count.
+
 ## Notes
 
 - JTAG boundary scan connectivity (`jtag_setup`) should be validated with a BSDL file checker

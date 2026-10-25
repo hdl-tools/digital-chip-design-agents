@@ -222,7 +222,7 @@ skill's "Memory Root Resolution" section.
 ### Read (session start)
 Before beginning `detect_open_fix_requests`, read `<MEM>/meta/knowledge.md` if it exists.
 Use it for iteration-cap heuristics and escalation-message templates.
-If the file does not exist, proceed without it.
+If the file does not exist, proceed without it, and say so in the experience record's `notes`: an absent file usually means the memory root was never seeded with the curated knowledge, which `memory_root.py --init` copies in without overwriting.
 
 
 **Optional — semantic experience lookup.** Before dispatching a fix to a producer domain, if the `query_experiences` MCP tool (from the `chip-design-memory` server) is available, call it with `domain` set to the target producer domain (e.g. `"rtl-design"`), the open `fix_request` summary as `query`, and known `filters` (`pdk`, `tool_used`, `design_name`). Pass the ranked prior fixes to the dispatched orchestrator as additional context. The result's `backend`/`fell_back` flags indicate whether ranking was semantic or keyword. Skip silently if the tool is unavailable.

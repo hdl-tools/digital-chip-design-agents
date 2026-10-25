@@ -381,7 +381,7 @@ skill's "Memory Root Resolution" section.
 Before beginning `ip_procurement`, read `<MEM>/soc/knowledge.md` if it exists.
 Incorporate its guidance into stage decisions — especially known failure patterns,
 successful tool flags, and PDK-specific notes. If the file does not exist, proceed
-without it. Also initialise `state.run_id` to `soc_<YYYYMMDD>_<HHMMSS>` at this
+without it, and say so in the experience record's `notes`: an absent file usually means the memory root was never seeded with the curated knowledge, which `memory_root.py --init` copies in without overwriting. Also initialise `state.run_id` to `soc_<YYYYMMDD>_<HHMMSS>` at this
 point; all subsequent stage writes and upsert operations must reference this value.
 
 
