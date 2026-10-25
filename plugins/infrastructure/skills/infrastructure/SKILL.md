@@ -103,13 +103,13 @@ role to fill the field: a `null` cannot produce a false conflict.
 | Cadence Genus | `genus` | `synthesis` | `cadence` | `genus -version` — parse the `Program Name:` line |
 | Synopsys Fusion Compiler | `fc_shell` | `synthesis` | `synopsys` | none — UNVERIFIED |
 | Synopsys Library Compiler | `lc_shell` | `library_prep` | `synopsys` | `lc_shell -version` — parse the `lc_shell version` line |
-| Cadence Innovus | `innovus` | `physical_design` | `cadence` | none — UNVERIFIED |
+| Cadence Innovus | `innovus` | `physical_design` | `cadence` | `innovus -version` — parse the `@(#)CDS: Innovus v` line |
 | Synopsys IC Compiler 2 | `icc2_shell` | `physical_design` | `synopsys` | none — UNVERIFIED |
-| Synopsys IC Compiler II Library Manager | `icc2_lm_shell` | `library_prep` | `synopsys` | none — UNVERIFIED |
+| Synopsys IC Compiler II Library Manager | `icc2_lm_shell` | `library_prep` | `synopsys` | `icc2_lm_shell -version` — parse the `lm_shell version` line |
 | Synopsys PrimeTime | `pt_shell` (`pt_shell64`) | `sta` | `synopsys` | `pt_shell -version` — parse the `pt_shell version` line |
 | Cadence Tempus | `tempus` | `sta` | `cadence` | none — UNVERIFIED (optional; absent on some hosts — use PrimeTime) |
 | Synopsys Formality | `fm_shell` (`formality`) | `lec` | `synopsys` | `fm_shell -version` — parse the `Formality (R) Version` line |
-| Cadence Conformal LEC | `lec` | `lec` | `cadence` | none — UNVERIFIED |
+| Cadence Conformal LEC | `lec` | `lec` | `cadence` | `lec -version` — parse the `Tool:` line (`Tool:<tab>lec<tab><version>`) |
 | Cadence JasperGold | `jg` | `formal` | `cadence` | none — UNVERIFIED |
 | Synopsys VC Formal | `vcf` | `formal` | `synopsys` | none — UNVERIFIED |
 | Siemens Questa Formal | `qformal` | `formal` | `siemens` | none — UNVERIFIED |
@@ -131,27 +131,32 @@ role to fill the field: a `null` cannot produce a false conflict.
 | Cadence Quantus | `quantus` | `extraction` | `cadence` | `quantus -version` — parse the `Version        :` line |
 | Cadence Quantus Techgen | `Techgen` | `extraction_tech` | `cadence` | `Techgen -version` — parse the `Version        :` line |
 | Cadence Voltus | `voltus` | `power_analysis` | `cadence` | none — UNVERIFIED (optional; absent on some hosts — use RedHawk for IR/EM, PrimePower for power) |
-| Cadence Joules | `joules` | `power_analysis` | `cadence` | none — UNVERIFIED |
-| Ansys RedHawk | `redhawk` | `ir_em` | `ansys` | none — UNVERIFIED |
-| Ansys Totem | `totem` | `ir_em` | `ansys` | none — UNVERIFIED |
-| Siemens Calibre | `calibre` | `drc_lvs` | `siemens` | none — UNVERIFIED |
-| Cadence Pegasus/PVS | `pvs` | `drc_lvs` | `cadence` | none — UNVERIFIED |
+| Cadence Joules | `joules` | `power_analysis` | `cadence` | `joules -version` — parse the `Program Name:` line |
+| Ansys RedHawk | `redhawk` | `ir_em` | `ansys` | `redhawk -v` — parse the release (`2025 R2.2`) at the start of the first line |
+| Ansys Totem | `totem` | `ir_em` | `ansys` | `totem -v` — parse the release at the start of the first line |
+| Siemens Calibre | `calibre` | `drc_lvs` | `siemens` | `calibre -version` — parse the `//  Calibre v` line |
+| Cadence Pegasus/PVS | `pvs` | `drc_lvs` | `cadence` | `pvs -version` — parse the `Version        :` line |
 | Arm Compiler 6 | `armcc` | `embedded_compiler` | `arm` | none — UNVERIFIED |
 | SEGGER J-Link GDB Server | `JLinkGDBServer` | `debug_probe` | `segger` | none — UNVERIFIED |
 | Lauterbach TRACE32 | `t32marm` | `debug_probe` | `lauterbach` | none — UNVERIFIED |
 | Arm Development Studio | `armds` | `debug_probe` | `arm` | none — UNVERIFIED |
 
-**Commercial PD/signoff rows added for the open-PDK comparison work (measured 2026-10-25 on a
-second EDA host, load average ~10, `timeout 60`, stdin `/dev/null`, each process group killed
-afterwards).** `lc_shell -version` (exit 0, 30 s, `lc_shell version X-2025.06`), `grdgenxo -v`
-(exit 0, 4 s, StarRC banner `Version X-2025.06-SP1`), `quantus -version` (exit 0, 32 s,
-`Version        : 23.1.1-p051`), `Techgen -version` (exit 0, 2 s, same `Version` line) and
-`fm_shell -version` (exit 0, 38 s) printed their lines and are recorded above. **On that host
-`dc_shell -version` printed `dc_shell version    -  X-2025.06-SP3` but exited 1** — parse the
-line, do not gate on the exit code. `StarXtract -v` printed `Version: X-2025.06-SP1` and also
-exited 1, so it stays UNVERIFIED until a clean probe is found. `icc2_shell`, `icc2_lm_shell`,
-`fc_shell`, `pt_shell`, `genus`, `innovus` and `joules` with `-version` printed nothing within
-60 s under that load and stay as recorded. **A vendor launcher is a shell script that execs a
+**Commercial PD/signoff probes, measured 2026-10-25 on a second EDA host** (stdin `/dev/null`,
+each probe in its own process group, 120 s budget, light load): `lc_shell -version` 30 s,
+`icc2_lm_shell -version` 41 s (`lm_shell version X-2025.06`), `grdgenxo -v` 4 s (StarRC banner
+`Version X-2025.06-SP1`), `quantus -version` 32 s and `Techgen -version` 2 s (`Version        :
+23.1.1-p051`), `fm_shell -version` 38 s, `lec -version` 20 s (`Tool:	lec	24.10-p100`),
+`pvs -version` 36 s (`Version        : 24.12-s015`), `calibre -version` 62 s (`//  Calibre
+v2026.1_17.11`), `redhawk -v` 5 s and `totem -v` 53 s (`2025 R2.2 ...`), `genus -version` 75 s
+(`Version: 23.14-s090_1`), `joules -version` 30 s (`Version: 23.14-s077_1`), `innovus -version`
+**123 s** (`@(#)CDS: Innovus v23.14-s088_1`) and `pt_shell -version` **≈120 s** — all exit 0
+with the named line, and recorded in the table above. **On that host `dc_shell -version`
+printed `dc_shell version    -  X-2025.06-SP3` but exited 1** (twice), so parse the line and
+do not gate on the exit code. `StarXtract -v` printed `Version: X-2025.06-SP1` and also exited 1
+(twice); it stays UNVERIFIED until a clean probe is found. `icc2_shell -version` and
+`fc_shell -version` printed nothing within 120 s and stay UNVERIFIED. An earlier pass at
+load average ~10 with a 60 s budget timed out on `pt_shell`, `genus`, `innovus` and `joules` as
+well — which is why rule 4 below now budgets 180 s. **A vendor launcher is a shell script that execs a
 child (`pt_shell` → `pt_shell_exec`); `timeout` kills only the script and the child survives
 holding a licence.** Run every probe in its own process group (`setsid`) and kill the group
 (`kill -- -<pgid>`) on timeout, then confirm with `ps` that no `*_exec` child remains.
@@ -172,9 +177,11 @@ an interactive shell or check out a license. The flags above were each measured:
 with the named line present, in 1–26 s, no license queue. `dc_shell -version` prints an
 unrelated ASLR advisory first, so parse the line containing `version`, never the first line
 of output. `genus -version` was measured the same way: 26 s cold, 12 s warm, which is why
-rule 4 below sets the probe timeout at 60 s rather than the original 10 s.
+rule 4 below sets the probe timeout at 180 s (originally 10 s, then 60 s): `innovus` and
+`pt_shell` took about 2 minutes on the second host.
 
-**The two original `UNVERIFIED` rows are unverified upstream, not an oversight.** Neither
+**The two original `UNVERIFIED` rows were unverified upstream, not an oversight** (Innovus has
+since been measured on a second host; see the commercial-probe paragraph above). Neither
 could be confirmed on the reference host, and in both cases the obstacle was the install
 rather than the flag: `innovus -version` exits 0 reporting an expired build authorisation,
 and `vsim -version` exits 0 failing to load `libXext.so.6`. A site with a working install of
@@ -431,7 +438,8 @@ before falling back to the wrapper or direct execution.
    `coverage_reporting_gaps` list in `tool-status.json` and emit a WARN with that text. This is a
    **coverage-reporting gap, not a coverage FAIL**: simulation and coverage collection still work,
    and the gap only blocks a coverage number for that simulator. For a tool found in PATH that has a
-   version probe in that table, run the probe with a 60 s timeout, parse the documented
+   version probe in that table, run the probe with a 180 s timeout, in its own process group
+   (`setsid`, kill the group on expiry), parse the documented
    line, and store the parsed string in `version`. Do not use a short timeout: a Cadence
    Common UI tool starts a full shell to answer `-version` and takes tens of seconds on a
    cold NFS cache (`genus -version` measured 26 s cold, 12 s warm). For `vcs`, store the
@@ -445,11 +453,13 @@ before falling back to the wrapper or direct execution.
    Measured on the reference host by invoking each tool directly: `innovus -version` answers
    0 with an expired build authorisation, `voltus -version` answers 0 with "cannot find a
    proper installation", and `vsim -version` answers 0 having failed to load a shared
-   library. **None of those three has a probe in the table above**, so this stage reaches an
-   empty `version` for them through the no-probe condition, not the last one. They are cited
-   as evidence that a broken install answers 0 whatever the vendor — which is why the last
-   condition has to guard the five tools that *do* carry a probe, whose installs can break
-   the same way. A version probe never fails the stage.
+   library. `voltus` and `vsim` have no probe in the table above, so this stage reaches an
+   empty `version` for them through the no-probe condition. `innovus` has since gained a probe
+   (measured on a working second host), so on a host like the reference one it is the **last**
+   condition that catches it: exit 0 without the `@(#)CDS: Innovus v` line. They are cited as
+   evidence that a broken install answers 0 whatever the vendor — which is why the last
+   condition has to guard every tool that carries a probe, whose installs can break the same
+   way. A version probe never fails the stage.
 5. Record each tool as one of: `FOUND`, `MISSING`, or `PROPRIETARY_ONLY`
 6. Capture the exact version string for every tool found in PATH — `FOUND` tools via
    rule 1, and `PROPRIETARY_ONLY` tools that have a version probe in the Proprietary
@@ -539,7 +549,7 @@ invocation; never infer it from an env var. Try these in order, stop at the firs
   measured, `timeout 60 module avail` returns 127 with `timeout: failed to run command 'module'`
   on a host where rung 4 had just succeeded. Run every rung as
   `timeout 300 bash -c '<rung>; module avail </dev/null 2>&1'`.
-- **Budget 300 s, not the 60 s used for version probes.** The listing walks every modulefile tree:
+- **Budget 300 s, not the 180 s used for version probes.** The listing walks every modulefile tree:
   159.5 s measured on a warm NFS cache, emitting `ls: cannot access ...` noise from stale paths on
   the way. A short budget records a working module system as unprobeable.
 - **Always redirect stdin from `/dev/null`.** A wrapper that prompts would otherwise block the
