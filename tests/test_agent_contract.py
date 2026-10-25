@@ -1672,3 +1672,21 @@ def test_formal_lec_names_commercial_tools_and_requires_a_negative_control():
     # depth/multiclock are .sby [options], not sby command-line flags.
     assert not re.search(r"`sby [^`]*--(?:depth|vacuity|multiclock)", knowledge)
     assert "`jg -allow_empty_cex`" not in knowledge.replace("recommended `jg -allow_empty_cex`", "")
+
+
+SYNTH_SKILL = REPO_ROOT / "plugins" / "synthesis" / "skills" / "logic-synthesis" / "SKILL.md"
+SYNTH_AGENT = REPO_ROOT / "plugins" / "synthesis" / "agents" / "synthesis-orchestrator.md"
+
+
+def test_synthesis_outlines_commercial_tools_and_allows_comparison_runs():
+    skill = _flat(_read(SYNTH_SKILL))
+    for clause in ("dc_shell -topographical_mode", "compile_ultra", "-spg", "read_mmmc",
+                   "read_physical", "syn_generic", "syn_map", "syn_opt", "compile_fusion",
+                   "measured notes pending", "comparison run, no target"):
+        assert clause in skill, f"synthesis skill lacks {clause!r}"
+    assert "`memory/synthesis/" not in _read(SYNTH_SKILL)
+    assert "comparison run, no target" in _flat(_read(SYNTH_AGENT))
+    knowledge = _read(REPO_ROOT / "memory" / "synthesis" / "knowledge.md")
+    # compile_ultra is Design Compiler's; Genus maps with syn_*, Fusion Compiler with compile_fusion.
+    assert "In Cadence Genus, `set_max_area 0`" not in knowledge
+    assert "causes Fusion Compiler to re-optimize" not in knowledge

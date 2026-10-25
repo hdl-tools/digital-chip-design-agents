@@ -6,15 +6,18 @@
   designs targeting sky130 PDK requires `-flatten` in the `synth` pass. Without flattening,
   technology mapping fails to optimize across hierarchy boundaries, producing ~15–20% area
   overhead vs. flattened synthesis. Use `synth -top <top> -flatten` for sky130 targets.
-- **Genus set_max_area alone does not close WNS**: In Cadence Genus, `set_max_area 0` alone
-  does not drive timing closure. WNS violations persist if timing constraints are not applied
-  before area optimization. Always set timing constraints (`create_clock`, `set_input_delay`,
-  `set_output_delay`) before `compile_ultra` — area optimization runs automatically within the
-  timing budget.
-- **Scan chain false paths before compile_ultra**: Scan chain false paths must be declared in the
-  SDC (`set_false_path -from [get_ports scan_in] -to [get_ports scan_out]`) before `compile_ultra`.
-  Declaring them after causes Fusion Compiler to re-optimize scan paths, breaking chain continuity
-  and requiring LEC re-run.
+- **An area target alone does not close WNS**: an area constraint (`set_max_area 0`) does not
+  drive timing closure. Apply the timing constraints (`create_clock`, `set_input_delay`,
+  `set_output_delay`) before optimisation — before `compile_ultra` in Design Compiler, before
+  `syn_generic`/`syn_map`/`syn_opt` in Genus, before `compile_fusion` in Fusion Compiler — so
+  area recovery runs inside the timing budget. (Corrected: this entry attributed
+  `compile_ultra` to Genus; it is a Design Compiler command.)
+- **Scan chain false paths before compile**: scan chain false paths must be declared in the SDC
+  (`set_false_path -from [get_ports scan_in] -to [get_ports scan_out]`) before the compile —
+  `compile_ultra` in Design Compiler, `compile_fusion` in Fusion Compiler. Declaring them after
+  lets the tool re-optimise scan paths, breaking chain continuity and requiring an LEC re-run.
+  (Corrected: this entry tied `compile_ultra` to Fusion Compiler, whose compile is
+  `compile_fusion`.)
 
 ## Successful Tool Flags
 
@@ -23,12 +26,12 @@
   delay optimization.
 - `dc_shell -f <script.tcl> -output_log_file <log>` — always capture the log; `check_design`
   warnings about unresolved references are the most common root cause of synthesis failures.
-- `genus -legacy_ui -files <script.tcl>` — `--legacy_ui` mode is more stable for scripted flows
+- `genus -legacy_ui -files <script.tcl>` — `-legacy_ui` mode is more stable for scripted flows
   than the default UI mode; avoids interactive prompts that hang batch jobs.
 
 ## PDK / Tool Quirks
 
-- **`ultra` effort past 2× loop-backs**: `compile_ultra` with `ultra` effort rarely closes WNS
+- **`ultra` effort past 2× loop-backs** (Design Compiler): `compile_ultra` with `ultra` effort rarely closes WNS
   past 2 loop-back iterations — further effort yields < 1% improvement at 3–5× runtime cost.
   Switch to targeted path optimization (`compile_ultra -only_design_rule` + `optimize_registers`)
   after 2 failed `compile_ultra` runs.
