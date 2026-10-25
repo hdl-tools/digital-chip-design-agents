@@ -28,6 +28,16 @@ PYEOF
   exit 1
 fi
 
+# The deploy-time smoke test calls --version/--help. Answer it here instead of starting
+# the vendor shell, which checks out a licence and can take minutes to print a version.
+if [[ $# -eq 1 && ( "$1" == "--version" || "$1" == "--help" || "$1" == "-h" ) ]]; then
+  python3 - "$TOOL" <<'PYEOF'
+import json, shutil, sys
+print(json.dumps({"tool":"starrc","exit_code":0,"status":"WARN","verified":False,"summary":{"tool_path":shutil.which(sys.argv[1])},"errors":[],"warnings":["usage: wrap-starrc.sh [StarXtract args...] - answered by the wrapper; StarXtract was found but not started (no licence checked out)"],"raw_log":""}))
+PYEOF
+  exit 0
+fi
+
 LOG=$(mktemp /tmp/starrc-XXXXXX.log)
 STAMP=$(mktemp /tmp/starrc-stamp-XXXXXX)
 if [[ $# -eq 0 ]]; then

@@ -872,3 +872,21 @@ def test_starrc_missing_tool_fails(tmp_path):
     assert out["status"] == "FAIL"
     assert out["verified"] is False
     assert "tool not found: StarXtract" in out["errors"][0]
+
+
+PD_WRAPPERS = ("dc", "genus", "innovus", "icc2", "pt", "fm", "lec", "redhawk", "magic", "netgen")
+
+
+@pytest.mark.parametrize("name", PD_WRAPPERS + ("starrc",))
+@pytest.mark.parametrize("flag", ["--version", "--help"])
+def test_pd_wrappers_answer_the_smoke_test_without_starting_the_tool(tmp_path, name, flag):
+    """A vendor shell checks out a licence and took ~2 minutes to answer -version
+    (innovus, pt_shell) on the second host, so the smoke test must not start it."""
+    tool = WRAPPERS[name][0] if name != "starrc" else "StarXtract"
+    _, env = fake_tool_env(tmp_path, tool, "should not run\n")
+    rc, out = run_script(tmp_path, f"wrap-{name}.sh", [flag], env)
+    assert rc == 0
+    assert out["status"] == "WARN"
+    assert out["verified"] is False
+    assert "not started" in out["warnings"][0]
+    assert not (tmp_path / "fake.argv").exists()

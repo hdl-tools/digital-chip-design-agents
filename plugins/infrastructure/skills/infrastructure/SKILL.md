@@ -1028,7 +1028,10 @@ Still generate the modulefile block in every case, and emit a WARN in the stage 
    that is the expected outcome and confirms the wrapper runs and emits valid JSON.
    `wrap-verilator-sim.sh` takes a simulation binary, not tool arguments, so it answers
    `--version` / `--help` itself with the same `WARN`. `wrap-cocotb-results.sh` runs no tool and
-   takes `results.xml` paths, so it answers `--version` / `--help` itself the same way. A `FAIL`
+   takes `results.xml` paths, so it answers `--version` / `--help` itself the same way. The 11
+   PD/signoff wrappers (`wrap-dc.sh` … `wrap-netgen.sh`) also answer a lone `--version` /
+   `--help` themselves once the tool is found, without starting it: a vendor shell checks out a
+   licence and took about 2 minutes to answer `-version` (`innovus`, `pt_shell`). A `FAIL`
    from this test therefore always means a missing tool or a broken wrapper, never a
    mis-invocation. `wrap-imc.sh` FAILs with `tool not found: imc` on a host where Xcelium is
    installed without IMC — measured on the reference host, whose Xcelium 24.03 tree carries
