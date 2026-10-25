@@ -30,6 +30,8 @@ property_planning → environment_setup → fpv_run → cex_analysis → lec_run
 - Cadence JasperGold (`jg`, dialect `cadence`)
 - Synopsys VC Formal (`vcf`, dialect `synopsys`)
 - Siemens Questa Formal (`qformal`, dialect `siemens`)
+- Synopsys Formality (`fm_shell`, dialect `synopsys`) — LEC; wrapper `wrap-fm.sh`
+- Cadence Conformal LEC (`lec`, dialect `cadence`) — LEC; wrapper `wrap-lec.sh`
 
 ### MCP Preference
 When invoking open-source tools, follow the execution hierarchy:

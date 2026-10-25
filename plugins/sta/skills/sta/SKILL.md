@@ -27,11 +27,16 @@ question rather than requesting a full flow execution.
 
 ## Pre-run Context
 
+`<MEM>` below is the resolved memory root, never the literal `memory/` directory: an
+explicit `--memory-root`, else `$CHIP_DESIGN_MEMORY_ROOT`, else the central default, else
+the in-repo seed (`python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`
+prints it; the orchestrator's `## Memory` section is authoritative).
+
 Before executing or advising on **any** stage, read the following files if they exist:
 
-1. `memory/sta/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
+1. `<MEM>/sta/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
    Incorporate its guidance into every stage decision. If absent, proceed without it.
-2. `memory/sta/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
+2. `<MEM>/sta/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
    `last_stage`). Use this to resume correctly after interruption. If absent, a new run
    is starting; the orchestrator will create this file before the first stage.
 
@@ -52,7 +57,10 @@ and timing sign-off. WNS ≥ 0 and TNS = 0 at all corners required for tape-out.
 
 ### Proprietary
 - **Synopsys PrimeTime** (`pt_shell`, dialect `synopsys`) — gold-standard multi-corner STA and power analysis
-- **Cadence Tempus** (`tempus`, dialect `cadence`) — concurrent multi-mode multi-corner STA with ECO guidance
+- **Cadence Tempus** (`tempus`, dialect `cadence`) — concurrent multi-mode multi-corner STA with ECO guidance;
+  optional, absent on some hosts — use PrimeTime there
+- **Synopsys StarRC** (`StarXtract`, dialect `synopsys`) — extraction that produces the SPEF read here
+  (wrapper `wrap-starrc.sh`); the PD flow's `extraction` stage owns it
 
 ### Sequential Flow Log Review (OpenSTA / OpenROAD STA)
 
@@ -75,6 +83,57 @@ openroad -no_init -exit sta.tcl > sta.log 2>&1
 
 Parse `sta.log` after completion. Apply loop-back rules (ECO guidance stage) if
 setup/hold violations are found.
+
+---
+
+## Tool Notes: Synopsys PrimeTime (multi-corner) and PrimePower
+
+**Outline — measured notes pending.** Process and standard command names only; no option
+recipe below has been verified on this suite's reference host yet. Run through `wrap-pt.sh`.
+
+**Multi-corner, one scenario per corner (DMSA or a single multi-scenario session):**
+1. Per corner: `create_scenario` (or one `pt_shell` per corner), then `set link_path` /
+   `read_db` the library `.db` of **that** corner, including every macro's `.db`
+2. `read_verilog` + `link_design` the post-route netlist; `read_sdc` the one SDC every flow
+   shares (record its md5)
+3. `read_parasitics` the SPEF of the **RC corner mapped to that library corner** (Cmax with
+   the slow library for setup, Cmin with the fast library for hold, unless the PDK's signoff
+   table says otherwise) — write the mapping down; a scenario reading the wrong SPEF is the
+   most common silent error
+4. `report_annotated_parasitics -check` (or the version's equivalent) before any timing
+   report — see `multi_corner_analysis` annotation rule 2
+5. `update_timing`, then `report_qor`, `report_global_timing`, `report_constraint
+   -all_violators`, `report_timing -delay_type max|min`
+6. Collect WNS/TNS/violator count per scenario into one table; the corner set comes from
+   `design_state.constraints.pvt_corners`
+
+**PrimePower:** `set power_enable_analysis true`, same netlist/SPEF/SDC as the timing
+scenario; `read_saif`/`read_fsdb` for vector-based power, otherwise vectorless with
+`set_switching_activity` default toggle rate and static probability on inputs; then
+`update_power` and `report_power`. **Use the same activity assumption for every compared
+flow** (the same default toggle rate, the same input activity, the same SAIF if any) and
+record it with the number; a power figure without its activity assumption is not comparable.
+
+---
+
+## Fair Cross-Tool Comparison
+
+When the timing or power of designs implemented by **different tools** is compared (for
+example Innovus vs ICC2 vs OpenROAD/LibreLane on one netlist and PDK), every flow is judged
+the same way, or the comparison measures the judges rather than the implementations:
+
+1. **Same SDC.** Every flow reads the identical constraints file; record its md5 next to
+   each result (`sta.sdc_md5`). A tool-specific SDC variant is a different experiment
+2. **Same extractor and tech.** Re-extract every flow's final DEF with one extractor and one
+   tech file at the same RC corners (`extraction` in the PD flow). A tool's built-in
+   extraction is native
+3. **Same STA engine.** Time every flow in one signoff engine and version (`sta.engine`),
+   with the same libraries, corners and derates
+4. **Same activity assumptions** for power — the same vectorless defaults or the same SAIF
+5. **Native reports are recorded but labelled `native`** (`sta.judged_by`). They are useful
+   for diagnosing a flow and are never ranked against another flow's signoff numbers
+6. A comparison that cannot meet 1–4 (for example no common extractor tech) is reported as
+   **indicative**, with the unmet condition named
 
 ---
 
@@ -129,6 +188,16 @@ every entry with `"checks": ["hold"]` for hold; the defaults above are the fallb
 1. AOCV: apply depth and location-based derating (pre-POCV designs)
 2. POCV: apply parametric variation (sigma-based, per foundry agreement)
 3. Clock uncertainty: pre-CTS ideal values → post-CTS propagated
+
+### Annotation and engine rules
+1. One scenario per corner, each reading its own library corner and the SPEF of the RC corner
+   mapped to it; record the mapping in the timing report header
+2. **Annotation gate.** Before any slack is reported, read the annotation report
+   (`report_annotated_parasitics`, or the engine's equivalent): > 1 % of signal nets or any
+   clock net unannotated is a FAIL of this stage (`input_setup`), whatever the slack says. An
+   STA run on mostly unannotated nets reports clean timing that is false
+3. Tempus may be absent; PrimeTime (`pt_shell`) or OpenSTA (`sta`) is then the engine. Name
+   the engine and version with every figure
 
 ### Path Analysis Priority
 1. WNS path per corner (most critical single path)
@@ -275,14 +344,14 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 
 ### Write on stage completion
 After each stage completes (regardless of whether an orchestrator session is active),
-write or overwrite one JSON record in `memory/sta/experiences.jsonl` keyed by
+write or overwrite one JSON record in `<MEM>/sta/experiences.jsonl` keyed by
 `run_id`. This ensures data is persisted even if the flow is interrupted or called
 without full orchestrator context.
 
 Use `run_id` = `sta_<YYYYMMDD>_<HHMMSS>` (set once at flow start; reuse on each
 stage update). Set `signoff_achieved: false` until the final sign-off stage completes.
 ### Run state (write before first stage, update after each stage)
-Write `memory/sta/run_state.md` as the **first action** before launching any tool:
+Write `<MEM>/sta/run_state.md` as the **first action** before launching any tool:
 ```markdown
 run_id:      sta_<YYYYMMDD>_<HHMMSS>
 design_name: <design>

@@ -59,6 +59,10 @@ compliance, and equivalence checking between RTL and gate-level netlists.
 - **Cadence JasperGold** (`jg`, dialect `cadence`) — industry-standard FPV, CDC, DFT formal
 - **Synopsys VC Formal** (`vcf`, dialect `synopsys`) — property checking and equivalence verification
 - **Siemens Questa Formal** (`qformal`, dialect `siemens`) — FPV and coverage closure
+- **Synopsys Formality** (`fm_shell`, dialect `synopsys`) — RTL↔netlist and netlist↔netlist
+  equivalence (LEC); wrapper `wrap-fm.sh`
+- **Cadence Conformal LEC** (`lec`, dialect `cadence`) — RTL↔netlist and netlist↔netlist
+  equivalence (LEC); wrapper `wrap-lec.sh`
 
 ---
 
@@ -211,12 +215,33 @@ assume property (@(posedge clk)
 4. Verify all points: compare cone-of-influence
 5. Report: EQUIVALENT / UNMATCHED / ABORTED
 
+Tool outline (standard commands only; measured notes pending):
+- **Formality** (`fm_shell -f lec.tcl`, through `wrap-fm.sh`): `read_db` the libraries,
+  `read_sverilog -r` / `read_verilog -r` + `set_top r:/WORK/<top>` for the reference,
+  `read_verilog -i` + `set_top i:/WORK/<top>` for the implementation, an SVF from the
+  synthesis run (`set_svf`) when there is one, then `match` and `verify`. The verdict is
+  `Verification SUCCEEDED`; `FAILED` and `INCONCLUSIVE` are not equivalence
+- **Conformal** (`lec -xl -nogui -dofile lec.do`, through `wrap-lec.sh`): `read library`,
+  `read design -golden` and `read design -revised`, `set system mode lec`, `add compare point
+  -all`, `compare`, `report verification`. Read the compare summary: any `Non-equivalent` or
+  `Abort` point is not equivalence
+- **Yosys** (`equiv_make` / `equiv_simple` / `equiv_induct`, or a miter + SAT) for the open
+  flow
+
 ### Domain Rules
 1. Use same SDC for both golden and revised
 2. Scan mode: flatten scan chains or use scan-unaware mode
 3. Black boxes: handle consistently in both netlists
 4. Unmatched points: must be root-caused — not waived without RTL team approval
 5. Post-ECO: run LEC after every ECO, not just at sign-off
+6. **Negative control before trusting EQUIVALENT.** Run the same script once on a deliberately
+   mutated revised netlist (invert one gate output, swap two inputs of an AND/OR, or tie one
+   flop's D) and require the tool to report it non-equivalent. A setup that cannot catch the
+   mutant — black-boxed modules, a wrong `set_top`, constant-propagated cones, an SVF that
+   explains the mutation away — proves nothing on the real netlist. Record the mutant and the
+   verdict next to the real result
+7. Unmatched or unread design objects (black boxes, unlinked cells, unread `.db`) are listed
+   by name; an EQUIVALENT verdict over a black-boxed module covers nothing inside it
 
 ### Common LEC Failures
 | Failure | Fix |

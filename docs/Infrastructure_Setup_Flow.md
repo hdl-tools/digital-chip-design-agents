@@ -97,6 +97,10 @@ Each stage's rules are in the skill under `## Stage: <name>`.
   directly: `wrap-vcs-compile.sh`, `wrap-xrun-compile.sh`, `wrap-urg.sh`, `wrap-imc.sh` (coverage
   merge/report) and `wrap-cocotb-results.sh`, which runs no tool and turns cocotb
   `results.xml` files into the verdict, since cocotb's `make` can exit 0 with failing tests.
+  Eleven PD/signoff wrappers are invoked directly as well: `wrap-dc.sh`, `wrap-genus.sh`,
+  `wrap-innovus.sh`, `wrap-icc2.sh`, `wrap-pt.sh`, `wrap-starrc.sh`, `wrap-fm.sh`, `wrap-lec.sh`,
+  `wrap-redhawk.sh`, `wrap-magic.sh` and `wrap-netgen.sh` (markers from documented report
+  formats, not yet measured on real logs).
 - **`mcp_configuration`.** Writes the MCP configs with resolved paths and prints them. It never
   edits `.claude/settings.json`; registering the servers is the user's step.
 - **`environment_validation`.** Re-runs detection exactly as `tool_discovery` does, and checks that

@@ -27,13 +27,13 @@ tool_discovery → module_discovery → tool_installation → wrapper_deployment
 ### Open-Source
 - Verilator (`verilator`), Slang (`slang`), Surelog (`surelog`), sv2v (`sv2v`), Icarus Verilog (`iverilog`)
 - Yosys (`yosys`), ABC (`abc`), OpenROAD (`openroad`), LibreLane/OpenLane2 (`openlane`)
-- KLayout (`klayout`), OpenSTA (`sta`), SymbiYosys (`sby`)
+- KLayout (`klayout`), Magic (`magic`), Netgen (`netgen`), OpenSTA (`sta`), SymbiYosys (`sby`)
 - gem5 (`gem5`), Bambu HLS (`bambu-hls`), nextpnr (`nextpnr`), openFPGALoader (`openFPGALoader`)
 - cocotb (Python package), LLVM (`llvm-config`), GCC (`gcc`), OpenOCD (`openocd`)
 - xschem (`xschem`), GTKWave (`gtkwave`), uv (`uv`)
 
 ### Proprietary (detect only — never install)
-36 proprietary tools are tracked (full table with commands and probes: infrastructure
+46 proprietary tools are tracked (full table with commands and probes: infrastructure
 skill, "Proprietary" section). Grouped by `role` here because that is the unit a
 dialect-conflict WARN fires on — same `role`, different `dialect` is not a substitutable
 menu; a command line built for one dialect is not valid for another of the same role.
@@ -44,8 +44,8 @@ menu; a command line built for one dialect is not valid for another of the same 
 | `coverage_report` | `synopsys` (`urg`) · `cadence` (`imc`, often off PATH or not installed with Xcelium) |
 | `synthesis` | `synopsys` (`dc_shell`, `fc_shell`, Synplify) · `cadence` (`genus`) |
 | `physical_design` | `cadence` (`innovus`) · `synopsys` (`icc2_shell`) · `siemens` (Aprisa) |
-| `sta` | `synopsys` (`pt_shell`) · `cadence` (`tempus`) |
-| `lec` | `synopsys` (`fm_shell`, alt `formality`) · `cadence` (`conformal`) |
+| `sta` | `synopsys` (`pt_shell`) · `cadence` (`tempus`, optional — absent on some hosts; use PrimeTime) |
+| `lec` | `synopsys` (`fm_shell`, alt `formality`) · `cadence` (`lec`, Conformal) |
 | `formal` | `cadence` (`jg`) · `synopsys` (`vcf`) · `siemens` (`qformal`) |
 | `atpg` | `synopsys` (`tmax`) · `cadence` (`modus`) · `siemens` (`tessent`) |
 | `lint_cdc` | `synopsys` (`spyglass`, VC Static) — single dialect, see skill |
@@ -53,8 +53,12 @@ menu; a command line built for one dialect is not valid for another of the same 
 | `fpga_pnr` | `xilinx` (`vivado`) · `intel` (`quartus_sh`) · `microchip` (`libero`) |
 | `mem_compiler` | `arm` (`artisan`) — single dialect |
 | `characterisation` | `synopsys` (`siliconsmart`) · `cadence` (`liberate`) |
-| `extraction` | `synopsys` (`starrc`) — single dialect |
-| `power_analysis` | `cadence` (`voltus`, Joules RTL) · `synopsys` (PrimePower) · `siemens` (PowerPro) |
+| `extraction` | `synopsys` (`StarXtract`, StarRC) · `cadence` (`quantus`) |
+| `extraction_tech` | `synopsys` (`grdgenxo`) · `cadence` (`Techgen`) |
+| `library_prep` | `synopsys` (`lc_shell`, `icc2_lm_shell`) — single dialect |
+| `power_analysis` | `cadence` (`voltus` optional — absent on some hosts, `joules`) · `synopsys` (PrimePower) · `siemens` (PowerPro) |
+| `ir_em` | `ansys` (`redhawk`, `totem`) — single dialect |
+| `drc_lvs` | `klayout` · `magic` · `netgen` (open) · `siemens` (`calibre`) · `cadence` (`pvs`) |
 | `embedded_compiler` | `arm` (`armcc`) · `greenhills` (MULTI) · `iar` (Embedded Workbench) |
 | `debug_probe` | `segger` (`JLinkGDBServer`) · `lauterbach` (`t32marm`) · `arm` (`armds`) |
 | `arch_simulator` | `synopsys` (Platform Architect) · `arm` (Performance Models) · `cadence` (VSP) |
@@ -170,10 +174,11 @@ only, and `install_scripts_generated` from `tool_installation` only.
 3. If max iterations exceeded: stop, present full state and escalation report (procedure: Stage Gating and Escalation, item 3)
 4. Never auto-run per-tool install scripts — present them to the user for review; each MISSING tool gets its own `install-<toolname>.sh` written to `install-missing-tools/`
 5. Python selection: never record an interpreter that lives inside an EDA vendor install tree (`type` `bundled`) as `python_env.exec` — on the reference host the first `python3` on PATH was Siemens Calibre's bundled 3.8.16. Follow the skill's `tool_discovery` rule 2 Step B: enumerate `python3.N` candidates, pick the newest non-bundled one that meets the cocotb version's `Requires-Python`, and prefer a project-local venv (`python_env.type = "venv"`) over installing into system or user site-packages.
-6. On completion: confirm `tool-manifest.json` written by `environment_validation` and matching the validation-receipt schema in the skill's `environment_validation` Output Required (it is created there, not updated from an earlier stage), all 14 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 tool-server MCP config snippets written with resolved absolute paths and printed (plus `mcp-memory.json`, the optional memory server, when present)
+6. On completion: confirm `tool-manifest.json` written by `environment_validation` and matching the validation-receipt schema in the skill's `environment_validation` Output Required (it is created there, not updated from an earlier stage), all 25 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 tool-server MCP config snippets written with resolved absolute paths and printed (plus `mcp-memory.json`, the optional memory server, when present)
 7. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the Failure Classification & Retry Strategy table below; `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate history entry below also includes `retry_strategy` (`none` for `await_approval`/checkpoint). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 8. Checkpoint gate (at `environment_validation` only): before setting `environment.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"environment_validation"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "environment_validation", "agent": "infrastructure-orchestrator", "reason": "checkpoint environment_validation requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: tools_detected, wrappers_deployed>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `environment.signoff=true`. On re-invocation: if `"environment_validation"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 9. Infrastructure memory (opt-in — default off): see the **Infrastructure Memory** section below. Persist tool versions and setup config to `<MEM>/infrastructure/` **only** when `design_state.pipeline_config.track_infrastructure` is `true` or the orchestrator was invoked with `--track-memory`. When neither is set, skip all `<MEM>/infrastructure/` reads and writes entirely — current behavior is unchanged.
+10. Host RAM: on a host with ≤ 16 GB, record `regression_resources.max_heavy_pd_jobs = 1` and say in the sign-off summary that heavy PD/STA tools (P&R, signoff STA, extraction, IR, DRC) run one at a time (skill `environment_validation` rule 12). A second concurrent heavy job is OOM-killed and looks like a tool crash.
 
 <!-- BEGIN SHARED:failure-classification (synced from tools/agent_shared_sections.md - edit there, then run tools/sync_agent_sections.py) -->
 ## Failure Classification & Retry Strategy

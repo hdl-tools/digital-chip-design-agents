@@ -27,11 +27,16 @@ delegation and must never happen.
 
 ## Pre-run Context
 
+`<MEM>` below is the resolved memory root, never the literal `memory/` directory: an
+explicit `--memory-root`, else `$CHIP_DESIGN_MEMORY_ROOT`, else the central default, else
+the in-repo seed (`python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`
+prints it; the orchestrator's `## Memory` section is authoritative).
+
 Before executing or advising on **any** stage, read the following files if they exist:
 
-1. `memory/synthesis/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
+1. `<MEM>/synthesis/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
    Incorporate its guidance into every stage decision. If absent, proceed without it.
-2. `memory/synthesis/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
+2. `<MEM>/synthesis/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
    `last_stage`). Use this to resume correctly after interruption. If absent, a new run
    is starting; the orchestrator will create this file before the first stage.
 
@@ -56,6 +61,33 @@ quality checks before PD handoff.
 - **Synopsys Design Compiler** (`dc_shell`, dialect `synopsys`) — industry-standard logic synthesis
 - **Cadence Genus** (`genus`, dialect `cadence`) — RTL-to-netlist with concurrent optimisation
 - **Synopsys Fusion Compiler** (`fc_shell`, dialect `synopsys`) — combined synthesis and physical guidance
+
+Wrappers: `wrap-dc.sh` and `wrap-genus.sh` (Fusion Compiler through `wrap-icc2.sh` with
+`WRAP_ICC2_TOOL=fc_shell`). Prove a netlist with LEC (`wrap-fm.sh` / `wrap-lec.sh`) before
+handing it to PD.
+
+### Tool Notes: commercial synthesis (outline — measured notes pending)
+
+Standard command names only; no option recipe here has been verified on this suite's
+reference host yet.
+
+- **Design Compiler, topographical** — `dc_shell -topographical_mode -f <script.tcl>`.
+  Topographical mode needs physical data: an NDM reference library (or a Milkyway library on
+  older releases) and the technology file / tech LEF, plus the TLU+ or extraction tech for
+  wire RC. Without them it is wire-load-model synthesis and the timing is not comparable to a
+  physical flow. Compile with `compile_ultra` (add `-spg` to pass placement guidance to
+  ICC2), then `report_qor`, `report_area`, `report_timing`, `write -format verilog`, and keep
+  the SVF for Formality. On an open PDK build the `.db`/NDM views first (physical-design skill,
+  `## PDK Enablement`)
+- **Genus** — `genus -batch -files <script.tcl>`: `read_mmmc` (library sets, RC corners,
+  constraint mode with the SDC, analysis views), `read_physical -lef` (tech LEF then cell and
+  macro LEFs) for physically aware synthesis, `read_hdl`, `elaborate`, then
+  `syn_generic`, `syn_map`, `syn_opt` (each optionally `-physical`, which also needs a
+  floorplan DEF and the extraction tech), then `report_qor`, `report_timing`, `report_area`,
+  `write_hdl`, `write_sdc`. `compile_ultra` is a Design Compiler command, not a Genus one
+- **Fusion Compiler** — `fc_shell`: synthesis is `compile_fusion` (stepwise with `-to`/`-from`),
+  in the same NDM design library the back end continues from; `compile_ultra` is not the FC
+  command
 
 ### Sequential Flow Log Review (Yosys)
 
@@ -147,8 +179,8 @@ When used inside OpenROAD Flow Scripts (ORFS) or LibreLane, the Yosys log appear
 ### QoR Metrics to Evaluate
 - WNS: ≥ `design_state.constraints.timing.wns_ns_target` at worst-case corner for sign-off (default: 0)
 - TNS: = `design_state.constraints.timing.tns_ns_target` for clean sign-off (default: 0)
-- Area: within `design_state.constraints.area.area_um2` budget
-- Power: within `design_state.constraints.power.power_mw` budget
+- Area: within `design_state.constraints.area.area_um2` budget (comparison run: recorded, not judged)
+- Power: within `design_state.constraints.power.power_mw` budget (comparison run: recorded, not judged)
 - No unmapped cells
 
 ### Output Required
@@ -219,6 +251,12 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 - `constraints.area.area_um2` — area budget
 - `constraints.power.power_mw` — power budget
 
+**Comparison / benchmark runs** (`pipeline_config.comparison_run: true`, or a user request
+that is a tool-vs-tool comparison rather than a product build): `area.area_um2` and
+`power.power_mw` may be absent. Record `"comparison run, no target"` for each in the stage
+`reason`, report the measured area and power, and do not escalate. `clock.clk_mhz` stays
+required — every compared synthesis must use the same clock.
+
 **Optional (schema defaults apply when absent):**
 - `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold
 - `constraints.timing.tns_ns_target` (default: 0) — TNS sign-off threshold
@@ -231,7 +269,7 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 
 ### Write on stage completion
 After each stage completes (regardless of whether an orchestrator session is active),
-upsert one JSON record in `memory/synthesis/experiences.jsonl` keyed by `run_id`.
+upsert one JSON record in `<MEM>/synthesis/experiences.jsonl` keyed by `run_id`.
 Implement the upsert by rewriting the file: read all existing lines, filter out any
 record(s) with the same `run_id`, append the updated record, write the full content
 back atomically (replace the file). Every record must include a top-level `"run_id"`
@@ -239,7 +277,7 @@ field with format `synthesis_<YYYYMMDD>_<HHMMSS>` (set once at flow start; reuse
 each stage update). Set `signoff_achieved: false` until the final sign-off stage
 completes.
 ### Run state (write before first stage, update after each stage)
-Write `memory/synthesis/run_state.md` as the **first action** before launching any tool:
+Write `<MEM>/synthesis/run_state.md` as the **first action** before launching any tool:
 ```markdown
 run_id:      synthesis_<YYYYMMDD>_<HHMMSS>
 design_name: <design>

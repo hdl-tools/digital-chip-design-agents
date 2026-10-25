@@ -62,9 +62,11 @@ All agents communicate through a single shared JSON state object. Every stage ag
     "placement":          { "status": "pending", "qor": {}, "issues": [], "output": {} },
     "cts":                { "status": "pending", "qor": {}, "issues": [], "output": {} },
     "routing":            { "status": "pending", "qor": {}, "issues": [], "output": {} },
+    "extraction":         { "status": "pending", "qor": {}, "issues": [], "output": {} },
     "timing_optimization":{ "status": "pending", "qor": {}, "issues": [], "output": {} },
     "power_optimization": { "status": "pending", "qor": {}, "issues": [], "output": {} },
     "area_optimization":  { "status": "pending", "qor": {}, "issues": [], "output": {} },
+    "ir_em":              { "status": "pending", "qor": {}, "issues": [], "output": {} },
     "signoff":            { "status": "pending", "qor": {}, "issues": [], "output": {} }
   },
 
@@ -88,12 +90,18 @@ All agents communicate through a single shared JSON state object. Every stage ag
 ## 3. Stage Sequence
 
 ```text
-floorplan → placement → cts → routing → timing_optimization → power_optimization → area_optimization → signoff
+floorplan → placement → cts → routing → extraction → timing_optimization → power_optimization → area_optimization → ir_em → signoff
 ```
 
 Loop-back rules — the target stage, the iteration cap, and which failures escalate
 instead of looping — are in `## Loop-Back Rules` of [`physical-design-orchestrator.md`](../plugins/pd/agents/physical-design-orchestrator.md). That file is
 authoritative; this document does not restate them.
+
+`extraction` turns the routed database into per-corner SPEF and checks annotation coverage;
+`ir_em` runs IR drop and EM with the power grid present. Both exist so that sign-off timing,
+power and IR come from signoff engines on extracted parasitics rather than an
+implementation tool's estimate. Stage rules, and the `## PDK Enablement` steps for commercial
+tools on an open PDK, are in the physical-design skill.
 
 ---
 

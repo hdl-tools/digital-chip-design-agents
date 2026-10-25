@@ -24,8 +24,9 @@ constraint_validation → multi_corner_analysis → path_analysis → exception_
 - OpenROAD STA subsystem (`openroad -no_init`) — runs sequentially via tcl script
 
 ### Proprietary
-- Synopsys PrimeTime (`pt_shell`, dialect `synopsys`)
-- Cadence Tempus (`tempus`, dialect `cadence`)
+- Synopsys PrimeTime / PrimePower (`pt_shell`, dialect `synopsys`) — wrapper `wrap-pt.sh`
+- Cadence Tempus (`tempus`, dialect `cadence`) — optional; absent on some hosts, where PrimeTime
+  is the commercial signoff engine
 
 ### MCP Preference
 Multi-corner ECO loops query timing repeatedly on the same loaded design — this is the
@@ -47,6 +48,7 @@ highest-value MCP use case in the entire flow.
 - exception_review: all signed off           → eco_guidance
 - eco_guidance: ECO applied                  → multi_corner_analysis  (max 10× total)
 - eco_guidance: ECO cell count > 2%          → escalate to PD team `power_area`
+- multi_corner_analysis FAIL (parasitics unannotated: > 1 % of signal nets or any clock net) → escalate `input_setup` (the engine read the wrong or a partial SPEF; re-running reproduces it, and the reported slack is not a result)
 
 ## Sign-off Criteria
 - setup_wns_ns: >= design_state.constraints.timing.wns_ns_target at all corners (default: 0)
@@ -76,6 +78,8 @@ Each stage must return:
 3. LEC required after every ECO batch — do not accumulate ECOs without equivalence check
 4. ECO count > 2% of cells: hard stop, escalate to physical design team
 5. Do not enter eco_guidance if any exception in exception_review is pending sign-off — block until resolved
+5a. Cross-tool comparison: when the task compares implementation flows (for example Innovus vs ICC2 vs OpenROAD on one design), apply the skill's **Fair Cross-Tool Comparison** rule — one SDC (md5 recorded), one extractor and tech, one STA engine, one activity assumption for every flow. A flow judged any other way is reported with its figures labelled `native`, never ranked against the others
+5b. Annotation before slack: a timing result counts only after the annotation report shows the parasitics landed (skill `multi_corner_analysis`, annotation rule 2). Clean slack on unannotated nets is the defect, not the result
 6. Read `<MEM>/sta/knowledge.md` before the first stage. Write an experience record to `<MEM>/sta/experiences.jsonl` at the end of **every task invocation** — including a scoped single-stage task (one stage, one shard of a batch, a report-only or analysis-only request), which is a complete run for this rule and not "a step that did not terminate the flow" — and on signoff, escalation, max-iterations exceeded, early error, turn budget, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed. When a later result in the same task invalidates one already recorded (a PASS that a negative control shows was unverifiable, a figure that a re-run corrects), upsert the record with the corrected values and say in `notes` what was superseded and why; when the invalidated result was recorded by an earlier run, set this record's `supersedes` to that run's `run_id` and leave the earlier record unchanged.
 7. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the Failure Classification & Retry Strategy table below; `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, the terminal `history[]` entry's `reason` must state the `failure_class` plus what the user must supply to unblock; where a gate also sets `pending_approval`, its `reason` must say the same. The last entry written is the terminal entry read by downstream orchestrators.
 8. Checkpoint gate (at `sta_signoff` only): before setting `sta.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"sta_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "sta_signoff", "agent": "sta-orchestrator", "reason": "checkpoint sta_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: setup_wns_ns, hold_wns_ns, tns_ns>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `sta.signoff=true`. On re-invocation: if `"sta_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
@@ -372,7 +376,10 @@ After signoff (or on escalation/abandon), upsert (create or replace by `run_id`)
     "setup_wns_ns": "<value>",
     "hold_wns_ns": "<value>",
     "tns_ns": "<value>",
-    "failing_paths": "<value>"
+    "failing_paths": "<value>",
+    "power_mw": "<value or null>",
+    "runtime_s": "<value or null>",
+    "peak_rss_gb": "<value or null>"
   },
   "issues_encountered": ["<description>", "..."],
   "fixes_applied": ["<description>", "..."],
@@ -415,6 +422,10 @@ Domain fields to merge:
     "hold_wns_ns": null,
     "tns_ns": null,
     "corners_passed": [],
+    "engine": "<pt_shell | sta | tempus>",
+    "sdc_md5": null,
+    "power_mw": null,
+    "judged_by": "signoff | native",
     "signoff": false
   }
 }

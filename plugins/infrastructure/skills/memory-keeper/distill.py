@@ -58,11 +58,14 @@ METRIC_FIELDS = {
     "hls": ["latency_cycles", "dsp_count"],
     "infrastructure": ["tools_detected", "tools_missing", "wrappers_deployed", "mcp_servers_configured"],
     "memory-ip": ["memory_instances", "total_memory_area_um2", "worst_access_time_ns", "view_qa_errors", "projected_repair_yield_pct"],
-    "pd": ["wns_ns", "drc_violations", "lvs_errors", "gds_area_um2"],
+    "pd": ["wns_ns", "hold_wns_ns", "tns_ns", "drc_violations", "lvs_errors", "gds_area_um2",
+           "power_mw", "util_pct", "wirelength_um", "runtime_s", "peak_rss_gb"],
     "rtl-design": ["lint_errors", "cdc_violations"],
     "soc": ["ip_blocks_integrated", "memory_map_conflicts"],
-    "sta": ["setup_wns_ns", "hold_wns_ns", "tns_ns", "failing_paths"],
-    "synthesis": ["wns_ns", "cells", "area_um2", "lec_unmatched"],
+    "sta": ["setup_wns_ns", "hold_wns_ns", "tns_ns", "failing_paths", "power_mw", "runtime_s",
+            "peak_rss_gb"],
+    "synthesis": ["wns_ns", "tns_ns", "cells", "area_um2", "lec_unmatched", "power_mw", "runtime_s",
+                  "peak_rss_gb"],
     "verification": ["functional_coverage_pct", "regression_failures", "assertions_triggered"],
 }
 

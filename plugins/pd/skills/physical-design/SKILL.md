@@ -27,11 +27,16 @@ delegation and must never happen.
 
 ## Pre-run Context
 
+`<MEM>` below is the resolved memory root, never the literal `memory/` directory: an
+explicit `--memory-root`, else `$CHIP_DESIGN_MEMORY_ROOT`, else the central default, else
+the in-repo seed (`python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`
+prints it; the orchestrator's `## Memory` section is authoritative).
+
 Before executing or advising on **any** stage, read the following files if they exist:
 
-1. `memory/pd/knowledge.md` — known failure patterns, successful tool flags, PDK quirks.
+1. `<MEM>/pd/knowledge.md` — known failure patterns, successful tool flags, PDK quirks.
    Incorporate its guidance into every stage decision. If absent, proceed without it.
-2. `memory/pd/run_state.md` — current run identity (`run_id`, `design_name`, `pdk`,
+2. `<MEM>/pd/run_state.md` — current run identity (`run_id`, `design_name`, `pdk`,
    `last_stage`). Use this to resume correctly after interruption. If absent, a new run
    is starting; the orchestrator will create this file before the first stage.
 
@@ -40,7 +45,7 @@ orchestrator mid-flow. It ensures the fix database is consulted before any diagn
 
 ## Purpose
 Guide the complete physical implementation flow from gate-level netlist to
-tape-out-ready GDS-II. Eight stages with explicit QoR gates and loop-back
+tape-out-ready GDS-II. Ten stages with explicit QoR gates and loop-back
 criteria enforced by the physical-design orchestrator.
 
 ---
@@ -51,11 +56,32 @@ criteria enforced by the physical-design orchestrator.
 - **OpenROAD / ORFS** (`make DESIGN_CONFIG=./designs/<platform>/<design>/config.mk`) — full PD pipeline; executes sequentially (see sequential flow note below)
 - **LibreLane / OpenLane 2** (`openlane <config.json>`) — sequential PD pipeline built on OpenROAD; (see sequential flow note below)
 - **KLayout** (`klayout`) — DRC, LVS, and GDS-II viewing/editing; used for signoff DRC in open-source flows
+- **Magic** (`magic`) — DRC and extraction; Sky130 sign-off DRC (wrapper `wrap-magic.sh`)
+- **Netgen** (`netgen`) — LVS; Sky130 sign-off LVS (wrapper `wrap-netgen.sh`)
+- **OpenRCX** (OpenROAD `extract_parasitics`) — open RC extraction; the correlation reference
+  for a commercial extraction tech authored for an open PDK
 
 ### Proprietary
 - **Cadence Innovus** (`innovus`, dialect `cadence`) — floorplan through signoff; interactive and batch modes
 - **Synopsys IC Compiler 2** (`icc2_shell`, dialect `synopsys`) — hierarchical PD with Fusion technology
+- **Synopsys Fusion Compiler** (`fc_shell`, dialect `synopsys`) — synthesis + P&R in one database
 - **Siemens Aprisa** (dialect `siemens`) — physical implementation for advanced nodes
+- **Synopsys StarRC** (`StarXtract`, dialect `synopsys`) — signoff extraction; tech file from `grdgenxo`
+- **Synopsys StarRC grdgenxo** (`grdgenxo`, dialect `synopsys`) — ITF → `nxtgrd` extraction tech
+- **Cadence Quantus** (`quantus`, dialect `cadence`) — signoff extraction; tech file `qrcTech`
+- **Cadence Quantus Techgen** (`Techgen`, dialect `cadence`) — ICT → `qrcTech` extraction tech
+- **Synopsys Library Compiler** (`lc_shell`, dialect `synopsys`) — `.lib` → `.db` per corner
+- **Synopsys IC Compiler II Library Manager** (`icc2_lm_shell`, dialect `synopsys`) — NDM reference libraries
+- **Synopsys PrimeTime / PrimePower** (`pt_shell`, dialect `synopsys`) — signoff STA and power on extracted parasitics
+- **Ansys RedHawk** (`redhawk`, dialect `ansys`) — static/dynamic IR and EM
+- **Ansys Totem** (`totem`, dialect `ansys`) — IR/EM (transistor-level and mixed-signal)
+- **Siemens Calibre** (`calibre`, dialect `siemens`) — DRC/LVS where the PDK ships Calibre decks
+- **Cadence PVS** (`pvs`, dialect `cadence`) — DRC/LVS where the PDK ships PVS decks
+
+Cadence Voltus and Tempus are absent on some hosts; use RedHawk/Totem and PrimeTime/PrimePower
+there. Wrappers: `wrap-innovus.sh`, `wrap-icc2.sh`, `wrap-starrc.sh`, `wrap-pt.sh`,
+`wrap-redhawk.sh`, `wrap-magic.sh`, `wrap-netgen.sh`. On a host with ≤ 16 GB RAM run one of
+these heavy tools at a time (infrastructure `environment_validation` rule 12).
 
 ### Sequential Flow Log Review (OpenROAD / LibreLane)
 
@@ -195,6 +221,43 @@ Resume from step: `openlane --from <step_name> <config.json>`
 
 ---
 
+## Stage: extraction
+
+### Domain Rules
+1. Extract every RC corner the signoff STA needs (typically Cmin/Cmax or RCbest/RCworst and
+   typical) from the **final routed database**, and write one SPEF per corner. Record which
+   library corner each RC corner pairs with; an unmapped corner is a FAIL, not a default
+2. The extraction tech must match the PDK metal stack (layer order, thickness, dielectric) and
+   the layer map must name every routing and via layer in the DEF. Where the PDK ships no tech
+   for this extractor, build one per `## PDK Enablement` and label results `indicative` until
+   correlation holds
+3. Prove the file is the result: it exists, was written by this run, has a `*SPEF` header
+   (or the stated format's header) and holds `*D_NET` entries; `wrap-starrc.sh` checks exactly
+   this. An exit-0 extraction with a stale or empty file is not a result
+4. Unannotated nets: read the STA tool's annotation report (`report_annotated_parasitics` in
+   PrimeTime/OpenSTA, or the extractor's own summary). Above 1 % of signal nets unannotated is a
+   FAIL; any unannotated clock net is a FAIL. A timing run on largely unannotated nets reports
+   falsely clean slack
+5. Every later ECO (timing, power, area optimisation) invalidates the SPEF. `signoff` must read
+   parasitics extracted after the last database change, and say which run produced them
+6. Correlation, when two extractors are available (or a commercial tech was authored for an
+   open PDK): extract the same DEF with both, compare total net capacitance and resistance per
+   net and the resulting worst-path slack, and state the tolerance used (for example 5 % median
+   net C, 10 % worst-slack delta). Outside tolerance → WARN; downstream figures are `indicative`
+
+### QoR Metrics to Evaluate
+- `spef_files`: one per RC corner, all fresh and non-empty
+- `unannotated_nets_pct`: flag if > 1 %
+- `extractor_correlation_pct`: median per-net C delta vs the reference extractor, when measured
+
+### Output Required
+- SPEF per RC corner (paths recorded in `pd.spef`)
+- RC-corner ↔ library-corner map
+- Annotation report from the STA engine
+- Correlation report, when two extractors were run
+
+---
+
 ## Stage: timing_optimization
 
 ### Domain Rules
@@ -265,6 +328,38 @@ Resume from step: `openlane --from <step_name> <config.json>`
 
 ---
 
+## Stage: ir_em
+
+### Domain Rules
+1. Run on the final routed database with the **power grid present**: count the PG shapes
+   (`VDD`/`VSS` special wires) before analysis. Zero shapes, or macro power pins with no
+   connection, is a power-grid defect to fix in `floorplan`, not an IR result — a grid that was
+   never committed reports zero drop
+2. Static IR first (average current from the signoff power run, same activity assumption as
+   `power_optimization`), then dynamic IR when a vector or vectorless switching scenario is
+   specified; record which
+3. Report worst drop as % of nominal VDD per domain, and the location of the worst instance
+4. EM: check signal and power nets against the PDK's current-density rules; a missing EM rule
+   set is recorded as "EM not checked", never as zero violations
+5. Use the IR tool the PDK supports. For an open PDK without a RedHawk/Totem/Voltus tech file,
+   author it per `## PDK Enablement` and label the result `indicative`; OpenROAD
+   `analyze_power_grid` (PSM) is the open reference and needs via resistances in the tech
+   data, or it aborts
+6. `wrap-redhawk.sh` recognises a result only from a `WRAP_RESULT worst_ir_drop_pct=<v>` line
+   the run script prints after reading its own report; without it the run is unverified
+
+### QoR Metrics to Evaluate
+- `ir_drop_pct`: worst of static/dynamic, < `design_state.constraints.power.ir_drop_pct_max`% (default: 5)
+- `em_violations`: 0 (or "not checked" with the reason)
+- `pg_shapes`: > 0 per power net
+
+### Output Required
+- IR drop report (static, and dynamic when run) per domain
+- EM report, or the reason EM was not checked
+- PG shape count per power net
+
+---
+
 ## Stage: signoff
 
 ### Sign-off Pass Criteria (all must pass)
@@ -276,8 +371,15 @@ Resume from step: `openlane --from <step_name> <config.json>`
 | DRC violations | = 0 |
 | LVS errors | = 0 |
 | Antenna violations | = 0 |
-| IR drop | < `design_state.constraints.power.ir_drop_pct_max`% VDD (default: 5%) |
+| IR drop | < `design_state.constraints.power.ir_drop_pct_max`% VDD (default: 5%), from `ir_em` |
+| EM violations | = 0 (or recorded as not checked, which blocks sign-off) |
+| Total power | ≤ `design_state.constraints.power.power_mw` when set; recorded only in a comparison run |
 | Metal density | Within foundry window |
+
+Timing and power in this table come from the signoff STA/power engine on parasitics from
+`extraction`, not from the implementation tool's internal estimate. When flows from different
+tools are compared, judge them all with the sta skill's fair cross-tool comparison rule; a
+tool's own report is recorded and labelled `native`.
 
 ### Domain Rules
 1. STA sign-off: run all required PVT corners with POCV/AOCV
@@ -300,6 +402,81 @@ Resume from step: `openlane --from <step_name> <config.json>`
 
 ---
 
+## PDK Enablement
+
+Commercial tools on an **open PDK** (Sky130, GF180, IHP) usually need views the PDK does not
+ship. Build them once per PDK, record every derived file and its source, and treat any number
+that depends on an authored (not foundry-supplied) file as `indicative` until correlated.
+
+1. **Liberty → `.db` (Synopsys).** `lc_shell`: `read_lib` each `.lib` and `write_lib` to `.db`,
+   **per corner, including every macro's `.lib`** (SRAM, PLL, IO). A corner with a missing macro
+   `.db` silently times the macro as a black box
+2. **NDM reference libraries (ICC2 / Fusion Compiler).** `icc2_lm_shell`: create a workspace
+   whose technology comes from the PDK **tech LEF** (no Milkyway `.tf` in an open PDK), read the
+   cell LEF and the `.db` files per corner, check and commit to `.ndm`. Macros get their own NDM
+3. **Innovus / Genus.** Read the tech LEF first, then cell and macro LEFs; timing through an
+   MMMC file (`create_library_set` per corner, `create_rc_corner` per RC corner,
+   `create_delay_corner`, `create_constraint_mode` with the SDC, `create_analysis_view`), loaded
+   with `read_mmmc`
+4. **Extraction tech when the PDK ships none.** Author an ITF (StarRC) or ICT (Quantus) from the
+   PDK's published metal/dielectric stack (layer thickness, width/spacing, ε_r, via
+   resistance), then generate the tech: `grdgenxo` → `nxtgrd` plus a LEF/DEF↔ITF layer map, or
+   `Techgen` → `qrcTech`. **Correlate** against OpenRCX (or Magic extraction) on the **same
+   routed DEF**: per-net total C and R, and worst-path slack. State the tolerance; beyond it,
+   label every result that used the authored tech `indicative`
+5. **IR/EM tech (RedHawk/Totem).** A tech file with layer resistance, via resistance and EM
+   current limits, from the same published stack; the same correlation duty applies against
+   OpenROAD PSM
+6. **DRC/LVS decks.** Open PDKs usually have no Calibre or PVS deck. Use the PDK's open decks —
+   Magic and KLayout for DRC, Netgen for LVS — on the commercial tool's GDS/netlist; record
+   which deck judged sign-off. Never call a run DRC-clean against a deck that was not the
+   foundry's sign-off deck without saying so
+7. **Record the enablement** in the run's notes: tool versions, every derived file with the
+   command that produced it, and whether each is foundry-supplied or authored
+
+Detailed, measured recipes for each tool on Sky130 are pending (they follow the first real runs).
+
+---
+
+## Tool Notes: Cadence Innovus
+
+**Outline — measured notes pending.** Standard stage commands only; no option recipe here has
+been verified on this suite's reference host yet.
+
+| Stage | Command |
+|---|---|
+| Design import | `read_mmmc`, `read_physical -lef`, `read_netlist`, `init_design` |
+| Floorplan | `create_floorplan`, power grid (`add_rings`, `add_stripes`, `route_special`) |
+| Placement | `place_opt_design` |
+| CTS | `ccopt_design` |
+| Routing | `routeDesign` (legacy name) / `route_design`, then `opt_design -post_route` |
+| Timing report | `time_design` / `timeDesign` (native estimate — label it `native`) |
+| Output | `write_def`, `write_netlist`, `streamOut` / `write_stream` |
+
+Run in batch: `innovus -batch -no_gui -files <script.tcl>` through `wrap-innovus.sh`, which also
+gives it `/dev/null` as stdin.
+
+---
+
+## Tool Notes: Synopsys ICC2 / Fusion Compiler
+
+**Outline — measured notes pending.** Standard stage commands only.
+
+| Stage | Command |
+|---|---|
+| Library / design | `create_lib -technology <tech> -ref_libs <ndm>`, `read_verilog`, `link_block` |
+| Floorplan | `initialize_floorplan`, or `read_def` of an existing floorplan; `create_pg_mesh_pattern` / `compile_pg` |
+| Placement | `place_opt` |
+| CTS | `clock_opt` |
+| Routing | `route_auto`, then `route_opt` |
+| Timing report | `report_qor`, `report_timing` (native — label it `native`) |
+| Output | `write_def`, `write_verilog`, `write_gds` |
+
+Fusion Compiler runs the same back end after `compile_fusion`. Run through `wrap-icc2.sh`
+(`WRAP_ICC2_TOOL=fc_shell` for Fusion Compiler).
+
+---
+
 ## Constraint Validation
 
 See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
@@ -309,6 +486,11 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 - `constraints.area.area_um2` — die area budget
 - `constraints.power.power_mw` — total power budget
 - `constraints.pvt_corners` — at least one entry with non-null `voltage_v` and `temp_c`
+
+**Comparison runs** (`pipeline_config.comparison_run: true`): `area.area_um2` and
+`power.power_mw` may be absent; record `"comparison run, no target"` and proceed.
+`clock.clk_mhz` and `pvt_corners` stay required — every compared flow is judged at the same
+clock and corners.
 
 **Optional (schema defaults apply when absent):**
 - `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold
@@ -326,8 +508,13 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 
 ## Memory
 
+### Design-state fields
+Besides `gds`, `util_pct`, `wns_ns`, `drc_violations`, `lvs_errors` and `signoff`, record
+`pd.tool` (the implementation tool command), `pd.def`, `pd.netlist`, `pd.spef` (a list, one per
+RC corner), `pd.power_mw` and `pd.ir_drop_pct`, so a comparison can read every flow the same way.
+
 ### Run state (write before first stage, update after each stage)
-Write `memory/pd/run_state.md` as the **first action** before launching any tool:
+Write `<MEM>/pd/run_state.md` as the **first action** before launching any tool:
 ```markdown
 run_id:      pd_<YYYYMMDD>_<HHMMSS>
 design_name: <design>
@@ -341,7 +528,7 @@ and resumed sessions to identify the correct run directory without relying on in
 
 ### Write on stage completion
 After each stage completes (regardless of whether an orchestrator session is active),
-upsert one JSON record in `memory/pd/experiences.jsonl` keyed by `run_id` — do not
+upsert one JSON record in `<MEM>/pd/experiences.jsonl` keyed by `run_id` — do not
 append a second line for the same run. Write with the stages completed so far and
 `signoff_achieved: false`; overwrite to `true` only when signoff passes.
 
