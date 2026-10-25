@@ -1634,3 +1634,27 @@ def test_pd_flow_carries_extraction_ir_and_commercial_enablement():
     for clause in ("ir_drop_pct:", "em_violations: 0", "power_mw:", '"spef": [',
                    "comparison run, no target"):
         assert clause in agent, f"pd agent lacks {clause!r}"
+
+
+STA_SKILL = REPO_ROOT / "plugins" / "sta" / "skills" / "sta" / "SKILL.md"
+STA_AGENT = REPO_ROOT / "plugins" / "sta" / "agents" / "sta-orchestrator.md"
+
+
+def test_sta_carries_fair_cross_tool_comparison_and_annotation_gate():
+    """Comparing implementation tools by their own reports measures the judges, not the
+    implementations; and a run on unannotated parasitics reports falsely clean slack."""
+    skill = _flat(_read(STA_SKILL))
+    for clause in (
+        "## Fair Cross-Tool Comparison",
+        "Same SDC.", "md5", "Same extractor and tech.", "Same STA engine.",
+        "Same activity assumptions", "labelled `native`",
+        "## Tool Notes: Synopsys PrimeTime (multi-corner) and PrimePower",
+        "Outline — measured notes pending.",
+        "`read_parasitics`", "`report_qor`", "`report_global_timing`",
+        "**Annotation gate.**", "Tempus may be absent",
+    ):
+        assert clause in skill, f"sta skill lacks {clause!r}"
+    assert "`memory/sta/" not in _read(STA_SKILL)
+    agent = _flat(_read(STA_AGENT))
+    assert "**Fair Cross-Tool Comparison**" in agent
+    assert any("unannotated" in r and "`input_setup`" in r for r in _loop_back_rows(_read(STA_AGENT)))

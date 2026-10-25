@@ -51,6 +51,11 @@ Loop-back rules — the target stage, the iteration cap, and which failures esca
 instead of looping — are in `## Loop-Back Rules` of [`sta-orchestrator.md`](../plugins/sta/agents/sta-orchestrator.md). That file is
 authoritative; this document does not restate them.
 
+Comparing implementation tools follows the skill's **Fair Cross-Tool Comparison** rule (one
+SDC by md5, one extractor and tech, one STA engine, one activity assumption; native reports
+labelled `native`). PrimeTime multi-corner and PrimePower outlines are in the skill's Tool
+Notes; Cadence Tempus is optional and may be absent.
+
 ---
 
 ## 3. Skill File Specifications
