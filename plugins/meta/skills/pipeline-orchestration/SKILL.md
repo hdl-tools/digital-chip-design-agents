@@ -523,5 +523,5 @@ Always pass the `fix_request.id` in the subagent prompt so the child can locate 
 
 - `design_state.json` with all `fix_requests[]` entries at terminal status (`fixed` or `abandoned`)
 - `design_state.json` with `cross_domain_iteration_count` updated
-- `memory/meta/experiences.jsonl` entry for this run
+- `<MEM>/meta/experiences.jsonl` entry for this run (`<MEM>` = the resolved memory root printed by `python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`, not the literal `memory/` directory)
 - A console summary to the user: which fix_requests were processed, how many iterations, and the outcome (converged / escalated / no open requests)

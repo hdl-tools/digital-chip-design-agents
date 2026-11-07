@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # wrap-innovus.sh — run Cadence Innovus and emit a compact JSON summary
-# Usage: wrap-innovus.sh [innovus args...]    e.g. wrap-innovus.sh -batch -no_gui -files place.tcl
+# Usage: wrap-innovus.sh [innovus args...]    e.g. wrap-innovus.sh -nowin -files place.tcl -log place.log -overwrite
 #
 # Result markers: the timeDesign / report_timing_summary table row "WNS (ns):| <v> |",
 # verify_drc "Total Violations : N" and streamOut "Streamout is finished". DRC N > 0 is a

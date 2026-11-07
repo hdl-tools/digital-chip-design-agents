@@ -27,11 +27,16 @@ question rather than requesting a full flow execution.
 
 ## Pre-run Context
 
+`<MEM>` below is the resolved memory root, never the literal `memory/` directory: an
+explicit `--memory-root`, else `$CHIP_DESIGN_MEMORY_ROOT`, else the central default, else
+the in-repo seed (`python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`
+prints it; the orchestrator's `## Memory` section is authoritative).
+
 Before executing or advising on **any** stage, read the following files if they exist:
 
-1. `memory/verification/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
+1. `<MEM>/verification/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
    Incorporate its guidance into every stage decision. If absent, proceed without it.
-2. `memory/verification/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
+2. `<MEM>/verification/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
    `last_stage`). Use this to resume correctly after interruption. If absent, a new run
    is starting; the orchestrator will create this file before the first stage.
 
@@ -667,7 +672,7 @@ report_only`, set by the orchestrator per its Behaviour Rule 14):
 5. **Long regressions run in the background, sharded, with progress checkpointed.** Split the
    test list into shards no larger than the job bound, give each shard its own `SIM_BUILD` and
    log, launch in the background, and after each shard completes record in
-   `memory/verification/run_state.md` (see Memory below) the shard id, simulator, command,
+   `<MEM>/verification/run_state.md` (see Memory below) the shard id, simulator, command,
    `results.xml` path, and the `wrap-cocotb-results.sh` counts. A resumed session reads
    `run_state.md`, skips shards marked complete and re-launches only pending or failed ones —
    it never restarts a regression from the beginning. **Waiting costs turns**: launch each shard
@@ -721,7 +726,7 @@ Tag `constraint_ref` in history entries when evaluating QoR against these values
 
 ### Write on stage completion
 After each stage completes (regardless of whether an orchestrator session is active),
-write or overwrite one JSON record in `memory/verification/experiences.jsonl` keyed by
+write or overwrite one JSON record in `<MEM>/verification/experiences.jsonl` keyed by
 `run_id`. This ensures data is persisted even if the flow is interrupted or called
 without full orchestrator context.
 
@@ -734,7 +739,7 @@ its `notes` say what was superseded and why; when the invalidated result belongs
 run, write this run's record with `supersedes: <earlier run_id>` and leave the earlier record
 untouched.
 ### Run state (write before first stage, update after each stage)
-Write `memory/verification/run_state.md` as the **first action** before launching any tool:
+Write `<MEM>/verification/run_state.md` as the **first action** before launching any tool:
 ```markdown
 run_id:      verification_<YYYYMMDD>_<HHMMSS>
 design_name: <design>

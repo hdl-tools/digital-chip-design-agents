@@ -434,46 +434,328 @@ that depends on an authored (not foundry-supplied) file as `indicative` until co
 7. **Record the enablement** in the run's notes: tool versions, every derived file with the
    command that produced it, and whether each is foundry-supplied or authored
 
-Detailed, measured recipes for each tool on Sky130 are pending (they follow the first real runs).
+### Measured on Sky130 (`sky130_fd_sc_hd` + OpenRAM SRAM macro)
+
+One host, one licensed tool at a time. Versions: `lc_shell` and `icc2_lm_shell` **X-2025.06**,
+`grdgenxo`/StarRC **X-2025.06-SP1**, `Techgen` **23.11**, Innovus **23.14-s088_1**, Genus
+**23.14-s090_1**, RedHawk **2025 R2.2**. Every load test below used a two-cell netlist (one flop,
+one SRAM) first; it costs seconds and catches most view errors before a real run.
+
+- **`.lib` → `.db`.** `lc_shell`: `read_lib <lib>`, `check_library`, `write_lib <name> -format db -output <db>`, then read every `.db` back
+  with `read_db` in a fresh session. **`lc_shell` segfaults at process exit after any `read_lib`**
+  (exit 139, after "Thank you for using Library Compiler"); the `.db` is already written, so judge
+  success from the write message, a non-empty `.db` and the read-back, not the exit code. The
+  LBDB/LIBG warnings on the stock Sky130 libs need no Liberty edit; LIBG-10/LIBG-243 cells
+  (decap, diode, bleeder; enable/scan flops with no `nextstate_type`) go on the dont-use list.
+  Leakage units can differ between the stdcell lib (nW) and a macro lib (mW): convert before
+  summing by hand
+- **ICC2 technology file.** `icc2_lm_shell create_workspace -technology` needs a `.tf`; a tech LEF
+  is rejected (LIB-007). Derive the `.tf` from the tech LEF (layers, pitches, widths, spacing
+  tables, min area, cut sizes, via enclosures, sites). The fat-spacing table must be N x N,
+  non-redundant and start at threshold 0 (TECH-008/032); via enclosures must be crossed
+  (TECH-083w); ContactCode `minCutNum` is unsupported. ICC2 mask names must be gapless
+  `metal1..N`, so `li1` is `metal1` and `met1..met5` are `metal2..metal6`. The `.tf` carries
+  **no routing directions**: set them per block with `set_attribute` before
+  `initialize_floorplan`, or ICC2 derives them wrongly (DPUI-924)
+- **NDM.** Stdcells and the SRAM cannot share a `normal`-flow workspace (different cell sets and
+  rail names VPWR/VGND vs vccd1/vssd1, LM-014/LM-025): build one NDM per macro. The 9 LEF-only
+  cells (fill, tap) need a `physical_only` NDM. For **multi-corner** P&R build **one stdcell NDM
+  with one pane per corner**: one workspace, `read_lef` once, `read_db` tt, ss and ff into it,
+  `check_workspace -allow_missing` (the plain check fails on pulse-width arcs present in only
+  some corners), `commit_workspace`. Three separate per-corner NDMs with shared cell names do
+  **not** give multi-corner timing: every instance binds to the first library (`report_pvt`
+  "Library has 1 pane", PVT-030); see the ICC2 Tool Notes for the corner selection
+- **DC/ICC2 dont-use.** `set_dont_use */<cell>` is rejected (UID-109); use
+  `set_dont_use [get_lib_cells */<cell>]`. Genus/Innovus: `set_db [get_db base_cells <c>] .dont_use true`.
+  DC `check_library` LIBCHK-213 on PG pin direction (`unknown` in the `.db`) is noise; do not edit
+  the Liberty for it
+- **ITF → `nxtgrd` / TLU+ (StarRC, ICC2, DC).** `grdgenxo <itf>` (single-threaded field solver,
+  **~40-63 min per corner** here) and `grdgenxo -itf2TLUPlus` (fast). Give every grdgenxo run a
+  timeout of hours, not minutes. The ITF reader needs the stack top to bottom with each
+  conductor embedded in the dielectric listed above it. The StarRC layer map names every LEF
+  routing and cut layer (the Sky130 tech LEF calls the first cut `via`, the ITF `via1`)
+- **ICT → `qrcTechFile` (Quantus, Genus iSpatial, Innovus).** `Techgen -simulation_FS_off
+  -2d_only` progressed at about 3 % in 7 min single-threaded (**about 4 h per corner**; a 4 h timeout killed one run). Techgen rejects a diffusion whose top
+  touches poly (`LBMISC-215479`, negative poly thickness): leave a gate-oxide gap. Until a
+  `qrcTechFile` exists, Innovus can use a **cap table from `generateCapTbl -ict`** (55 min), but
+  `generateCapTbl` classifies a conductor named `li1` as POLY (IMPEXT-6091) and emits five metal
+  layers against a six-layer tech LEF, so Innovus rejects the table (IMPEXT-3548). Rename the
+  conductor `li1` → `met0` in a derived ICT (and its via references) and regenerate: M1=li1 ..
+  M6=met5. `generateCapTbl -lef` crashed on the `licon` cut layer; run it without `-lef`
+- **Correlation result (StarRC on an authored ITF vs OpenRCX, same DEF, 34-42k nets).** R agreed
+  within 1-4 % (median) from the start. C needed two StarRC settings, not stack changes:
+  `COUPLING_ABS_THRESHOLD: 0.1`, `COUPLING_REL_THRESHOLD: 0` (the 3 % relative default lumps a
+  third of the coupling into ground) and `LEF_USE_OBS: NO`. Corner multipliers had to come from
+  the OpenRCX deck the open flow actually uses (`.calibre`, not `.spef_extractor`, whose 4th
+  column is resistance). The remaining median C offset (+8-10 %) is the ~0.16 fF per pin that
+  StarRC extracts and OpenRCX does not; it was left, and the results stayed `indicative`
+- **RedHawk tech.** The ITF converter shipped with RedHawk (`adsTechConverter.pl`) needs a
+  comment-free ITF and, on perl 5.26, a one-line patch (`defined %hash`). RedHawk 2025 R2
+  rejects `EM_Adjust` inside `via{}` blocks (TEC-011). EM limits come from the tech LEF
+  `DCCURRENTDENSITY AVERAGE`; there is no li1/poly limit and no AC RMS limit in this format, so
+  record EM on those as not checked
+- **MMMC.** One file for Genus and Innovus must branch: Genus 23.14 wants
+  `create_timing_condition` + `create_delay_corner -timing_condition`, Innovus rejects that
+  (TCLCMD-992) and wants `-library_set`. Under Innovus `[info script]` is not the MMMC file;
+  pass its directory in an environment variable. A Tcl MMMC file runs in the caller's scope, so
+  its variable names can overwrite the caller's
+- **Innovus tracks.** Innovus's automatic tracks do not follow the tech LEF pitches, and
+  `add_tracks -offsets` is accepted but not honoured. Load the tracks from a TRACKS-only DEF
+  (`defIn`) written from the LEF pitches and offsets
+- **PT link test.** PrimeTime's Verilog reader rejects ANSI port headers in a hand-written test
+  netlist (SVR-4); write the link-test netlist non-ANSI
 
 ---
 
 ## Tool Notes: Cadence Innovus
 
-**Outline — measured notes pending.** Standard stage commands only; no option recipe here has
-been verified on this suite's reference host yet.
+Measured with **Innovus 23.14-s088_1** on a Sky130 CPU macro (3600 x 1800 um, about 30k cells,
+10 SRAM macros, max routing layer met4), Genus netlist, 2 CPUs (`setMultiCpuUsage -localCpu 2`),
+peak RSS about 7 GB in the finish stage. Batch: `innovus -nowin -files <stage.tcl> -log <log>
+-overwrite` through `wrap-innovus.sh`, stdin `/dev/null`, one stage per session saving a
+database label. Session start and exit took 10-25 min on a loaded host.
 
-| Stage | Command |
+| Stage | Commands that worked |
 |---|---|
-| Design import | `read_mmmc`, `read_physical -lef`, `read_netlist`, `init_design` |
-| Floorplan | `create_floorplan`, power grid (`add_rings`, `add_stripes`, `route_special`) |
-| Placement | `place_opt_design` |
-| CTS | `ccopt_design` |
-| Routing | `routeDesign` (legacy name) / `route_design`, then `opt_design -post_route` |
-| Timing report | `time_design` / `timeDesign` (native estimate — label it `native`) |
-| Output | `write_def`, `write_netlist`, `streamOut` / `write_stream` |
+| Import | `init_lef_file` (tech LEF first), `init_verilog`, `init_top_cell`, `init_mmmc_file`, `init_pwr_net`/`init_gnd_net`, then `init_design`; `floorPlan -site unithd -b <die> <io> <core>`; tracks from a TRACKS-only DEF and pins from a pin DEF (`defIn`) |
+| PDN, taps | `addEndCap -preCap/-postCap`, `addWellTap -cellInterval -checkerBoard`, `sroute -connect corePin`, `addStripe`, `sroute -connect blockPin` for macro rails; `verify_connectivity -type special -net <n>` per power net |
+| Placement | `setOptMode -fixFanoutLoad true -fixDrc true`, `place_opt_design`; input-port diodes with `attachDiode` then `refinePlace` |
+| CTS | `clock_opt_design -cts` (`ccopt_design` was rejected on this database, IMPCCOPT-2440), `optDesign -postCTS` and `optDesign -postCTS -hold` |
+| Routing | `routeDesign -globalDetail`, `setAnalysisMode -analysisType onChipVariation -cppr both` (post-route `optDesign` refuses without OCV, IMPOPT-7027), `optDesign -postRoute` and `-postRoute -hold`, then `ecoRoute -fix_drc` until `verify_drc` reports 0 |
+| Output | `saveNetlist -flat -excludeLeafCell -removePowerGround -excludeCellInst <physical cells>` (logical, for LEC), `saveNetlist ... -includePowerGround -includePhysicalInst` (for LVS), `defOut -routing -floorplan -netlist -usedVia`, `write_sdc -view <v>`, `streamOut -mapFile <map> -merge {<cell gds> <macro gds>} -units 1000 -mode ALL` |
 
-Run in batch: `innovus -batch -no_gui -files <script.tcl>` through `wrap-innovus.sh`, which also
-gives it `/dev/null` as stdin.
+- **Clock latency lives in the view, not only in the SDC.** Innovus keeps clock latencies in each
+  analysis view's `latency.sdc` and re-applies that file **after** the SDC on restore and on
+  `update_constraint_mode`. **Every view needs an explicit `create_analysis_view -latency_file`**
+  (a view created without one starts with an empty file: a virtual I/O clock got network latency
+  0 and hold read -1.8 ns). After `update_constraint_mode`, re-apply the I/O latency in the
+  interactive mode (`set_interactive_constraint_modes <mode>`, `set_clock_latency <L>
+  [get_clocks clk_io]`, `set_interactive_constraint_modes {}`); `update_analysis_view -name <v>
+  -latency_file <f>` also works after CTS
+- **I/O latency model.** CTS rewrites I/O latencies by default; `set_ccopt_property
+  update_io_latency false` and a **virtual ideal I/O clock** whose network latency is the measured
+  mean insertion delay made the I/O constraints visible in the exported SDC. A single fixed value
+  is wrong at other corners (tree 1.95 ns at ff, 5.7-6.7 ns at ss vs 3.3 ns at tt): the ss/ff I/O
+  failures that remain are that model, not the layout
+- **Full MMMC in implementation.** With setup views {ss, tt} and hold views {ff, tt} active in
+  placement, CTS and post-route, the judge's reg-to-reg setup loss at ss (-7.1 to -8.8 ns, 641-1064
+  violators with tt-only views) went to 0 violators at all 9 corners, for 2.1x the buffers and
+  +8 % power. `report_timing -view` needs `-late` for a setup view and `-early` for a hold view
+  (TCLCMD-997). `report_power` in MMMC uses the first power view (ss here): quote PrimePower
+- **Hold vs the judge.** Innovus's own ff hold read +0.01..+0.02 ns while PrimeTime on StarRC SPEF
+  read -0.16 ns: about 0.17 ns optimistic at ff (tt agreed to 1 ps). `setOptMode -holdTargetSlack
+  0.2` with the ff view active closed it in the judge
+- **Power activity.** Native `report_power` defaults to activity 0.2; PrimePower's default is 0.1.
+  `set_default_switching_activity -input_activity 0.1 -seq_activity 0.1` before comparing
+  (87.5 vs 70.6 mW on the same layout)
+- **RC.** Without a cap table or `qrcTechFile` Innovus uses tech-LEF RC (total C 1.25x StarRC,
+  setup 1.2 ns and power 5 mW off). With the `li1`→`met0` cap table (see `## PDK Enablement`)
+  total C median was 1.06x and R 1.01x of StarRC. Innovus's rcOut SPEF lumps coupling into ground
+- **Primitives that fail silently.** `create_inst` returned without placing anything (with and
+  without `-physical`): use **`addInst -cell <c> -inst <n> -loc {x y} -ori <o> -physical`**.
+  `create_shape` does not exist and **`editAddRoute` did nothing** in 23.14: use **`add_shape
+  -layer <l> -net <n> -rect {...}`** (used for 37-54 met3 pin stubs from die-edge pin pads that
+  KLayout `m3.6` flagged and `verify_drc` did not, because it counts the pin shape)
+- **Antenna.** `verifyProcessAntenna` has no side-area rule (`setAntennaMode` does not exist), so
+  its count cannot match the deck. Drive the ECO from OpenROAD `check_antennas` on the exported
+  DEF: `attachDiode -diodeCell sky130_fd_sc_hd__diode_2 -pin <inst> <pin>` per violating pin,
+  then **`refinePlace` before `ecoRoute`** (attachDiode drops diodes off-grid on top of
+  neighbours; skipping `refinePlace` gave 45 KLayout hits and an LVS net mismatch)
+- **Taps at the source.** `addWellTap` lays taps on a lattice from the row start; in short row
+  segments next to macros the last tap ends one site short of the endcap, leaving an untied
+  n-well column (146 islands, `nwell.2a`). Add a tap abutting every endcap whose nearest tap is
+  0.3-1.0 um away in the PDN stage (293 taps); check islands on the final DEF only (before
+  std-cell placement the checker reports hundreds of artefacts)
+- **npc.2.** A Sky130 `and2_0` next to a decap cell violates KLayout `npc.2`: mirrored with the
+  decap on its right, and also unmirrored with the decap on its left. Swap that decap for fill
+- **Long unbuffered port nets** (2-6 mm `axi_*` inputs, 13 ns first stage) were not repaired by
+  `optDesign -postRoute`; `ecoAddRepeater -firstSpreadDist 40 -spreadDist 600 -cell buf_8` per
+  net was, after checking every repeater legalised (one IMPSP-2020 left two met1 shorts)
+- **GDS map.** Pin text: the PDK map's `NAME <layer>/LABEL,<layer>/LEFPIN` form wrote no text for
+  design pins; `NAME <layer>/PIN <gds layer> <text datatype>` did. Write `VIA` entries on every
+  metal, not only on the cut layers, or via cells stream cut-only (1.85 M KLayout enclosure
+  errors)
+- **Exported SDC is not PrimeTime-readable as is** (a `current_design` line, `get_designs`); see
+  the sta skill. A strap keep-out band across the full core width split the PG grid into
+  pieces: check `verify_connectivity -type special` per power net is one piece after the PDN stage
 
 ---
 
 ## Tool Notes: Synopsys ICC2 / Fusion Compiler
 
-**Outline — measured notes pending.** Standard stage commands only.
+Measured with **`icc2_shell` X-2025.06-SP1** on the same Sky130 CPU macro (DC-NXT netlist, 2
+cores, peak RSS about 4 GB). Fusion Compiler was not run (it would run this back end after
+`compile_fusion`). Batch: `icc2_shell -f <stage.tcl>` through `wrap-icc2.sh`
+(`WRAP_ICC2_TOOL=fc_shell` for FC), one stage per session. **Session start-up took 30-65 min on a
+loaded host** (load 20-55; 47 s idle): budget stage timeouts for it, and do not launch a
+`grep -r` over run directories while ICC2 runs (it saturated IO and slowed a stage 20x).
 
-| Stage | Command |
+| Stage | Commands that worked |
 |---|---|
-| Library / design | `create_lib -technology <tech> -ref_libs <ndm>`, `read_verilog`, `link_block` |
-| Floorplan | `initialize_floorplan`, or `read_def` of an existing floorplan; `create_pg_mesh_pattern` / `compile_pg` |
-| Placement | `place_opt` |
+| Library / design | `create_lib -technology <tf> -ref_libs {<ndm>...}`, `read_verilog -top <top>`, `link_block`; per stage `copy_block -from_block <top>/<prev> -to_block <top>/<new>` then `save_lib` (editing an opened block and saving writes back into that label) |
+| Floorplan | `initialize_floorplan -boundary ... -core_offset ... -site_def unithd`, routing directions and `set_ignored_layers -min_routing_layer met1 -max_routing_layer met4`, `route.common.global_min_layer_mode hard` |
+| PDN, taps | `create_boundary_cells`, `create_tap_cells -distance 26 -pattern stagger`, `set_pg_via_master_rule <r> -contact_code <cc> -cut_spacing {..}` per via layer, `create_pg_mesh_pattern`, `create_pg_std_cell_conn_pattern`, `compile_pg` |
+| Placement | `set_lib_cell_purpose` (hold, CTS), `place_opt`, `legalize_placement` |
 | CTS | `clock_opt` |
-| Routing | `route_auto`, then `route_opt` |
-| Timing report | `report_qor`, `report_timing` (native — label it `native`) |
-| Output | `write_def`, `write_verilog`, `write_gds` |
+| Routing | antenna rules, `add_port_protection_diodes`, `route_auto`, `route_opt`, repair loop on `check_routes -drc true -antenna true -open_net true` |
+| Output | `define_name_rules <r> -type net -case_insensitive` + `change_names -rules <r>`, `write_verilog` (see below), `write_def`, `write_gds -long_names -output_pin all -merge_gds_top_cell <top> -merge_files {<cell gds> <macro gds>} -units 1000` |
 
-Fusion Compiler runs the same back end after `compile_fusion`. Run through `wrap-icc2.sh`
-(`WRAP_ICC2_TOOL=fc_shell` for Fusion Compiler).
+- **The li1 ban is soft by default.** `set_ignored_layers -min_routing_layer met1` alone let the
+  router run 14 li1 wires (up to 400 um) through SRAM interiors, because
+  `route.common.global_min_layer_mode` defaults to `soft` ("discouraged"). Set it to **`hard`**;
+  pin-access stubs still use li1 under `allow_pin_connection`
+- **Routing directions live in the block, not the `.tf`.** `set_attribute [get_layers ..]
+  routing_direction` needs an open block (ATTR-15); re-source the tech setup after every
+  `open_block`
+- **PG vias.** `.tf` ContactCodes carry no cut spacing, so `compile_pg` via arrays overlapped
+  (1.73 M `check_pg_drc` errors) until each via layer got `set_pg_via_master_rule -cut_spacing`
+- **Multi-corner needs the multi-pane NDM** (`## PDK Enablement`). Per corner:
+  `create_corner`, `create_scenario -mode <m> -corner <c>`, `read_sdc` (the same file per
+  scenario), `read_parasitic_tech -tlup <file> -layermap <map> -name <n>` then
+  `set_parasitic_parameters -corners <c> -early_spec <n> -late_spec <n>`, and select the pane with
+  **`set_process_number`, `set_voltage`, `set_temperature -corners <c>`** (`report_pvt`: "no
+  mismatches"). Pin a single-PVT macro (TT-only SRAM) per corner with `-object_list`.
+  `set_scenario_status` sets setup on ss+tt, hold on ff+tt. With panes, `get_lib_cells */<c>`
+  returns one cell per pane (CHF-002 in `create_boundary_cells`): use the explicit library prefix.
+  `report_timing` in MCMM reports the worst scenario; add `-scenarios <s>` per scenario
+- **tt-only hold repair builds weak delay chains.** With only the tt view, the optimiser met hold
+  with chains of weak `ZBUF`/`ZINV` cells (2.8 ns transitions). Upsizing those for max-transition
+  collapsed hold (-0.0016 → -0.205 ns): DRV repair and hold were in direct conflict. With ff+tt
+  hold views and `set_lib_cell_purpose -include hold` restricted to `dlygate*`, `dlymetal*`,
+  `clkdlybuf*`, hold closed in `clock_opt`/`route_opt` with 106 real delay cells and no DRV ECO
+- **`add_buffer` drops the new cell off the row grid** on top of its neighbours; after
+  `set_cell_location` + `legalize_placement` (0 failures reported) `check_lvs` still found 3-4
+  cell/rail overlaps in a dense site, and `remove_buffers` on revert left an open and 2 min-area
+  DRCs. Fix hold in the optimiser with the right views, not with a hand ECO in a dense site
+- **met4 wide-metal spacing to PG straps is not enforced.** The `.tf` has the fat table
+  (`fat_table_threshold 0 3`, spacing 0.3/0.4, equal to the tech LEF), but `route_detail` and
+  `check_routes` do not apply it between a signal wire and a PG stripe: KLayout `m4.5ab` found
+  132. Put **0.1 um met4 routing blockages around every PG strap wider than 3 um**
+  (`create_routing_blockage -layers met4`) in the PDN stage, keep them through routing, remove them
+  in the ECO stage before saving; trim strap ends that sit 0.3 um from a via-stack pad
+- **Route convergence.** With the hard li1 ban the first route was 291 DRC / 439 shorts; 12 plain
+  repair passes and a 248-net rip-up did not converge (the rip-up regressed to 1073). Setting
+  `route.global.effort_level high`, `route.global.macro_boundary_track_utilization 60` and
+  `route.detail.optimize_partition_size_for_drc true` from the first route gave 2 / 4 after
+  `route_opt`. A short that survived plain and neighbour rip-up (a long repeater net crossing pin
+  access on met2 in a macro gap) cleared with **`set_routing_rule -min_routing_layer met3
+  -min_layer_mode allow_pin_connection`** on that net, then rip-up and `route_eco`
+- **Antenna.** The generated piecewise-linear `diode_ratio` rule was invalid in ICC2, so the flow
+  used `define_antenna_rule -mode 1 -diode_mode 1` (a net with a diode counts as protected).
+  ICC2's own check then reads 0 while the deck-style OpenROAD `check_antennas` found 492-582 nets:
+  **drive the antenna ECO from the OpenROAD list** (one `diode_2` per violating sink pin,
+  `create_cell`, `legalize_placement -cells`, `route_eco`); three rounds took 582 → 11 → 2 → 1
+- **Netlist export for LVS and LEC.** Netgen merges case-colliding names (`N1435` vs `n1435`)
+  and turns `supply1`/`supply0` declarations into phantom devices: rename with
+  **`change_names` using a `-case_insensitive` net rule** and write with **`write_verilog
+  -exclude supply_statements`**. `write_verilog -include` and `-exclude` cannot be combined.
+  `set_fix_multiple_port_nets` is replaced by `opt.port.eliminate_verilog_assign true`; the
+  SDC's `set_max_fanout` is ignored (use `opt.common.max_fanout`)
+- **GDS.** Without `-merge_gds_top_cell` the SRAM reference was truncated to a 32-character
+  structure name (empty cell) and 245 orphan structures became extra top cells; `-output_pin text`
+  gave floating pin text with no pin metal
+- **Decap/fill vs li1 stubs.** Decap and fill cells (li1 frame blockage) shorted with the router's
+  li1 pin-access stubs; the first run dropped decaps and removed the 428 colliding fills. Check
+  well continuity afterwards: the removed fills left floating n-well islands next to the stubs
+- **`write_sdc` carries no I/O clock latency**, unlike Innovus; a stage script ending in `exit`
+  returns 0 even when its repair loop did not converge, so a chain driver must read the
+  script's own result lines, not the exit code
+
+---
+
+## Tool Notes: Synopsys StarRC
+
+Measured with **StarRC X-2025.06-SP1** (`StarXtract <cmd>` through `wrap-starrc.sh`), one
+extraction per RC corner on routed DEFs from OpenROAD, ICC2 and Innovus (35-42k nets): about
+2-3.5 min wall and **0.4-0.5 GB peak RSS** each at 2 cores. Command-file keys that worked:
+`BLOCK`, `TCAD_GRD_FILE` (`nxtgrd`), `MAPPING_FILE`, one `LEF_FILE` per LEF (tech LEF of that
+corner first), `TOP_DEF_FILE`, `STAR_DIRECTORY`, `EXTRACTION: RC`, `COUPLE_TO_GROUND: NO`,
+`REDUCTION: NO_EXTRA_LOOPS`, `NETS: *`, `POWER_EXTRACT: NO`, `NETLIST_FORMAT: SPEF`,
+`NETLIST_FILE`, `NUM_CORES`.
+
+- `DEF_FILE` is not a keyword (SX-0271): use **`TOP_DEF_FILE`**. An absolute `SUMMARY_FILE` is
+  rejected (SX-3978). A `#` comment line in the mapping file is parsed as a section (SX-1907):
+  strip comments when generating it
+- **ICC2 DEFs name signal vias by ContactCode** (`mcon_cc`, `via_cc`, ...), which no LEF defines:
+  33,375 nets came out open (SX-2064) until a supplementary LEF declared those vias (generated
+  from the `.tf` ContactCodes). Innovus and OpenROAD DEFs use LEF via names and needed nothing.
+  Cells from `sky130_ef_sc_hd` (decap_12) need `sky130_ef_sc_hd.lef` (SX-2144)
+- Set `SHORTS_LIMIT` high and read `star/shorts_all.sum` and the `report_opens` count: the
+  capacitance of a shorted net (SX-0955) is unreliable, and a short StarRC reports is often a
+  real layout short (it matched the LVS and ICC2 `check_lvs` finding)
+- **Coupling threshold.** By default StarRC lumps any coupling below 3 % of a net's total C into
+  ground (coupling share 34 % vs OpenRCX 55 % on the same DEF). `COUPLING_ABS_THRESHOLD: 0.1`
+  and `COUPLING_REL_THRESHOLD: 0` matched OpenRCX's 0.1 fF absolute rule; `LEF_USE_OBS: NO`
+  moved total C 2 %. Use the same settings for every compared flow
+- Prove the SPEF is the result (`*SPEF` header, `*D_NET` count equal to the DEF net count,
+  written by this run); a stale SPEF from an earlier layout is the silent failure
+
+---
+
+## Tool Notes: Ansys RedHawk
+
+Measured with **RedHawk 2025 R2.2** (`redhawk -b <run.tcl>` through `wrap-redhawk.sh`) on the
+three routed DEFs of the CPU macro (630k components including fill), power and timing windows
+from PrimePower/PrimeTime X-2025.06: static about 45 s, vectorless dynamic about 66 s, **peak
+RSS 1.0-1.4 GB** (2 threads, `MULTI_THREADS 1 2`).
+
+- **Flow.** `import gsr <gsr>`, `setup design`, `perform pwrcalc`, `perform extraction -power
+  -ground -c`, `perform analysis -static` or `-vectorless`. Results: `adsRpt/Static/*.inst`
+  (per-instance drop), `*.em.worst`, `adsRpt/Dynamic/*.dvd`, `adsRpt/power_summary.rpt`
+- **`INSTANCE_POWER_FILES` must be plural.** The singular `INSTANCE_POWER_FILE` (as written in
+  the manual body) is accepted silently and ignored; RedHawk then uses its own toggle power
+  (51.8 mW instead of the 70.8 mW PrimePower total). Check the log line "N% of instances
+  specified in <ipf> have corresponding instances" and that `power_summary.rpt` equals the
+  PrimePower total before reading any drop
+- **Names in the instance power file must be escape-free.** An ICC2 DEF writes
+  `u_core_u_dcache\/U100`; IPF lines with the backslash matched 86 % of instances, without it
+  100 %. Unmatched names go to `adsRpt/<design>.ipfMissing`
+- **PrimePower → IPF.** After `update_power`, sum `internal_power + switching_power +
+  leakage_power` per leaf cell (`get_cells -hier -filter "is_hierarchical==false"`); the sum
+  equalled `report_power` to 4 digits. `set timing_save_pin_arrival_and_slack true`, then
+  `write_rh_file -filetype irdrop -output <f>` writes the timing windows (it appends `.gz`), read
+  with `STA_FILE { <top> <f>.gz }`
+- **DEF import.** ICC2 signal vias missing from the LEF stop the run (DEF-019) unless
+  `IGNORE_DEF_ERROR 1` (signal vias do not matter for PG analysis). Fill and `sky130_ef_sc_hd`
+  cells without Liberty are fatal (ITG-016): give them a custom lib (`cell <name> { pgarc { VPWR
+  VGND } }`) listed as `<file> custom` in `LIB_FILES`
+- **Supply on a macro with no pad ring.** A `.ploc` with one source per met5 stripe end (`<name>
+  <x> <y> <layer> <net>`, net name rather than POWER/GROUND when there are two supplies); this
+  is an ideal edge feed with zero package R/L, and the result says so
+- **EM.** Static EM needs **`ENABLE_AUTO_EM 1`** (off by default). Dynamic EM defaults to PEAK
+  mode, which compares peak current with the DC-average limit: **not a valid pass/fail** when
+  the PDK publishes no peak limit (it flagged 384-658 met1 segments that AVG and RMS mode left
+  below 10 % and 28 %). Run `perform emcheck -mode AVG` and `-mode RMS` after the dynamic
+  analysis and copy `adsRpt/Dynamic/<design>.em.worst` between calls (each call overwrites it)
+- **Dynamic results depend on decap.** RedHawk did not read the Sky130 decap cells' capacitance
+  from LEF/Liberty; declare them with `DECAP_CELL { <cell> <w> <h> <C_pF> <R_ohm> <layer>
+  <leak> }`. Without it the worst-instance dynamic drop changed from 79 to 210 mV on one flow
+  and the flow ranking reversed. Without characterised decap and APL current models, report
+  dynamic IR as indicative and prefer the mean drop to the worst instance
+
+---
+
+## Tool Notes: Magic, KLayout and Netgen on a commercial GDS
+
+Measured with **Magic 8.3.489, Netgen 1.5.278, KLayout 0.29.4** inside the LibreLane container,
+on GDS streamed by ICC2 and Innovus with the real SRAM GDS merged.
+
+- **Magic DRC needs about 11 GiB** on this 3600 x 1800 um macro with the real SRAM layout: a
+  9 GiB RSS watchdog killed it (container RSS 9.16 GiB), and it completed under an 11 GiB guard
+  with `MemAvailable` >= 11 GiB as the start gate. `podman --memory` was not enforced, so the
+  guard has to be your own. Run it **alone**, last, with nothing else heavy on the host (24 min)
+- **Classify Magic counts before reading them.** 27.7-28.3 M violations, of which all but a few
+  thousand sit inside the SRAM footprints (the PDK's SRAM abstract seen through the LEF, every
+  rule except `nwell.4` 100 % inside); and about 3,000-3,600 `nwell.4` outside the footprints
+  are long well strips along the SRAM edges, identical in count and geometry across all three
+  flows. Classify by rule x inside / straddle / outside each macro footprint; what remains
+  outside both classes is the real finding (here 1,191 Innovus tap wells in one pocket)
+- **Netgen LVS on a commercial netlist** needs the case-collision and `supply1/supply0` fixes from
+  the ICC2 notes; GDS-mode extraction is the result (DEF-mode extraction dropped vias). Magic
+  `port makeall` does nothing for GDS text labels; `port make` after `findlabel <name>` does
+- **KLayout DRC finds what the P&R checkers miss**: met4 spacing to wide straps (ICC2), die-edge
+  met3 pin pads and `npc.2` (Innovus), untied n-well columns. On a loaded host it took about 3 h
+  on the Innovus GDS
 
 ---
 

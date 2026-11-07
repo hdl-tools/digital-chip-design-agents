@@ -22,6 +22,15 @@ memory captures the *debugging cost* of mismatches, not the canonical version pi
   so cocotb/openlane appear MISSING even though they were FOUND last run. The fix is to source
   `load-modules.sh` first; record `python_env.module_name` in notes so the resolution path is
   reproducible.
+- **`pgrep`-based "one licensed tool at a time" gates race**: two gates checked, both saw an
+  idle host, and two licensed tools started together (twice). A host-wide `flock` held for the
+  tool's whole lifetime fixed it; also wait on exact names (`pgrep -x`) for callers not yet using
+  the lock. `pgrep -f`/`pkill -f` matched the caller's own command line.
+- **A bare `timeout` leaves the vendor `*_exec` child holding a licence**: run each tool with
+  `setsid` and kill the process group; cap memory with `systemd-run --user --scope -p
+  MemoryMax=...` (`podman --memory` was not enforced for the container).
+- **Licensed-tool start-up is slow on a loaded VM**: ICC2 took 30-65 min to start at load 20-55
+  (47 s idle); Innovus start plus exit 10-25 min. Record load with any runtime.
 
 ## Successful Tool Flags / Install Notes
 
@@ -32,6 +41,11 @@ memory captures the *debugging cost* of mismatches, not the canonical version pi
   custom/module Python.
 - `EDA_TOOLS_ROOT` + `EDA_MODULEFILES_ROOT` env vars drive the install layout; recording their
   values in notes makes a setup reproducible on a sibling workstation.
+- `safe_run.sh <log> <cmd>` (wait for load < 6 and enough `MemAvailable`, `MemoryMax` cap,
+  `nice`, `setsid`, <= 2 threads, group kill on timeout) inside `licensed_lock.sh <cmd>` (flock)
+  ran every commercial tool of a two-week Sky130 campaign on an 8 vCPU / 15 GB VMware guest.
+- `ckout_test` for a licence yes/no answer: `lmutil lmstat -a` on the Cadence server printed
+  "No socket connection" per feature although checkouts succeeded.
 
 ## PDK / Tool Quirks
 
@@ -54,3 +68,5 @@ memory captures the *debugging cost* of mismatches, not the canonical version pi
 - `key_metrics.tool_versions` is the primary value-add — a per-tool version map captured at
   `environment_validation`. Comparing it across runs surfaces the exact tool that changed when a
   previously-passing flow starts failing.
+
+_Last distilled: 2026-11-07 from the B0 environment records plus the host-handling issues logged in the pd/sta/formal/synthesis records of the same commercial campaign (2026-10-25 → 2026-11-07)._

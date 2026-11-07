@@ -27,11 +27,16 @@ question rather than requesting a full flow execution.
 
 ## Pre-run Context
 
+`<MEM>` below is the resolved memory root, never the literal `memory/` directory: an
+explicit `--memory-root`, else `$CHIP_DESIGN_MEMORY_ROOT`, else the central default, else
+the in-repo seed (`python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`
+prints it; the orchestrator's `## Memory` section is authoritative).
+
 Before executing or advising on **any** stage, read the following files if they exist:
 
-1. `memory/soc/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
+1. `<MEM>/soc/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
    Incorporate its guidance into every stage decision. If absent, proceed without it.
-2. `memory/soc/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
+2. `<MEM>/soc/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
    `last_stage`). Use this to resume correctly after interruption. If absent, a new run
    is starting; the orchestrator will create this file before the first stage.
 
@@ -267,14 +272,14 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 
 ### Write on stage completion
 After each stage completes (regardless of whether an orchestrator session is active),
-write or overwrite one JSON record in `memory/soc/experiences.jsonl` keyed by
+write or overwrite one JSON record in `<MEM>/soc/experiences.jsonl` keyed by
 `run_id`. This ensures data is persisted even if the flow is interrupted or called
 without full orchestrator context.
 
 Use `run_id` = `soc_<YYYYMMDD>_<HHMMSS>` (set once at flow start; reuse on each
 stage update). Set `signoff_achieved: false` until the final sign-off stage completes.
 ### Run state (write before first stage, update after each stage)
-Write `memory/soc/run_state.md` as the **first action** before launching any tool:
+Write `<MEM>/soc/run_state.md` as the **first action** before launching any tool:
 ```markdown
 run_id:      soc_<YYYYMMDD>_<HHMMSS>
 design_name: <design>

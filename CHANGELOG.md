@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### Commercial RTL→GDS: measured Tool Notes from a Sky130 three-flow comparison
+
+The outlines from the scaffolding entry below are replaced by commands and failure modes measured
+on one 8 vCPU / 15 GB host: a Sky130 CPU macro (about 30k cells, 10 SRAM macros) taken through
+DC-NXT → ICC2 and Genus → Innovus, judged against OpenROAD/LibreLane with StarRC + PrimeTime/PrimePower,
+proven with Formality/Conformal, checked with Magic/KLayout/Netgen and RedHawk. Every note names
+the tool version it was measured on; nothing unmeasured is stated as a recipe.
+`chip-design-pd`, `-sta`, `-synthesis`, `-formal` 1.3.0 → 1.4.0; `chip-design-infrastructure`
+1.4.0 → 1.5.0; the other domain plugins get a patch bump for the memory-root wording.
+
+#### Added
+
+- **pd `## PDK Enablement` → "Measured on Sky130"**: `lc_shell` exit segfault after `read_lib`
+  (judge from the read-back), `.tf` derived from the tech LEF (LIB-007, gapless masks, routing
+  directions per block), one **multi-pane NDM** for multi-corner ICC2 (`check_workspace
+  -allow_missing`), `grdgenxo`/`Techgen` runtimes, the `generateCapTbl` li1-as-POLY trap and the
+  `li1` → `met0` ICT fix, StarRC-vs-OpenRCX correlation settings, RedHawk tech conversion, the
+  Genus/Innovus MMMC dialect split.
+- **pd Tool Notes, measured**: Innovus 23.14 (per-view `-latency_file`, `update_io_latency
+  false`, full MMMC removing the ss reg-to-reg loss, `holdTargetSlack 0.2` against a 0.17 ns ff
+  optimism, activity 0.2 vs 0.1, `create_inst`/`editAddRoute` silent no-ops → `addInst
+  -physical`/`add_shape`, `refinePlace` before `ecoRoute`, taps at the source, `npc.2`); ICC2
+  X-2025.06-SP1 (`global_min_layer_mode hard`, met4 fat-table spacing to straps not enforced →
+  0.1 um halos, PVT pane selection, tt-only hold → weak delay chains, `add_buffer` off grid,
+  forced min-layer reroute, OpenROAD-driven antenna ECO, `change_names -case_insensitive` +
+  `write_verilog -exclude supply_statements`, 30-65 min start-up); new **StarRC**, **RedHawk**
+  (`INSTANCE_POWER_FILES` plural, escape-free names, `ENABLE_AUTO_EM 1`, PEAK-mode EM not a
+  pass/fail, decap-dependent dynamic IR) and **Magic/KLayout/Netgen** (≈11 GiB, run alone,
+  SRAM-footprint and `nwell.4` artefact classes) sections.
+- **sta**: PrimeTime X-2025.06 multi-corner judge recipe (one session per library × RC corner,
+  md5-asserted SDC, pin-to-pin annotation gate, empty-metric rejection), `read_sdc` dropping
+  everything after its first unsupported command (Innovus-exported SDC), tool-written SDC
+  variants, PrimePower activity matching OpenSTA. Fair-comparison rules 7 (prove each run's
+  inputs by md5) and 8 (close the implementation in the judged corners).
+- **synthesis**: DC-NXT X-2025.06-SP3 (`dcnxt_shell -topographical_mode` for NDM, TLU+, SVF,
+  tt-only area recovery building a ripple adder → MCMM) and Genus 23.14 (`syn_*` timings,
+  PHYS-1015 without a QRC tech file, SDC-200) notes, with peak RSS.
+- **formal**: Formality and Conformal Tool Notes (SVF and read order, `lec -xl` for Genus
+  do-files, `tclmode`, direct/flat confirmation, diode-stripped compares) and structural mutant
+  anchors for flat netlists.
+- **infrastructure**: *Licensed tools on a small shared host* — `flock` instead of `pgrep`
+  gates, load/memory gates with a group-killed memory-capped scope, ≤ 2 threads, slow licensed
+  start-up on a loaded VM, done-marker waits.
+- Seeded `memory/{pd,sta,synthesis,formal,infrastructure}/knowledge.md` distilled from the
+  campaign's experience records.
+
+#### Changed
+
+- Every domain skill uses the resolved `<MEM>` memory root instead of the literal `memory/`
+  (pd/sta/synthesis already did); pinned by a test.
+- `wrap-innovus.sh` / `wrap-genus.sh` usage examples show the measured invocations
+  (`innovus -nowin -files … -log … -overwrite`, `genus -no_gui -overwrite -f …`).
+
 ### Commercial RTL→GDS scaffolding: PD/signoff wrappers, extraction and IR stages, fair comparison
 
 Scaffolding for bringing commercial flows (DC/Genus/FC, Innovus/ICC2, StarRC/Quantus,
