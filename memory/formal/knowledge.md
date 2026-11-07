@@ -43,8 +43,23 @@
   only once the same script has reported a deliberately mutated netlist non-equivalent; a
   black-boxed or unlinked module makes the verdict vacuous for everything inside it.
 - `INCONCLUSIVE` (Formality) and `Abort` points (Conformal) are unproven, not equivalent.
+- **Formality X-2025.06 on a DC netlist needs DC's SVF** (`set_svf` before the reads): without
+  it 143 constant/merged registers stayed unmatched. Read the reference and `set_top r:` before
+  the implementation `.db` (else FM-236). SVF claims are checked, not trusted: RTL mutants that
+  falsified a merge and a constant claim both failed.
+- **Conformal 24.10-p100 with a Genus `write_do_lec` do-file needs `lec -xl`**
+  (`analyze_extended_mapping` is a Conformal_Ultra feature), `LEC_VERSION` in the environment,
+  `tclmode` as the first line, and `vpxmode` before `exit -f`.
+- **Mutant anchors must be structural on post-route and flat netlists**: a flat MCMM netlist had
+  none of the old hierarchical names, a re-route renamed nets and the optimiser resized the
+  anchor cell (`a211o_1` → `a211o_2`). Find the anchor by pattern and fail when it is absent.
+  (Confirmed across 4 records.)
+- **Antenna/port diodes are functionless black boxes in both tools**: compare a diode-stripped
+  copy alongside and require 0 unmatched there; derive the diode count from the netlist.
 
 ## Notes
 
 - CEX found for a P0 property = hard blocker. Suspend the formal flow, report to the RTL
   team with the full counterexample trace, and do not retry until RTL fix is confirmed.
+
+_Last distilled: 2026-11-07 from 12 formal (LEC) experience records (Formality X-2025.06, Conformal 24.10-p100, Sky130 CPU macro, 2026-10-26 → 2026-11-07); every EQUIVALENT verdict had its negative controls caught._

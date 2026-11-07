@@ -101,7 +101,9 @@ authoritative; this document does not restate them.
 `ir_em` runs IR drop and EM with the power grid present. Both exist so that sign-off timing,
 power and IR come from signoff engines on extracted parasitics rather than an
 implementation tool's estimate. Stage rules, and the `## PDK Enablement` steps for commercial
-tools on an open PDK, are in the physical-design skill.
+tools on an open PDK, are in the physical-design skill. That section and the skill's Tool Notes
+(Innovus, ICC2, StarRC, RedHawk, Magic/KLayout/Netgen) carry commands and failure modes measured
+on a Sky130 CPU macro, each with the tool version it was measured on.
 
 ---
 

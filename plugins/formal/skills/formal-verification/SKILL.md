@@ -27,11 +27,16 @@ question rather than requesting a full flow execution.
 
 ## Pre-run Context
 
+`<MEM>` below is the resolved memory root, never the literal `memory/` directory: an
+explicit `--memory-root`, else `$CHIP_DESIGN_MEMORY_ROOT`, else the central default, else
+the in-repo seed (`python3 plugins/infrastructure/skills/memory-keeper/memory_root.py`
+prints it; the orchestrator's `## Memory` section is authoritative).
+
 Before executing or advising on **any** stage, read the following files if they exist:
 
-1. `memory/formal/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
+1. `<MEM>/formal/knowledge.md` — known failure patterns, successful tool flags, PDK/tool quirks.
    Incorporate its guidance into every stage decision. If absent, proceed without it.
-2. `memory/formal/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
+2. `<MEM>/formal/run_state.md` — current run identity (`run_id`, `design_name`, `tool`,
    `last_stage`). Use this to resume correctly after interruption. If absent, a new run
    is starting; the orchestrator will create this file before the first stage.
 
@@ -215,7 +220,7 @@ assume property (@(posedge clk)
 4. Verify all points: compare cone-of-influence
 5. Report: EQUIVALENT / UNMATCHED / ABORTED
 
-Tool outline (standard commands only; measured notes pending):
+Tool summary (measured detail in *Tool Notes: Formality and Conformal LEC* below):
 - **Formality** (`fm_shell -f lec.tcl`, through `wrap-fm.sh`): `read_db` the libraries,
   `read_sverilog -r` / `read_verilog -r` + `set_top r:/WORK/<top>` for the reference,
   `read_verilog -i` + `set_top i:/WORK/<top>` for the implementation, an SVF from the
@@ -227,6 +232,58 @@ Tool outline (standard commands only; measured notes pending):
   `Abort` point is not equivalence
 - **Yosys** (`equiv_make` / `equiv_simple` / `equiv_induct`, or a miter + SAT) for the open
   flow
+
+### Tool Notes: Formality and Conformal LEC (measured)
+
+Measured with **Formality X-2025.06** (`fm_shell -f <lec.tcl>`) and **Conformal LEC 24.10-p100**
+(`lec -nogui -xl -dofile <lec.do>`) on a Sky130 CPU macro (about 6k compare points, 10 SRAM
+black boxes): RTL vs synthesis netlist and RTL vs post-route netlist for DC→ICC2 and
+Genus→Innovus, 2 cores, 30-120 s wall and 0.3-0.6 GB peak RSS per compare. Every EQUIVALENT
+below was accepted only after its negative controls failed.
+
+**Formality.**
+- Order matters: `set_svf <dc.svf>`, `read_db -container r -technology_library <macro.db>`,
+  `read_sverilog -container r -libname WORK -define <defines> <files>`, `set_top r:/WORK/<top>`,
+  **then** `read_db -container i -technology_library` for the cell and macro `.db`,
+  `read_verilog -container i -libname WORK -netlist <netlist>`, `set_top i:/WORK/<top>`,
+  `match`, `verify`. Reading the implementation `.db` before the reference `set_top` gave
+  FM-236 and unlinked cells. `set_app_var hdlin_unresolved_modules error` makes a missing module
+  fail instead of black-boxing silently. Refuse to read an SRAM behavioural stub: the macro
+  `.db` must black-box it identically on both sides
+- **A DC netlist needs DC's SVF.** Without it 143 reference registers stayed unmatched (DC's
+  constant registers and merged flops), all of which the SVF explained (1177/1177 SVF
+  operations accepted). The SVF is checked, not trusted: an RTL mutant that falsified an SVF
+  merge claim gave 32 failing points and one that falsified a constant claim gave 1,112
+- `report_*` with a shell `>` redirect errors; use `redirect -file <f> { report_... }`.
+  `report_unmatched_points` has no `-unread`
+- Post-route netlists carry antenna and port-protection `diode_2` cells, which Formality treats
+  as functionless black boxes: 115-760 implementation-only unmatched points that do not fail
+  `verify`. Run a diode-stripped copy alongside and require 0 unmatched there
+
+**Conformal.**
+- Genus's `write_do_lec` do-file did not run as written: it calls `analyze_extended_mapping`,
+  which needs the Conformal_Ultra licence (**`lec -xl`**; plain `lec` aborts), it reads
+  `LEC_VERSION` from the environment, and it hard-codes the log path and `-threads 1,4`. Derive a
+  copy with asserted substitutions rather than editing Genus's output
+- The do-file's first line must stay `tclmode`; a comment above it aborts the run. `exit -f` is
+  invalid in tclmode: switch with `vpxmode` first. Use bash, not csh, for the driver (a csh glob
+  with no match aborted a step)
+- Confirm the Genus-guided result with a **direct** compare that drops
+  `read_implementation_information`/`set_verification_information` (Genus's constant, merge and
+  unreachable claims) and a **flat** compare; all three agreed (5,597 equivalent points)
+- Conformal models `diode_2` as a black box with only an input: diodes show up as unreachable
+  revised black boxes. Strip them in a copy for a 0-unmatched count; derive the expected diode
+  count from the netlist rather than hard-coding it (it changed every layout)
+
+**Negative controls on flat netlists.**
+- Each compare was repeated on mutants: one flop's D inverted, and two inputs of one gate
+  swapped in a known cone (a forwarding mux, an ALU bit), each required to give at least one
+  failing point against every golden. Both tools caught every mutant
+- **Anchor mutants on structure, not on literal names.** A flat MCMM netlist had none of the
+  hierarchical names the earlier mutator used, a re-route renamed nets (`FE_OFN18145_n_265` →
+  `n_265`), and the optimiser resized the anchored cell (`a211o_1` → `a211o_2`). The mutator
+  must find its anchor by pattern (cell family, `[12]` drive suffix, net role), fail loudly when
+  it finds none, and be checked by byte-comparing its output against a previous mutant
 
 ### Domain Rules
 1. Use same SDC for both golden and revised
@@ -299,7 +356,7 @@ consulted (e.g. `"coverage.functional_pct"` when reporting coverage contribution
 
 ### Write on stage completion
 After each stage completes (regardless of whether an orchestrator session is active),
-write or overwrite one JSON record in `memory/formal/experiences.jsonl` keyed by
+write or overwrite one JSON record in `<MEM>/formal/experiences.jsonl` keyed by
 `run_id`. This ensures data is persisted even if the flow is interrupted or called
 without full orchestrator context.
 
@@ -309,7 +366,7 @@ whose value matches this key — stage writes must upsert/overwrite by matching 
 persisted `run_id`. Set `signoff_achieved: false` until the final sign-off stage
 completes.
 ### Run state (write before first stage, update after each stage)
-Write `memory/formal/run_state.md` as the **first action** before launching any tool:
+Write `<MEM>/formal/run_state.md` as the **first action** before launching any tool:
 ```markdown
 run_id:       formal_<YYYYMMDD>_<HHMMSS>
 design_name:  <design>

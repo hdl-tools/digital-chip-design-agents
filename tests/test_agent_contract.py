@@ -1619,7 +1619,6 @@ def test_pd_flow_carries_extraction_ir_and_commercial_enablement():
         "## PDK Enablement",
         "## Tool Notes: Cadence Innovus",
         "## Tool Notes: Synopsys ICC2 / Fusion Compiler",
-        "outline — measured notes pending",
         "including every macro's `.lib`",
         "`grdgenxo` → `nxtgrd`",
         "`Techgen` → `qrcTech`",
@@ -1649,7 +1648,6 @@ def test_sta_carries_fair_cross_tool_comparison_and_annotation_gate():
         "Same SDC.", "md5", "Same extractor and tech.", "Same STA engine.",
         "Same activity assumptions", "labelled `native`",
         "## Tool Notes: Synopsys PrimeTime (multi-corner) and PrimePower",
-        "Outline — measured notes pending.",
         "`read_parasitics`", "`report_qor`", "`report_global_timing`",
         "**Annotation gate.**", "Tempus may be absent",
     ):
@@ -1682,7 +1680,7 @@ def test_synthesis_outlines_commercial_tools_and_allows_comparison_runs():
     skill = _flat(_read(SYNTH_SKILL))
     for clause in ("dc_shell -topographical_mode", "compile_ultra", "-spg", "read_mmmc",
                    "read_physical", "syn_generic", "syn_map", "syn_opt", "compile_fusion",
-                   "measured notes pending", "comparison run, no target"):
+                   "comparison run, no target"):
         assert clause in skill, f"synthesis skill lacks {clause!r}"
     assert "`memory/synthesis/" not in _read(SYNTH_SKILL)
     assert "comparison run, no target" in _flat(_read(SYNTH_AGENT))
@@ -1690,3 +1688,190 @@ def test_synthesis_outlines_commercial_tools_and_allows_comparison_runs():
     # compile_ultra is Design Compiler's; Genus maps with syn_*, Fusion Compiler with compile_fusion.
     assert "In Cadence Genus, `set_max_area 0`" not in knowledge
     assert "causes Fusion Compiler to re-optimize" not in knowledge
+
+
+def _section(text: str, heading: str) -> str:
+    """The body under `heading` up to the next heading of the same or a higher level."""
+    level = len(heading) - len(heading.lstrip("#"))
+    start = re.search(r"^" + re.escape(heading) + r"\s*$", text, re.M).start()
+    nxt = re.compile(r"^#{1,%d} " % level, re.M)
+    m = nxt.search(text, start + len(heading))
+    return text[start:m.start() if m else len(text)]
+
+
+def test_synthesis_tool_notes_carry_measured_dc_and_genus_flow():
+    """A DC-topo and a Genus run on an open PDK each had to rediscover the flow: plain
+    dc_shell topo cannot read NDM, a tt-only area-recovered compile built a ripple adder
+    that lost 10.5 ns at ss, and Genus iSpatial failed without a qrcTechFile."""
+    notes = _flat(_section(_read(SYNTH_SKILL), "### Tool Notes: commercial synthesis (measured)"))
+    for clause in (
+        "X-2025.06-SP3", "23.14-s090_1",
+        "dcnxt_shell -topographical_mode", "Milkyway",
+        "set_tlu_plus_files", "check_tlu_plus_files", "`read_parasitic_tech` does not exist",
+        "extract_physical_constraints", "set_cell_location -fixed",
+        "`set_svf <file>` **before** `analyze`",
+        "compile_ultra -spg", "ripple-carry", "-10.5 ns at ss", "MCMM", "set_fix_hold",
+        "create_timing_condition", "TCLCMD-992",
+        "syn_generic -physical", "PHYS-1015", "SDC-200", "write_do_lec",
+        "read_def -incremental", "peak RSS",
+    ):
+        assert clause in notes, f"synthesis Tool Notes lack {clause!r}"
+    assert "measured notes pending" not in _read(SYNTH_SKILL)
+
+
+def test_pd_pdk_enablement_carries_the_measured_sky130_recipe():
+    """Building commercial views of Sky130 took a .tf derived from the tech LEF, a
+    multi-pane NDM, an lc_shell exit-crash workaround and an li1->met0 ICT rename before
+    any tool could load them."""
+    pdk = _flat(_section(_read(PD_SKILL), "## PDK Enablement"))
+    for clause in (
+        "### Measured on Sky130",
+        "segfaults at process exit", "LIB-007", "gapless", "DPUI-924",
+        "one pane per corner", "check_workspace -allow_missing", "PVT-030",
+        "UID-109", "grdgenxo", "-itf2TLUPlus", "LBMISC-215479",
+        "IMPEXT-6091", "IMPEXT-3548", "`li1` → `met0`",
+        "COUPLING_ABS_THRESHOLD: 0.1", "`.calibre`",
+        "TEC-011", "create_timing_condition", "TRACKS-only DEF", "SVR-4",
+    ):
+        assert clause in pdk, f"PDK Enablement lacks {clause!r}"
+    assert "recipes for each tool on Sky130 are pending" not in pdk
+
+
+def test_pd_tool_notes_carry_measured_innovus_and_icc2_gotchas():
+    """Each item cost a run: a view without -latency_file dropped the I/O clock latency,
+    create_inst and editAddRoute did nothing, the ICC2 li1 ban was soft, met4 fat-table
+    spacing to straps was not enforced, tt-only hold built weak delay chains."""
+    skill = _read(PD_SKILL)
+    inn = _flat(_section(skill, "## Tool Notes: Cadence Innovus"))
+    for clause in (
+        "23.14-s088_1", "-latency_file", "update_constraint_mode",
+        "set_ccopt_property update_io_latency false", "virtual ideal I/O clock",
+        "TCLCMD-997", "setOptMode -holdTargetSlack 0.2", "0.17 ns optimistic",
+        "activity 0.2", "set_default_switching_activity",
+        "`create_inst` returned without placing anything", "addInst", "-physical",
+        "`create_shape` does not exist", "`editAddRoute` did nothing", "add_shape",
+        "`refinePlace` before `ecoRoute`", "check_antennas", "Taps at the source",
+        "npc.2", "IMPCCOPT-2440", "IMPOPT-7027", "PIN",
+    ):
+        assert clause in inn, f"Innovus Tool Notes lack {clause!r}"
+    icc2 = _flat(_section(skill, "## Tool Notes: Synopsys ICC2 / Fusion Compiler"))
+    for clause in (
+        "X-2025.06-SP1", "30-65 min", "global_min_layer_mode", "`hard`",
+        "set_pg_via_master_rule", "set_process_number", "set_voltage", "set_temperature",
+        "-object_list", "CHF-002", "-scenarios",
+        "weak `ZBUF`/`ZINV`", "set_lib_cell_purpose -include hold",
+        "`add_buffer` drops the new cell off the row grid",
+        "fat_table", "0.1 um met4 routing blockages", "m4.5ab",
+        "set_routing_rule -min_routing_layer met3 -min_layer_mode allow_pin_connection",
+        "diode_mode 1", "drive the antenna ECO from the OpenROAD list",
+        "-case_insensitive", "write_verilog -exclude supply_statements",
+        "-merge_gds_top_cell", "copy_block",
+    ):
+        assert clause in icc2, f"ICC2 Tool Notes lack {clause!r}"
+    assert "Outline — measured notes pending" not in skill
+    assert "outline — measured notes pending" not in skill
+
+
+def test_pd_tool_notes_carry_measured_starrc_redhawk_and_magic():
+    """StarRC opened 33k nets on ICC2 via names; RedHawk silently ignored a singular
+    INSTANCE_POWER_FILE; PEAK-mode EM against DC limits flagged hundreds of false
+    violations; Magic DRC was killed by a 9 GiB watchdog."""
+    skill = _read(PD_SKILL)
+    star = _flat(_section(skill, "## Tool Notes: Synopsys StarRC"))
+    for clause in ("X-2025.06-SP1", "TOP_DEF_FILE", "SX-0271", "SX-1907", "SX-2064",
+                   "COUPLING_REL_THRESHOLD: 0", "LEF_USE_OBS: NO", "SHORTS_LIMIT"):
+        assert clause in star, f"StarRC Tool Notes lack {clause!r}"
+    rh = _flat(_section(skill, "## Tool Notes: Ansys RedHawk"))
+    for clause in ("2025 R2.2", "`INSTANCE_POWER_FILES` must be plural",
+                   "accepted silently and ignored", "escape-free", "ipfMissing",
+                   "write_rh_file -filetype irdrop", "IGNORE_DEF_ERROR 1", "ITG-016",
+                   "`.ploc`", "ENABLE_AUTO_EM 1", "**not a valid pass/fail**",
+                   "perform emcheck -mode AVG", "DECAP_CELL", "depend on decap"):
+        assert clause in rh, f"RedHawk Tool Notes lack {clause!r}"
+    mg = _flat(_section(skill, "## Tool Notes: Magic, KLayout and Netgen on a commercial GDS"))
+    for clause in ("8.3.489", "1.5.278", "0.29.4", "11 GiB", "**alone**",
+                   "inside the SRAM footprints", "`nwell.4`", "port make"):
+        assert clause in mg, f"Magic/KLayout/Netgen Tool Notes lack {clause!r}"
+
+
+def test_sta_primetime_notes_are_measured_and_gate_the_sdc_read():
+    """PrimeTime read_sdc stopped at the first unsupported command of an Innovus-exported
+    SDC and dropped the rest, producing plausible but invalid slack; PrimePower and
+    OpenSTA differ 15 % on register-output activity."""
+    skill = _read(STA_SKILL)
+    pt = _flat(_section(skill, "## Tool Notes: Synopsys PrimeTime (multi-corner) and PrimePower"))
+    for clause in (
+        "X-2025.06", "one `pt_shell` per (library corner, RC corner)", "read_parasitics -format spef",
+        "SDC md5", "virtual** clock ignores its network latency", "-pin_to_pin_nets",
+        "parasitics_command.log", "PARA-124", "report_default_significant_digits 4",
+        "No setup violations found.", "non-empty setup and hold WNS",
+        "`read_sdc` stops at the first unsupported command",
+        "Innovus-exported SDC is not PT-readable", "set_clock_latency 1.77814",
+        "power_default_toggle_rate 0.1", "15 % difference",
+        "[all_registers -output_pins]", "extrapolate",
+    ):
+        assert clause in pt, f"PrimeTime Tool Notes lack {clause!r}"
+    fair = _flat(_section(skill, "## Fair Cross-Tool Comparison"))
+    assert "Prove each judged run used the inputs it claims" in fair
+    assert "Close the implementation in the corners you judge in" in fair
+    assert "Outline — measured notes pending" not in skill
+
+
+def test_formal_lec_tool_notes_are_measured_with_structural_mutant_anchors():
+    """Formality needed DC's SVF and a reference-first read order; Genus's Conformal
+    do-file needed -xl; mutant anchors broke on flat netlists, re-routes and resizing."""
+    skill = _read(FORMAL_SKILL)
+    notes = _flat(_section(skill, "### Tool Notes: Formality and Conformal LEC (measured)"))
+    for clause in (
+        "Formality X-2025.06", "Conformal LEC 24.10-p100", "lec -nogui -xl -dofile",
+        "FM-236", "hdlin_unresolved_modules error", "A DC netlist needs DC's SVF",
+        "143 reference registers", "redirect -file", "diode-stripped",
+        "Conformal_Ultra", "`tclmode`", "vpxmode", "**direct** compare",
+        "Anchor mutants on structure, not on literal names", "`a211o_1` → `a211o_2`",
+        "fail loudly",
+    ):
+        assert clause in notes, f"formal LEC Tool Notes lack {clause!r}"
+    assert "measured notes pending" not in skill
+
+
+def test_infrastructure_carries_measured_licensed_tool_host_rules():
+    """On a 15 GB VM shared by several agents, pgrep gates raced, bare timeouts left
+    licence-holding children, and ICC2 took up to an hour to start."""
+    notes = _flat(_section(_read(INFRA_SKILL), "### Licensed tools on a small shared host (measured)"))
+    for clause in (
+        "One heavy tool at a time, enforced by a lock", "flock -x 9", "licensed_lock.sh",
+        "pgrep -x", "safe_run.sh", "MemAvailable", "MemoryMax", "**2 or fewer**",
+        "**process group**", "30-65 min", "done-marker", "`pkill -f`",
+        "result line", "ckout_test",
+    ):
+        assert clause in notes, f"infrastructure host rules lack {clause!r}"
+
+
+@pytest.mark.parametrize(
+    "path", [p for p in SKILL_FILES if p.parent.parent.parent.name != "infrastructure"], ids=_rel
+)
+def test_domain_skills_use_the_resolved_memory_root(path):
+    """A skill that names the literal `memory/<domain>/` sends the agent to the in-repo seed
+    while the orchestrator writes to the resolved root (CHIP_DESIGN_MEMORY_ROOT or the
+    central default), so curated knowledge is silently never read."""
+    text = _read(path)
+    assert not re.search(r"`memory/[a-z-]+/", text), _rel(path)
+    if "`<MEM>/" in text and "## Pre-run Context" in text:
+        assert "`<MEM>` below is the resolved memory root" in text, _rel(path)
+
+
+def test_knowledge_seeds_carry_the_measured_commercial_corrections():
+    """The seeded knowledge recommended plain dc_shell for scripted DC runs; NDM
+    topographical synthesis needs dcnxt_shell, and DC needs the SVF for Formality."""
+    synth = _read(REPO_ROOT / "memory" / "synthesis" / "knowledge.md")
+    assert "dcnxt_shell -topographical_mode" in synth
+    assert "In Cadence Genus, `set_max_area 0`" not in synth
+    pd = _read(REPO_ROOT / "memory" / "pd" / "knowledge.md")
+    for clause in ("global_min_layer_mode", "-latency_file", "INSTANCE_POWER_FILES"):
+        assert clause in pd, f"pd knowledge lacks {clause!r}"
+    sta = _read(REPO_ROOT / "memory" / "sta" / "knowledge.md")
+    assert "read_sdc" in sta and "md5" in sta
+    formal = _read(REPO_ROOT / "memory" / "formal" / "knowledge.md")
+    assert "SVF" in formal and "anchor" in formal
+    infra = _read(REPO_ROOT / "memory" / "infrastructure" / "knowledge.md")
+    assert "flock" in infra

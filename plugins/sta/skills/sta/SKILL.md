@@ -88,31 +88,64 @@ setup/hold violations are found.
 
 ## Tool Notes: Synopsys PrimeTime (multi-corner) and PrimePower
 
-**Outline — measured notes pending.** Process and standard command names only; no option
-recipe below has been verified on this suite's reference host yet. Run through `wrap-pt.sh`.
+Measured with **PrimeTime X-2025.06** (`pt_shell`, through `wrap-pt.sh`) as the judge for three
+P&R flows of one Sky130 CPU macro, on StarRC X-2025.06-SP1 SPEFs: 27 runs per flow (9 corners x 3
+SDC variants), **one `pt_shell` per (library corner, RC corner)**, 2 cores, 8-43 s wall and
+1.0-1.3 GB RSS per run, one licensed tool at a time. The flow, per run:
 
-**Multi-corner, one scenario per corner (DMSA or a single multi-scenario session):**
-1. Per corner: `create_scenario` (or one `pt_shell` per corner), then `set link_path` /
-   `read_db` the library `.db` of **that** corner, including every macro's `.db`
-2. `read_verilog` + `link_design` the post-route netlist; `read_sdc` the one SDC every flow
-   shares (record its md5)
-3. `read_parasitics` the SPEF of the **RC corner mapped to that library corner** (Cmax with
-   the slow library for setup, Cmin with the fast library for hold, unless the PDK's signoff
-   table says otherwise) — write the mapping down; a scenario reading the wrong SPEF is the
-   most common silent error
-4. `report_annotated_parasitics -check` (or the version's equivalent) before any timing
-   report — see `multi_corner_analysis` annotation rule 2
-5. `update_timing`, then `report_qor`, `report_global_timing`, `report_constraint
-   -all_violators`, `report_timing -delay_type max|min`
-6. Collect WNS/TNS/violator count per scenario into one table; the corner set comes from
-   `design_state.constraints.pvt_corners`
+1. `set_app_var search_path` / `link_path {* <stdcell corner>.db <every macro>.db}`; a macro
+   with a single characterisation (TT-only SRAM) is linked at every corner and that limitation
+   is written next to every ss/ff figure. Physical-only cells (fill, tap, `decap_12`) are not in
+   the `.db` and are black-boxed (LNK-005), harmless
+2. `read_verilog` + `current_design` + `link_design`; assert the SDC md5 inside the script and
+   abort on mismatch, then `read_sdc`; `set_propagated_clock` on the real clocks only (a
+   propagated **virtual** clock ignores its network latency)
+3. `read_parasitics -format spef <spef>` of the RC corner paired with the library corner. The
+   9-corner matrix was every pairing of {tt, ss, ff} with {nom, min, max}; the pairing is
+   written in each run's metrics. Copy the SPEF into the run directory and record its md5
+   before and after the copy, so a SPEF replaced mid-sweep is caught
+4. `update_timing`, then the **annotation gate**: `report_annotated_parasitics -check
+   -internal_nets -boundary_nets -driverless_nets -loadless_nets -pin_to_pin_nets`, gated on the
+   pin-to-pin row (PT splits out driverless and loadless nets, which have no timing arc), plus
+   the same report with `-list_not_annotated` on the clock nets (`get_nets -of_objects
+   [all_fanout -flat -clock_tree]`; `-clock_tree` takes no `-from`). `read_parasitics` writes
+   its own summary to `parasitics_command.log` in the cwd, not stdout. Result here: 0
+   unannotated pin-to-pin nets in every run. SPEF nets absent from the netlist (PARA-124, e.g.
+   ICC2 `_dummynet*`) are counted, not failed
+5. `check_timing -verbose`, `report_global_timing`, `report_qor`, `report_constraint
+   -all_violators -max_transition -max_capacitance`, and per-endpoint WNS/TNS/violators from
+   `get_timing_paths -delay_type max|min -max_paths 1000000 -nworst 1 -slack_lesser_than 0`.
+   `report_global_timing` prints `No setup violations found.` instead of a table when clean;
+   `set_app_var report_default_significant_digits 4` (the default 2 hid a -0.0046 ns slack).
+   Its reg-to-reg / in-to-reg categories move when I/O constraints change: for a reg-to-reg
+   figure use explicit `-from [all_registers] -to [all_registers]`
+6. Accept the run only with non-empty setup and hold WNS: a run whose `read_sdc` aborted
+   produced a "done" run with empty metrics until this check was added
 
-**PrimePower:** `set power_enable_analysis true`, same netlist/SPEF/SDC as the timing
-scenario; `read_saif`/`read_fsdb` for vector-based power, otherwise vectorless with
-`set_switching_activity` default toggle rate and static probability on inputs; then
-`update_power` and `report_power`. **Use the same activity assumption for every compared
-flow** (the same default toggle rate, the same input activity, the same SAIF if any) and
-record it with the number; a power figure without its activity assumption is not comparable.
+- **`read_sdc` stops at the first unsupported command and drops everything after it, without
+  failing the session.** An **Innovus-exported SDC is not PT-readable as is**: remove the
+  `current_design` line and replace `get_designs` with `current_design`, then diff the result.
+  The first own-SDC results (+2.85 / +0.34 ns) came from a half-read SDC and were invalid
+- **A tool-written SDC is a different constraint set.** ICC2's `write_sdc` added
+  `set_clock_latency 1.77814` "for io paths" (`-origin useful_skew`) that the shared SDC lacks
+  (a 1.2 ns native-vs-judge hold gap on I/O); Innovus keeps I/O latency in each view's
+  `latency.sdc` and exports only part of it. Diff every tool-written SDC against the shared one
+  and record each variant's md5 (shared / I/O-latency variant / the tool's own); rank flows only
+  on the shared SDC, and report the others as diagnostics
+- **Native vs judge.** With identical inputs (same SPEF, SDC, SI off) PT matched Innovus within
+  0.06 ns setup, so the judge engine was not the gap. The measured Innovus native-vs-judge ladder
+  was SI on vs off (+1.0 ns), hidden I/O latency (-2.9 ns), tech-LEF RC vs StarRC (+1.2 ns) and
+  activity 0.2 vs 0.1 (17 mW). Explain a gap by swapping one input at a time
+- **PrimePower.** `set_app_var power_enable_analysis true`, `power_analysis_mode averaged`,
+  vectorless with `power_default_toggle_rate 0.1` and `power_default_static_probability 0.5`,
+  `update_power`, `report_power -nosplit`. PT propagates activity through registers from D;
+  OpenSTA gives register outputs the default activity, a **15 % difference** on the same design.
+  Adding `set_switching_activity -toggle_rate 0.1 -static_probability 0.5 -base_clock <clk>
+  [all_registers -output_pins]` matched OpenSTA within 2-3 %. With PT's own default the judge
+  reproduced ICC2's native power (same engine) to 0.3 %. State which activity a number uses
+- **SRAM paths.** PT and OpenSTA disagreed on an SRAM clk→dout delay (0.43 vs 2.25 ns, same net
+  and load) because the load lay outside the macro's Liberty table and the engines extrapolate
+  differently; check macro output loads against the table range
 
 ---
 
@@ -134,6 +167,14 @@ the same way, or the comparison measures the judges rather than the implementati
    for diagnosing a flow and are never ranked against another flow's signoff numbers
 6. A comparison that cannot meet 1–4 (for example no common extractor tech) is reported as
    **indicative**, with the unmet condition named
+7. **Prove each judged run used the inputs it claims.** Record the md5 of the netlist, the SPEF
+   and the SDC in every run and compare them with the files the flow delivered; a stale SPEF
+   or a half-read SDC produces plausible numbers. In the measured three-flow comparison this,
+   with the annotation gate, is what made a 27-run sweep per flow trustworthy
+8. **Close the implementation in the corners you judge in.** Flows implemented with tt-only
+   views lost 7.8-14.7 ns at ss in the judge, almost all reg-to-reg; the same tools with
+   ss/tt setup and ff/tt hold views in implementation lost none. A tt-only flow judged at 9
+   corners measures the corner scope of the run, not the tool
 
 ---
 

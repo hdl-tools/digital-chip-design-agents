@@ -248,6 +248,52 @@ and `dialect` at the point of use in its domain skill.
 
 ---
 
+### Licensed tools on a small shared host (measured)
+
+Measured over a two-week commercial RTL→GDS campaign (DC-NXT, Genus, ICC2, Innovus, StarRC,
+Techgen, PrimeTime, Formality, Conformal, RedHawk, Magic/KLayout in a container) on one VMware
+guest with 8 vCPU and 15 GB, with several agents sharing it. The host crashed or powered off
+repeatedly; every rule below came from a lost or invalid run.
+
+- **One heavy tool at a time, enforced by a lock, not by a check.** Two `pgrep`-based "is
+  anything running?" gates raced twice and let two licensed tools start together. A host-wide
+  `flock` held for the tool's whole life fixed it: `exec 9>>$LOCK; flock -x 9`, then run the
+  tool as a child so the lock is released only when it and everything it spawned exit. Wrap
+  every licensed launch in it (`licensed_lock.sh <cmd>`), and let it also wait, by exact process
+  name (`pgrep -x`), for tools started by callers that do not use the lock yet
+- **Gate each start on load and memory, then cap and kill as a group** (`safe_run.sh <log>
+  <cmd>`): wait until the 1-minute load average is below 6 and `MemAvailable` is at least the
+  tool's need; run under `systemd-run --user --scope -p MemoryMax=<cap> -p MemorySwapMax=0`,
+  `nice -n 10`, `setsid`; set `OMP_NUM_THREADS` and the tool's own CPU option to **2 or fewer**
+  (the guest hard-locked under full vCPU load); on timeout kill the **process group** (a bare
+  `timeout` leaves the `*_exec` child holding the licence). Caps that worked: synthesis, LEC and
+  STA 6 GB; RedHawk 9 GB; Innovus finish needed about 7 GB; Magic DRC 11 GB alone
+- **Light tools may share; heavy ones may not.** PrimeTime (1.0-1.3 GB) and StarRC (0.4-0.5 GB)
+  ran with a relaxed gate (no other licensed tool, `MemAvailable` >= 2 GB) while a container DRC
+  was resident. Concurrent KLayout/Magic (4-10 GB) made Innovus 5-10x slower and hung one
+  command for 38 min
+- **Start-up is slow on a loaded VM.** ICC2 sessions took 30-65 min to start at load 20-55
+  (47 s idle), Innovus start plus exit 10-25 min, the first PrimeTime start waited 10 min on the
+  load gate, and a licence-queue job waited hours behind other agents' jobs. Stage runtimes
+  measured on such a host include the wait; record the wall time and the load, and do not
+  compare runtimes across runs taken at different loads
+- **Long jobs outlive the session that launched them.** Launch with `setsid`/`nohup` and write a
+  done-marker file at the end; wait on the marker, not on a log line (an `until grep "end
+  <stage>"` loop matched a stale line from an earlier run) and not on a process name
+  (`pgrep -f <pattern>` matched the waiting loop's own command line, and `pkill -f` with a
+  pattern in its own command line killed the calling shell). A chain driver must read each
+  stage's own result line: a stage script that ends in `exit` returns 0 even when its repair
+  loop did not converge
+- **Field solvers are the long poles.** `grdgenxo` took 40-63 min and `Techgen` about 4 h per
+  corner, single-threaded; give them timeouts of hours, and queue them so they do not hold the
+  load gate shut for the interactive tools (a Techgen run at 490 % CPU blocked ICC2 for over an
+  hour)
+- **Probe and ping licences without starting a tool**: `lmutil lmstat -a` against the Cadence
+  server reported "No socket connection" per feature although checkouts succeeded; use the
+  vendor's checkout test (`ckout_test`) for a yes/no answer
+
+---
+
 ## MCP Architecture — Two Tiers
 
 ### Tier 1: Batch MCP servers (short, self-contained runs)

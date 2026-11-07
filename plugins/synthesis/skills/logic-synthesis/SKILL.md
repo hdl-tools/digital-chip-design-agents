@@ -66,28 +66,71 @@ Wrappers: `wrap-dc.sh` and `wrap-genus.sh` (Fusion Compiler through `wrap-icc2.s
 `WRAP_ICC2_TOOL=fc_shell`). Prove a netlist with LEC (`wrap-fm.sh` / `wrap-lec.sh`) before
 handing it to PD.
 
-### Tool Notes: commercial synthesis (outline — measured notes pending)
+### Tool Notes: commercial synthesis (measured)
 
-Standard command names only; no option recipe here has been verified on this suite's
-reference host yet.
+Measured on one host (8 vCPU, 15 GB) on a Sky130 `sky130_fd_sc_hd` CPU macro of about 30k
+cells with 10 OpenRAM SRAM hard macros, 2 cores per tool, one licensed tool at a time (see the
+infrastructure skill, *Licensed tools on a small shared host*). Versions: DC-NXT
+**X-2025.06-SP3**, Genus **23.14-s090_1**, PrimeTime **X-2025.06** for the neutral probe.
+Fusion Compiler was not run: `fc_shell` synthesis is `compile_fusion` (stepwise with
+`-to`/`-from`) in the same NDM design library the back end continues from, and
+`compile_ultra` is not the FC command; nothing about FC below is measured.
 
-- **Design Compiler, topographical** — `dc_shell -topographical_mode -f <script.tcl>`.
-  Topographical mode needs physical data: an NDM reference library (or a Milkyway library on
-  older releases) and the technology file / tech LEF, plus the TLU+ or extraction tech for
-  wire RC. Without them it is wire-load-model synthesis and the timing is not comparable to a
-  physical flow. Compile with `compile_ultra` (add `-spg` to pass placement guidance to
-  ICC2), then `report_qor`, `report_area`, `report_timing`, `write -format verilog`, and keep
-  the SVF for Formality. On an open PDK build the `.db`/NDM views first (physical-design skill,
-  `## PDK Enablement`)
-- **Genus** — `genus -batch -files <script.tcl>`: `read_mmmc` (library sets, RC corners,
-  constraint mode with the SDC, analysis views), `read_physical -lef` (tech LEF then cell and
-  macro LEFs) for physically aware synthesis, `read_hdl`, `elaborate`, then
-  `syn_generic`, `syn_map`, `syn_opt` (each optionally `-physical`, which also needs a
-  floorplan DEF and the extraction tech), then `report_qor`, `report_timing`, `report_area`,
-  `write_hdl`, `write_sdc`. `compile_ultra` is a Design Compiler command, not a Genus one
-- **Fusion Compiler** — `fc_shell`: synthesis is `compile_fusion` (stepwise with `-to`/`-from`),
-  in the same NDM design library the back end continues from; `compile_ultra` is not the FC
-  command
+**Design Compiler, topographical on NDM.**
+- `dc_shell -topographical_mode` is the **Milkyway** flow: it has no `create_lib` (CMD-005) and
+  cannot read NDM reference libraries. NDM topographical synthesis runs in
+  **`dcnxt_shell -topographical_mode -f <script.tcl>`**. Build the `.db`/NDM views first
+  (physical-design skill, `## PDK Enablement`)
+- Wire RC: `set_tlu_plus_files -max_tluplus <f> -min_tluplus <f> -tech2itf_map <map>` then
+  `check_tlu_plus_files` (all three checks must pass). `read_parasitic_tech` does not exist in
+  `dcnxt_shell`. Set the TLU+ **before** `extract_physical_constraints`, or the floorplan step
+  runs without RC (`PSYN-100` per layer)
+- Floorplan from DEF: `extract_physical_constraints <fp.def>` for die, rows and pins. A DEF cannot
+  name a generate-scope cell (`gen_data_sram[i].u_data_sram`), so place macros with
+  `set_cell_location -fixed` and `set_dont_touch` them. Routing layers with `set_ignored_layers`
+- `set_svf <file>` **before** `analyze`, `set_svf -off` at the end; Formality needs this SVF to
+  match DC's constant-register removals and merges (without it 143 registers stay unmatched)
+- `analyze -format sverilog` + `elaborate` read the RTL natively (struct-member part-selects
+  elaborated clean, checked by LEC). Compile: `compile_ultra -spg`, then
+  `change_names -rules verilog -hierarchy`. `set_dont_use */<cell>` is rejected (UID-109): use
+  `set_dont_use [get_lib_cells */<cell>]`
+- `write_parasitics -format spef` is not valid in DC (WP-1). `write_sdc` after SPG carries about
+  69k per-pin annotations: do not hand it to P&R as the constraints file, use the source SDC
+- Cost: `compile_ultra -spg` 219 s, session 9 min, **peak RSS 1.4-1.6 GB**
+- **A tt-only compile with area recovery can build a slow adder.** With only the tt corner and
+  the SDC's `set_max_area 0`, DC met 0 ps at tt with a ~30-cell `fa_1`/`fah_1` ripple-carry PC
+  adder, and the netlist was **-10.5 ns at ss** zero-wire (Yosys -1.9, Genus +0.6). DC stops at
+  slack 0 and recovers area, so "+0.00" is not headroom. The fix was **MCMM**:
+  `create_scenario` setup `ss` (max TLU+) + `tt` (nom), hold `ff` (min) + `tt`, the same SDC read
+  per scenario, `set_fix_hold [get_clocks <clk>]` in the hold scenarios (DC repairs hold only
+  when asked). Result +1.16 ns at ss for +10 % std-cell area; Formality still EQUIVALENT
+- DRV left after compile (thousands of max-transition nets on a large core) is the long-wire
+  effect of the floorplan; it is P&R's job, not a DC sizing failure
+
+**Genus, physically aware.**
+- `genus -no_gui -overwrite -f <script.tcl>`: `read_mmmc <mmmc.tcl>`, `read_physical -lef` (tech LEF,
+  cell LEF, macro LEFs), `read_hdl -sv -define <defines> <files>`, `elaborate`, `read_def <fp.def>`, then
+  `syn_generic -physical` (453 s), `syn_map -physical` (161 s), `syn_opt` (51 s); **peak RSS
+  2.0 GB**. Output with `write_hdl`, `write_sdc -view <view>` (needs `-view` in MMMC) and
+  `write_do_lec` (the Conformal do-file; see the formal skill)
+- **MMMC dialect differs between Genus and Innovus.** Genus 23.14 delay corners need
+  `create_timing_condition` + `create_delay_corner -timing_condition`; Innovus 23.1x rejects
+  that form (TCLCMD-992) and wants `-library_set`. One shared MMMC file must branch on the tool
+- An instance's `.location` is read-only: place macros with `read_def -incremental <macros.def>`
+  and set `preserve` on them. Dont-use is `set_db [get_db base_cells <c>] .dont_use true`
+- `syn_opt -spatial` (iSpatial) **fails with PHYS-1015 without a `qrcTechFile`** (it needs
+  probabilistic extraction); run plain physical-aware `syn_opt` and record it
+- The SDC's `set_max_area 0` is **ignored by Genus** (SDC-200) and honoured by DC, which favours
+  DC on area in a comparison
+- In this release the hold `report_timing` forms, `report_summary` and `write_def` failed and
+  `report_power` has no `-depth`: wrap every report and output in `catch`/`try` so one failed
+  report does not lose the netlist
+
+**Judge synthesis netlists across corners before choosing a re-run.** Time each netlist in
+PrimeTime at every library corner with an ideal clock, no parasitics and the shared SDC (46 s
+for three netlists x two corners). That separates an intrinsically slow netlist from a wire
+problem: here it confirmed DC's tt-only weakness and refuted it for Genus (+0.6 ns at ss), so
+only DC got an MCMM re-run.
 
 ### Sequential Flow Log Review (Yosys)
 

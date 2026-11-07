@@ -53,8 +53,10 @@ authoritative; this document does not restate them.
 
 Comparing implementation tools follows the skill's **Fair Cross-Tool Comparison** rule (one
 SDC by md5, one extractor and tech, one STA engine, one activity assumption; native reports
-labelled `native`). PrimeTime multi-corner and PrimePower outlines are in the skill's Tool
-Notes; Cadence Tempus is optional and may be absent.
+labelled `native`), plus md5 proof of each run's inputs and closing the implementation in the
+corners that are judged. The PrimeTime multi-corner and PrimePower Tool Notes in the skill are
+measured (PrimeTime X-2025.06 judging three Sky130 flows); Cadence Tempus is optional and may
+be absent.
 
 ---
 

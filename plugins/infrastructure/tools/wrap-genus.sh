@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # wrap-genus.sh — run Cadence Genus and emit a compact JSON summary
-# Usage: wrap-genus.sh [genus args...]      e.g. wrap-genus.sh -batch -files synth.tcl
+# Usage: wrap-genus.sh [genus args...]      e.g. wrap-genus.sh -no_gui -overwrite -f synth.tcl
 #
 # Result markers: report_timing "Timing slack :" and the syn_* completion messages
 # "Done synthesizing" / "Done mapping" / "Done incrementally optimizing". Messages are
